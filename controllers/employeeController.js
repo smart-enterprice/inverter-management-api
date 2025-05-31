@@ -23,6 +23,7 @@ const sanitizeInput = (req, res, next) => {
 };
 
 // get employeeId token -> const loggedInEmployeeId = req.user.employee_id;
+const signUpRoles = ['ROLE_SUPER_ADMIN', 'ROLE_ADMIN'];
 
 const employeeController = {
     employeeSecurityMiddleware: [
@@ -49,9 +50,9 @@ const employeeController = {
         employeeService.createAccountLimiter,
         sanitizeInput,
         asyncHandler(async(req, res) => {
-            console.log(`token role : ${req.user.role}`);
-            if (!req.user || req.user.role !== 'ROLE_ADMIN') {
-                throw new UnauthorizedException("Access denied: Only administrators are authorized to perform this action.");
+
+            if (!req.user || !signUpRoles.includes(req.user.role)) {
+                throw new UnauthorizedException(`Access denied: This action requires one of the following roles: ${signUpRoles.join(', ')}.`);
             }
 
             logger.info("Signup attempt:", {
