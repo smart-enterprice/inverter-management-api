@@ -16,6 +16,7 @@ import {
 } from '../middleware/CustomError.js';
 import logger from '../utils/logger.js';
 import dotenv from "dotenv";
+import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 
 dotenv.config();
 
@@ -165,9 +166,45 @@ const mapEntityToResponse = (employeeEntity) => {
 };
 
 const employeeService = {
-    createEmployee: asyncHandler(async(employeeRequest) => {
-        const createdByEmployeeId = req.user && req.user.employee_id;
+    defaultSuperAdminSetup: asyncHandler(async () => {
+        const {
+            SUPER_ADMIN,
+            SUPER_ADMIN_PHONE,
+            SUPER_ADMIN_EMAIL,
+            SUPER_ADMIN_PASSWORD
+        } = process.env;
 
+        if (!SUPER_ADMIN || !SUPER_ADMIN_PHONE || !SUPER_ADMIN_EMAIL || !SUPER_ADMIN_PASSWORD) {
+            throw new Error("❌ Missing required SUPER_ADMIN environment variables.");
+        }
+
+        const existingAdmin = await employeeSchema.findOne({ employee_email: SUPER_ADMIN_EMAIL });
+        if (existingAdmin) {
+            console.log("⚠️ Super Admin already exists. Skipping creation.");
+            return;
+        }
+
+        const employeeId = await generateUniqueEmployeeId();
+
+        const hashedPassword = await hashPassword(SUPER_ADMIN_PASSWORD);
+
+        const superAdmin = new employeeSchema({
+            employee_id: employeeId,
+            employee_name: SUPER_ADMIN,
+            employee_email: SUPER_ADMIN_EMAIL,
+            employee_phone: SUPER_ADMIN_PHONE,
+            password: hashedPassword,
+            role: 'ROLE_SUPER_ADMIN',
+            status: 'active',
+            created_by: 'APPLICATION',
+        });
+
+        await superAdmin.save();
+
+        console.log("✅ Default Super Admin created successfully.");
+    }),
+
+    createEmployee: asyncHandler(async (employeeRequest, createdByEmployeeId) => {
         if (!createdByEmployeeId) {
             throw new UnauthorizedException('You are not authorized to create an employee.');
         }
@@ -182,7 +219,8 @@ const employeeService = {
 
         const employeeData = mapRequestToEntity(employeeRequest, employeeId);
         employeeData.password = hashedPassword;
-        employeeData.createdBy = createdByEmployeeId;
+        logger.info(`Created Employee ID: ${createdByEmployeeId}`);
+        employeeData.created_by = createdByEmployeeId;
 
         const newEmployee = new employeeSchema(employeeData);
         await newEmployee.save();
@@ -232,6 +270,26 @@ const employeeService = {
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
         }
+        logger.info(`Employee ;l;l ${employeeId}`);
+
+        const employee = await employeeSchema.findOne({
+            employee_id: employeeId,
+            status: 'active'
+        });
+
+        if (!employee) {
+            throw new NotFoundException('Employee not found');
+        }
+
+        return mapEntityToResponse(employee);
+    }),
+
+    getEmployeeById: asyncHandler(async() => {
+        const employeeId = CurrentRequestContext.getEmployeeId();
+        if (!employeeId) {
+            throw new BadRequestException('Employee ID is required');
+        }
+        logger.info(`Employee ${employeeId}`);
 
         const employee = await employeeSchema.findOne({
             employee_id: employeeId,
