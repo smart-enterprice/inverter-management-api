@@ -130,8 +130,7 @@ const mapRequestToEntity = (employeeRequest, employeeId, isUpdate = false) => {
     if (!isUpdate) entity.status = 'active';
 
     const fieldsToMap = [
-        'employee_name', 'employee_email', 'employee_phone', 'role',
-        'created_by', 'shop_name', 'district', 'town', 'brand', 'address'
+        'employee_name', 'employee_email', 'employee_phone', 'role', 'shop_name', 'district', 'town', 'brand', 'address'
     ];
 
     fieldsToMap.forEach(field => {
@@ -167,6 +166,12 @@ const mapEntityToResponse = (employeeEntity) => {
 
 const employeeService = {
     createEmployee: asyncHandler(async(employeeRequest) => {
+        const createdByEmployeeId = req.user && req.user.employee_id;
+
+        if (!createdByEmployeeId) {
+            throw new UnauthorizedException('You are not authorized to create an employee.');
+        }
+
         validateEmployeeData(employeeRequest);
         await checkExistingEmployee(employeeRequest.employee_email, employeeRequest.employee_phone);
 
@@ -177,6 +182,7 @@ const employeeService = {
 
         const employeeData = mapRequestToEntity(employeeRequest, employeeId);
         employeeData.password = hashedPassword;
+        employeeData.createdBy = createdByEmployeeId;
 
         const newEmployee = new employeeSchema(employeeData);
         await newEmployee.save();
