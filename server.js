@@ -11,6 +11,7 @@ import logger, { securityLogger, apiLogger } from "./utils/logger.js";
 import { handleRateLimitError, globalErrorHandler } from "./middleware/errorHandler.js";
 import employeeRoute from "./routes/employeeRoute.js";
 import authRoute from "./routes/authRoute.js";
+import orderRoute from "./routes/orderRoute.js";
 import { STATUS_CODES, PATH_ROUTES } from "./utils/constants.js";
 import { NotFoundException } from "./middleware/CustomError.js";
 import { requestContextMiddleware } from './middleware/requestContextMiddleware.js';
@@ -165,6 +166,8 @@ app.get("/health", async(req, res) => {
 
 app.use(PATH_ROUTES.AUTH_ROUTE, authRoute);
 app.use(PATH_ROUTES.EMPLOYEE_ROUTE, employeeRoute);
+app.use(PATH_ROUTES.PRODUCT_ROUTE, employeeRoute);
+app.use(PATH_ROUTES.ORDER_ROUTE, orderRoute);
 
 app.use((req, res, next) => {
     next(new NotFoundException(`Endpoint '${req.method} ${req.originalUrl}' not found.`));

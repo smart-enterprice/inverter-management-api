@@ -3,9 +3,13 @@ import asyncHandler from "express-async-handler";
 import helmet from "helmet";
 import xss from "xss";
 
+import jwt from 'jsonwebtoken';
+
 import { employeeService } from "../service/employeeService.js";
 import { BadRequestException } from "../middleware/CustomError.js";
 import logger from "../utils/logger.js";
+import { tokenBlacklistService } from "../service/tokenBlacklistService.js";
+
 
 const sanitizeInput = (req, res, next) => {
     if (req.body) {
@@ -43,32 +47,11 @@ const authController = {
         employeeService.loginLimiter,
         sanitizeInput,
         asyncHandler(async(req, res) => {
-            logger.info("Signin attempt :", {
-                email: req.body.employee_email,
-                ip: req.ip,
-                userAgent: req.get("User-Agent")
-            });
-
             if (!req.body || !req.body.employee_email || !req.body.password) {
                 throw new BadRequestException("Email and password are required");
             }
 
             const loginResult = await employeeService.loginEmployee(req.body);
-
-            const cookieOptions = {
-                expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
-                sameSite: "strict"
-            };
-
-            res.cookie("jwt", loginResult.access_token, cookieOptions);
-
-            logger.info("Signin successful:", {
-                employeeId: loginResult.employee.employee_id,
-                email: loginResult.employee.employee_email,
-                ip: req.ip
-            });
 
             return res.status(200).json({
                 success: true,
@@ -84,26 +67,36 @@ const authController = {
         })
     ],
 
-    logout: asyncHandler(async(req, res) => {
-        res.cookie("jwt", "", {
-            expires: new Date(Date.now() + 10 * 1000),
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict"
-        });
+    logout: [
+        asyncHandler(async(req, res) => {
+            const authHeader = req.headers.authorization;
 
-        logger.info("User logged out:", {
-            ip: req.ip,
-            userAgent: req.get("User-Agent")
-        });
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                throw new UnauthorizedException('No token provided or format is invalid');
+            }
 
-        return res.status(200).json({
-            success: true,
-            status: 200,
-            message: "👋 Logged out successfully!",
-            timestamp: new Date().toISOString()
-        });
-    })
+            const token = authHeader.split(' ')[1];
+            const decoded = jwt.decode(token);
+
+            if (!decoded || !decoded.exp) {
+                throw new UnauthorizedException('Invalid token');
+            }
+
+            const currentTime = Math.floor(Date.now() / 1000);
+            const ttl = decoded.exp - currentTime;
+
+            if (ttl > 0) {
+                tokenBlacklistService.blacklistToken(token, ttl);
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: '✅ Successfully logged out',
+                timestamp: new Date().toISOString()
+            });
+        })
+    ]
+
 };
 
 export default authController;
