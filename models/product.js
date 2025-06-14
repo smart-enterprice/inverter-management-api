@@ -17,7 +17,8 @@ const productSchema = new mongoose.Schema({
         required: [true, "🚨 Brand is required!"]
     },
     product_name: {
-        type: String
+        type: String,
+        required: [true, "🚨 Product Name is required."]
     },
     model: {
         type: String,
@@ -30,6 +31,10 @@ const productSchema = new mongoose.Schema({
     status: {
         type: String,
         default: "active",
+    },
+    available_stock: {
+        type: Number,
+        default: 0
     },
     created_by: {
         type: String,
