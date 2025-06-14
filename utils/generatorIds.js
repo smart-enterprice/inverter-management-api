@@ -1,36 +1,54 @@
 // generatorIds.js
 import Employee from '../models/employees.js';
+import Order from '../models/order.js';
+import Product from '../models/product.js';
+
+const generateRandomString = (length) => {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+};
+
+const generateSegmentedOrderId = () => {
+    const segment = () => Math.floor(1000 + Math.random() * 9000).toString();
+    return `${segment()}-${segment()}-${segment()}`;
+};
 
 export const generateUniqueEmployeeId = async() => {
-    let employeeId;
+    let id;
     let exists;
 
     do {
-        employeeId = generateEmployeeId();
-        exists = await Employee.findOne({ employee_id: employeeId });
+        id = generateRandomString(10);
+        exists = await Employee.findOne({ employee_id: id });
     } while (exists);
 
-    return employeeId;
+    return id;
+};
+
+export const generateUniqueProductId = async() => {
+    let id;
+    let exists;
+
+    do {
+        id = generateRandomString(16);
+        exists = await Product.findOne({ product_id: id });
+    } while (exists);
+
+    return id;
 };
 
 export const generateUniqueOrderId = async() => {
-    let orderId;
+    let id;
     let exists;
 
     do {
-        orderId = generateOrderId();
-        // exists = await Employee.findOne({ employee_id: employeeId });
+        id = generateSegmentedOrderId();
+        exists = await Order.findOne({ order_id: id });
     } while (exists);
 
-    return orderId;
-};
-
-export const generateEmployeeId = () => {
-    const generateSegment = () => Math.floor(1000 + Math.random() * 9000).toString();
-    return `${generateSegment()}-${generateSegment()}-${generateSegment()}`;
-};
-
-export const generateOrderId = () => {
-    const generateSegment = () => Math.floor(1000 + Math.random() * 9000).toString();
-    return `${generateSegment()}-${generateSegment()}-${generateSegment()}`;
+    return id;
 };

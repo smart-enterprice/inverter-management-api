@@ -3,10 +3,7 @@ import asyncHandler from "express-async-handler";
 import helmet from "helmet";
 import xss from "xss";
 
-import {
-    employeeService,
-    mapEntityToResponse
-} from "../service/employeeService.js";
+import { employeeService, mapEntityToResponse } from "../service/employeeService.js";
 import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";
 import logger from "../utils/logger.js";
 import employeeSchema from "../models/employees.js";
