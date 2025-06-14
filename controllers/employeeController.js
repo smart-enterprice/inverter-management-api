@@ -10,6 +10,7 @@ import {
 import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";
 import logger from "../utils/logger.js";
 import employeeSchema from "../models/employees.js";
+import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 
 const sanitizeInput = (req, res, next) => {
     if (req.body) {
@@ -23,6 +24,7 @@ const sanitizeInput = (req, res, next) => {
 };
 
 // get employeeId token -> const loggedInEmployeeId = req.user.employee_id;
+const signUpRoles = ['ROLE_SUPER_ADMIN', 'ROLE_ADMIN'];
 
 const employeeController = {
     employeeSecurityMiddleware: [
@@ -49,23 +51,16 @@ const employeeController = {
         employeeService.createAccountLimiter,
         sanitizeInput,
         asyncHandler(async(req, res) => {
-            console.log(`token role : ${req.user.role}`);
-            if (!req.user || req.user.role !== 'ROLE_ADMIN') {
-                throw new UnauthorizedException("Access denied: Only administrators are authorized to perform this action.");
+            if (!req.user || !signUpRoles.includes(req.user.role)) {
+                throw new UnauthorizedException(`Access denied: This action requires one of the following roles: ${signUpRoles.join(', ')}.`);
             }
-
-            logger.info("Signup attempt:", {
-                email: req.body.employee_email,
-                role: req.body.role,
-                ip: req.ip,
-                userAgent: req.get("User-Agent")
-            });
 
             if (!req.body || Object.keys(req.body).length === 0) {
                 throw new BadRequestException("Request body is required");
             }
 
-            const newEmployee = await employeeService.createEmployee(req.body);
+            const createdByEmployeeId = CurrentRequestContext.getEmployeeId();
+            const newEmployee = await employeeService.createEmployee(req.body, createdByEmployeeId);
 
             return res.status(201).json({
                 success: true,
@@ -77,7 +72,7 @@ const employeeController = {
         })
     ],
 
-    getProfile: [
+    getProfileByEmployeeId: [
         sanitizeInput,
         asyncHandler(async(req, res) => {
             const { employeeId } = req.params;
@@ -129,6 +124,21 @@ const employeeController = {
                 status: 200,
                 message: "✅ Profile updated successfully!",
                 data: updatedEmployee,
+                timestamp: new Date().toISOString()
+            });
+        })
+    ],
+
+    getProfile: [
+        sanitizeInput,
+        asyncHandler(async(req, res) => {
+            const employee = await employeeService.getProfile();
+
+            return res.status(200).json({
+                success: true,
+                status: 200,
+                message: "Employee profile retrieved successfully",
+                data: employee,
                 timestamp: new Date().toISOString()
             });
         })

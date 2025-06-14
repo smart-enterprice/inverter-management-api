@@ -1,0 +1,17 @@
+# env's
+# Application Info
+PORT = 1280
+SERVICE_NAME=smart-enterprice-api
+ENVIRONMENT=development
+
+# MongoDB URL (replace with your actual connection string)
+MONGO_URL=mongodb://localhost:27017/smart-enterprice-api?directConnection=true
+
+# JWT Secret Key (use a long random string in production)
+JWT_SECRET=e382fucr89
+JWT_EXPIRES_IN = 30d
+
+SUPER_ADMIN=SHAHUL_AHAMMED
+SUPER_ADMIN_EMAIL = superadmin123@gmail.com
+SUPER_ADMIN_PHONE = 9995235115
+SUPER_ADMIN_PASSWORD = superadmin@123

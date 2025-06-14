@@ -13,10 +13,12 @@ router.use(verifyToken);
 router.post('/signup', employeeController.signup);
 
 // @route   GET /api/employees/:employeeId
-router.get('/:employeeId', employeeController.getProfile);
+router.get('/:employeeId', employeeController.getProfileByEmployeeId);
 
 // @route   PUT /api/employees/:employeeId
 router.put('/:employeeId', employeeController.updateProfile);
+
+router.get('/profile', employeeController.getProfile);
 
 // @route   GET /api/employees
 router.get('/', employeeController.getAllEmployees);

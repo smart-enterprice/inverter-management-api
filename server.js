@@ -13,8 +13,10 @@ import employeeRoute from "./routes/employeeRoute.js";
 import authRoute from "./routes/authRoute.js";
 import { STATUS_CODES, PATH_ROUTES } from "./utils/constants.js";
 import { NotFoundException } from "./middleware/CustomError.js";
+import { requestContextMiddleware } from './middleware/requestContextMiddleware.js';
 
 import { connectToDatabase, closeDatabaseConnection } from "./config/dbConfig.js";
+import { employeeService } from "./service/employeeService.js";
 
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err);
@@ -64,6 +66,7 @@ const corsOptions = {
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 };
 
+app.use(requestContextMiddleware);
 app.use(cors(corsOptions));
 app.use(helmet());
 app.use(express.json({ limit: "100mb" }));
@@ -92,6 +95,8 @@ const startServer = async() => {
         await connectToDatabase();
 
         const server = app.listen(PORT, () => {
+            employeeService.defaultSuperAdminSetup();
+
             logger.info(`Server started on port ${PORT}`, {
                 environment: process.env.NODE_ENV || "development",
             });
