@@ -6,7 +6,6 @@ const JWT_SECRET = process.env.JWT_SECRET;
 export const verifyToken = (req, res, next) => {
     const authHeader = req.headers.authorization;
 
-    console.log("weirjbgjdsjbfmnvedf");
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw new UnauthorizedException('Authorization token missing or malformed');
     }
