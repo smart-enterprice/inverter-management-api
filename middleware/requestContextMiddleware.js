@@ -2,10 +2,17 @@
 import jwt from 'jsonwebtoken';
 import { CurrentRequestContext, asyncLocalStorage } from '../utils/CurrentRequestContext.js';
 import { UnauthorizedException } from './CustomError.js';
+import { PATH_ROUTES } from '../utils/constants.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
+const PUBLIC_PATHS = [PATH_ROUTES.AUTH_ROUTE + '/signin'];
 
 export const requestContextMiddleware = (req, res, next) => {
+    console.log(`[Auth Middleware] Checking if ${req.path} is in public paths: ${JSON.stringify(PUBLIC_PATHS)}`);
+
+    if (PUBLIC_PATHS.includes(req.path)) {
+        return next();
+    }
     try {
         const authHeader = req.headers.authorization;
 

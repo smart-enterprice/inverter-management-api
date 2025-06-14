@@ -43,7 +43,7 @@ const authController = {
         employeeService.loginLimiter,
         sanitizeInput,
         asyncHandler(async(req, res) => {
-            logger.info("Signin attempt:", {
+            logger.info("Signin attempt :", {
                 email: req.body.employee_email,
                 ip: req.ip,
                 userAgent: req.get("User-Agent")
