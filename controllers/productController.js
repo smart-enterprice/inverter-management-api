@@ -17,7 +17,6 @@ function sanitizeInput(req, res, next) {
 
 const productController = {
     sanitizeInput,
-
     createProduct: asyncHandler(async(req, res) => {
         const product = await productService.createProduct(req.body);
         const productData = mapEntityToResponse(product);
@@ -31,7 +30,7 @@ const productController = {
     }),
 
     updateProduct: asyncHandler(async(req, res) => {
-        const productId = req.params.id;
+        const { productId } = req.params;
         const product = await productService.updateProduct(productId, req.body);
         const productData = mapEntityToResponse(product);
         res.status(200).json({
@@ -44,8 +43,8 @@ const productController = {
     }),
 
     getByProductId: asyncHandler(async(req, res) => {
-        const productId = req.params.id;
-        const product = await productService.getProductById(productId);
+        const { productId } = req.params;
+        const product = await productService.getByProductId(productId);
         const productData = mapEntityToResponse(product);
         res.status(200).json({
             success: true,
