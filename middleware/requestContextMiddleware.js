@@ -2,18 +2,19 @@
 import jwt from 'jsonwebtoken';
 import { CurrentRequestContext, asyncLocalStorage } from '../utils/CurrentRequestContext.js';
 import { UnauthorizedException } from './CustomError.js';
+import { tokenBlacklistService } from '../service/tokenBlacklistService.js';
 import { PATH_ROUTES } from '../utils/constants.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const PUBLIC_PATHS = [PATH_ROUTES.AUTH_ROUTE + '/signin'];
 
-export const requestContextMiddleware = (req, res, next) => {
-    console.log(`[Auth Middleware] Checking if ${req.path} is in public paths: ${JSON.stringify(PUBLIC_PATHS)}`);
-
-    if (PUBLIC_PATHS.includes(req.path)) {
-        return next();
-    }
+export const requestContextMiddleware = async(req, res, next) => {
     try {
+        // console.log(`[Auth Middleware] Checking if ${req.path} is in public paths: ${JSON.stringify(PUBLIC_PATHS)}`);
+        if (PUBLIC_PATHS.includes(req.path)) {
+            return next();
+        }
+
         const authHeader = req.headers.authorization;
 
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -23,10 +24,12 @@ export const requestContextMiddleware = (req, res, next) => {
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        const employeeId = decoded.employee_id;
-        const role = decoded.role;
-        const status = decoded.status;
+        const isBlacklisted = tokenBlacklistService.isBlacklisted(token);
+        if (isBlacklisted) {
+            throw new UnauthorizedException('Your session has expired or the token was invalidated. Please log in again.');
+        }
 
+        const { employee_id: employeeId, role, status } = decoded;
         req.user = { employeeId, role, status };
 
         const context = {

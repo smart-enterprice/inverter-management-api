@@ -19,6 +19,12 @@ const PATH_ROUTES = {
     },
     get AUTH_ROUTE() {
         return `${this.BASIC_ROUTE}/auth`;
+    },
+    get ORDER_ROUTE() {
+        return `${this.BASIC_ROUTE}/order-details`;
+    },
+    get PRODUCT_ROUTE() {
+        return `${this.BASIC_ROUTE}/product-details`;
     }
 };
 
