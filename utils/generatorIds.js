@@ -2,6 +2,7 @@
 import Employee from '../models/employees.js';
 import Order from '../models/order.js';
 import Product from '../models/product.js';
+import Stock from '../models/stock.js';
 
 const generateRandomString = (length) => {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -36,6 +37,18 @@ export const generateUniqueProductId = async() => {
     do {
         id = generateRandomString(16);
         exists = await Product.findOne({ product_id: id });
+    } while (exists);
+
+    return id;
+};
+
+export const generateUniqueStockId = async() => {
+    let id;
+    let exists;
+
+    do {
+        id = generateRandomString(20);
+        exists = await Stock.findOne({ stock_id: id });
     } while (exists);
 
     return id;

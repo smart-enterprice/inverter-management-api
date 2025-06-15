@@ -42,6 +42,18 @@ const productController = {
         });
     }),
 
+    updateProductStocks: asyncHandler(async(req, res) => {
+        const { stock_map } = req.body; //stockMap -> productId - Stock details
+        const productStockData = await productService.addProductStock(stock_map);
+        res.status(200).json({
+            success: true,
+            status: 200,
+            message: "✅ Product updated successfully!",
+            data: productStockData,
+            timestamp: new Date().toISOString()
+        });
+    }),
+
     getByProductId: asyncHandler(async(req, res) => {
         const { productId } = req.params;
         const product = await productService.getByProductId(productId);
