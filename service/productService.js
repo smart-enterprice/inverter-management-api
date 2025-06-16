@@ -1,8 +1,11 @@
 // service/productService.js
 import asyncHandler from "express-async-handler";
 import validator from "validator";
+
 import Product from "../models/product.js";
 import Stock from "../models/stock.js";
+import Order from "../models/order.js";
+
 import { generateUniqueProductId, generateUniqueStockId } from "../utils/generatorIds.js";
 import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";
 import logger from "../utils/logger.js";
@@ -96,7 +99,6 @@ async function updateProduct(productId, dto) {
         throw new BadRequestException("No valid fields provided for update.");
     }
 
-    // 💥 Check for uniqueness conflict if brand, model, and product_type are all being updated
     const needsCheck = ['brand', 'model', 'product_type'].every(key => dto[key] !== undefined);
 
     if (needsCheck) {
@@ -104,7 +106,7 @@ async function updateProduct(productId, dto) {
             brand: cleanData.brand,
             model: cleanData.model,
             product_type: cleanData.product_type,
-            product_id: { $ne: productId } // exclude current product
+            product_id: { $ne: productId } // ✅ Correct way to exclude current product
         });
 
         if (existingProduct) {
@@ -126,7 +128,7 @@ async function updateProduct(productId, dto) {
     return product;
 }
 
-async function addProductStock(stockMap) {
+async function createOrUpdateProductStock(stockMap) {
     const employee_id = CurrentRequestContext.getEmployeeId();
     const role = CurrentRequestContext.getRole();
 
@@ -134,8 +136,8 @@ async function addProductStock(stockMap) {
         throw new UnauthorizedException("Login required to add stock.");
     }
 
-    if (!stockMap || typeof stockMap !== "object") {
-        throw new BadRequestException("Invalid stock data provided.");
+    if (!stockMap || typeof stockMap !== "object" || Array.isArray(stockMap)) {
+        throw new BadRequestException("Invalid stock data format. Expected a product-wise stock object.");
     }
 
     const updatedStocks = [];
@@ -154,22 +156,37 @@ async function addProductStock(stockMap) {
                 stock,
                 stock_type,
                 type,
-                stock_notes = ""
+                stock_notes = "",
+                order_number = ""
             } = entry;
 
             const action = typeof type === "string" ? type.toUpperCase() : null;
 
             if (!action || !STOCK_ACTIONS.includes(action)) {
-                throw new BadRequestException(`Invalid stock action type: ${type}. Expected one of: ${STOCK_ACTIONS.join(", ")}`);
+                throw new BadRequestException(`Invalid stock action: ${type}. Allowed: ${STOCK_ACTIONS.join(", ")}`);
             }
 
             if (typeof stock !== "number" || stock <= 0) {
                 throw new BadRequestException("Stock must be a positive number.");
             }
 
-            const normalizedStockType = stock_type.trim().toUpperCase();
-            if (!STOCK_TYPES.includes(normalizedStockType)) {
-                throw new BadRequestException(`Invalid stock_type: ${stock_type}`);
+            const normalizedStockType = typeof stock_type === "string" ? stock_type.trim().toUpperCase() : null;
+            if (!normalizedStockType || !STOCK_TYPES.includes(normalizedStockType)) {
+                throw new BadRequestException(`Invalid stock_type: ${stock_type}. Allowed: ${STOCK_TYPES.join(", ")}`);
+            }
+
+            let orderNote = "";
+            if (action === "RETURN") {
+                if (!order_number || typeof order_number !== "string") {
+                    throw new BadRequestException("Order number is required for RETURN stock.");
+                }
+
+                const order = await Order.findOne({ order_number });
+                if (!order) {
+                    throw new BadRequestException(`No order found with order number : ${order_number}`);
+                }
+
+                orderNote = `RETURN Reason: Order #${order_number}`;
             }
 
             const stockData = {
@@ -179,8 +196,7 @@ async function addProductStock(stockMap) {
                 add_stock: action === "ADD" ? stock : 0,
                 return_stock: action === "RETURN" ? stock : 0,
                 stock_type: normalizedStockType,
-                stock_notes: stock_notes ||
-                    `Employee: ${employee_id}; Role: ${role}; Stock: ${stock}; Stock Type: ${normalizedStockType}; Action: ${action}; Date: ${new Date().toISOString()}`,
+                stock_notes: `${stock_notes} -- Employee: ${employee_id}; Role: ${role}; Stock: ${stock}; Stock Type: ${normalizedStockType}; Action: ${action}; Return Reason: ${orderNote}; Date: ${new Date().toISOString()}`,
                 created_by: employee_id,
             };
 
@@ -190,12 +206,12 @@ async function addProductStock(stockMap) {
             });
 
             if (existingStock) {
-                const updatedStock = await updateExistStock(productId, stockData);
+                const updatedStock = await updateExistStock(productId, stockData, action);
                 productStocks.push(mapStockEntityToResponse(updatedStock));
             } else {
                 const stockDoc = new Stock(stockData);
                 await stockDoc.save();
-                logger.info(`📦 Stock added: ${stockDoc.stock_id} for product: ${productId}`);
+                logger.info(`📦 New stock added: ${stockDoc.stock_id} for product: ${productId}`);
                 productStocks.push(mapStockEntityToResponse(stockDoc));
             }
         }
@@ -214,29 +230,30 @@ async function addProductStock(stockMap) {
     return updatedStocks;
 }
 
-async function updateExistStock(productId, stockData) {
-    const existingStock = await Stock.findOne({ product_id: productId, stock_type: stockData.stock_type });
+async function updateExistStock(productId, stockData, action) {
+    const existingStock = await Stock.findOne({
+        product_id: productId,
+        stock_type: stockData.stock_type
+    });
 
     if (!existingStock) {
-        throw new BadRequestException(`No existing stock found for product ID ${productId} with type ${stockData.stock_type}`);
+        throw new BadRequestException(`No existing stock found for product ID ${productId} and type ${stockData.stock_type}`);
     }
 
     existingStock.stock += stockData.stock;
 
-    if (stockData.add_stock > 0) {
+    if (action === "ADD") {
         existingStock.add_stock += stockData.add_stock;
-    }
-
-    if (stockData.return_stock > 0) {
+    } else if (action === "RETURN") {
         existingStock.return_stock += stockData.return_stock;
     }
 
-    existingStock.stock_notes += `\n${stockData.stock_notes}`;
-
+    existingStock.stock_notes += ` || ${stockData.stock_notes}`;
     await existingStock.save();
-    logger.info(`🔁 Existing stock updated: ${existingStock.stock_id}`, {
-        product_id: productId,
-        stock_type: stockData.stock_type,
+
+    logger.info(`🔁 Stock updated`, {
+        product_id: existingStock.product_id,
+        stock_id: existingStock.stock_id
     });
 
     return existingStock;
@@ -289,7 +306,7 @@ export const productService = {
     updateProduct: asyncHandler(updateProduct),
     getByProductId: asyncHandler(getByProductId),
     getAllProducts: asyncHandler(getAllProducts),
-    addProductStock: asyncHandler(addProductStock)
+    createOrUpdateProductStock: asyncHandler(createOrUpdateProductStock)
 };
 
 export { mapEntityToResponse, mapStockEntityToResponse };

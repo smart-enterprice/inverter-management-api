@@ -7,9 +7,9 @@ function getISTDate() {
 }
 
 const orderSchema = new mongoose.Schema({
-    order_id: {
+    order_number: {
         type: String,
-        required: [true, "🚨 Order ID is required!"],
+        required: [true, "🚨 Order Number is required!"],
         unique: true,
     },
     dealer_id: {
@@ -22,8 +22,7 @@ const orderSchema = new mongoose.Schema({
     },
     priority: {
         type: String,
-        // LOW, MEDIUM, HIGH
-        default: "LOW",
+        default: "LOW", // LOW, MEDIUM, HIGH
     },
     order_note: {
         type: String,
@@ -31,8 +30,7 @@ const orderSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        // enum: ["pending", "approved", "cancelled", "in_progress", "delivered"],
-        default: "PENDING",
+        default: "PENDING", // enum: ["pending", "approved", "cancelled", "in_progress", "delivered"],
     },
     delivery_date: {
         type: Date,

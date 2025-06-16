@@ -42,9 +42,9 @@ const productController = {
         });
     }),
 
-    updateProductStocks: asyncHandler(async(req, res) => {
-        const { stock_map } = req.body; //stockMap -> productId - Stock details
-        const productStockData = await productService.addProductStock(stock_map);
+    createOrUpdateProductStocks: asyncHandler(async(req, res) => {
+        const { stock_map } = req.body;
+        const productStockData = await productService.createOrUpdateProductStock(stock_map);
         res.status(200).json({
             success: true,
             status: 200,
