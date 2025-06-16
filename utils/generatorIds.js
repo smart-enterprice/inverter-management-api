@@ -55,13 +55,13 @@ export const generateUniqueStockId = async() => {
 };
 
 export const generateUniqueOrderId = async() => {
-    let id;
+    let order_number;
     let exists;
 
     do {
-        id = generateSegmentedOrderId();
-        exists = await Order.findOne({ order_id: id });
+        order_number = generateSegmentedOrderId();
+        exists = await Order.findOne({ order_number: order_number });
     } while (exists);
 
-    return id;
+    return order_number;
 };

@@ -13,4 +13,6 @@ router.get('/', productController.getAll);
 router.get('/:productId', productController.getByProductId);
 router.put('/:productId', productController.updateProduct);
 
+router.put('/createOrUpdate/product-stocks', productController.createOrUpdateProductStocks);
+
 export default router;

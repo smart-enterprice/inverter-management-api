@@ -20,7 +20,7 @@ import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 
 dotenv.config();
 
-const ALLOWED_ROLES = ['ROLE_ADMIN', 'ROLE_SUPERVISOR', 'ROLE_MANAGER'];
+const ALLOWED_ROLES = ['ROLE_ADMIN', 'ROLE_SUPERVISOR', 'ROLE_MANAGER', 'ROLE_SALESMAN', 'ROLE_PRODUCTION', 'ROLE_PACKING', 'ROLE_ACCOUNTS', 'ROLE_DELIVERY', 'ROLE_DEALER'];
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN;
 const BCRYPT_SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 10;
@@ -166,7 +166,7 @@ const mapEntityToResponse = (employeeEntity) => {
 };
 
 const employeeService = {
-    defaultSuperAdminSetup: asyncHandler(async () => {
+    defaultSuperAdminSetup: asyncHandler(async() => {
         const {
             SUPER_ADMIN,
             SUPER_ADMIN_PHONE,
@@ -204,7 +204,7 @@ const employeeService = {
         console.log("✅ Default Super Admin created successfully.");
     }),
 
-    createEmployee: asyncHandler(async (employeeRequest, createdByEmployeeId) => {
+    createEmployee: asyncHandler(async(employeeRequest, createdByEmployeeId) => {
         if (!createdByEmployeeId) {
             throw new UnauthorizedException('You are not authorized to create an employee.');
         }
