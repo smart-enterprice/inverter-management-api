@@ -5,11 +5,11 @@ SERVICE_NAME=smart-enterprice-api
 ENVIRONMENT=development
 
 # MongoDB URL (replace with your actual connection string)
-MONGO_URL=mongodb://localhost:27017/smart-enterprice-api?directConnection=true
+MONGO_URL=mongodb+srv://smartenterprice01:6DRTi3hyKvLYpmAy@smartenterprises.mytikd3.mongodb.net/?retryWrites=true&w=majority&appName=SmartEnterprises
 
 # JWT Secret Key (use a long random string in production)
 JWT_SECRET=e382fucr89
-JWT_EXPIRES_IN = 30d
+JWT_EXPIRES_IN=30d
 
 SUPER_ADMIN=SHAHUL_AHAMMED
 SUPER_ADMIN_EMAIL = superadmin123@gmail.com

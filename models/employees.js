@@ -34,7 +34,7 @@ const employeeSchema = new mongoose.Schema({
         minlength: [8, "🔑 Password must be at least 8 characters long."],
     },
     employee_phone: {
-        type: String,
+        type: Number,
         required: [true, "📱 Phone number is required."],
         unique: true,
         minlength: [10, "📞 Phone number must be at least 10 digits."],

@@ -1,6 +1,7 @@
 // generatorIds.js
 import Employee from '../models/employees.js';
 import Order from '../models/order.js';
+import OrderDetails from '../models/orderDetails.js';
 import Product from '../models/product.js';
 import Stock from '../models/stock.js';
 
@@ -64,4 +65,16 @@ export const generateUniqueOrderId = async() => {
     } while (exists);
 
     return order_number;
+};
+
+export const generateUniqueOrderDetailsId = async() => {
+    let order__details_number;
+    let exists;
+
+    do {
+        order__details_number = generateSegmentedOrderId();
+        exists = await OrderDetails.findOne({ order_details_number: order__details_number });
+    } while (exists);
+
+    return order__details_number;
 };
