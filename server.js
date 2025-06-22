@@ -53,7 +53,7 @@ const globalLimiter = rateLimit({
 const corsOptions = {
     origin: function(origin, callback) {
         const allowedOrigins = process.env.ALLOWED_ORIGINS ?
-            process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()) : ["http://localhost:3000"];
+            process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()) : ["http://localhost:5173"];
 
         if (!origin) return callback(null, true);
 
@@ -106,7 +106,6 @@ const startServer = async() => {
             });
         });
 
-        // Graceful shutdown
         const gracefulShutdown = (signal) => {
             logger.info(`Received ${signal}. Shutting down gracefully...`);
             server.close(async() => {
