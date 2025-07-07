@@ -47,6 +47,9 @@ const employeeSchema = new mongoose.Schema({
         type: String,
         default: "active",
     },
+    log_note: {
+        type: String,
+    },
     created_by: {
         type: String,
         required: [true, "📝 Creator ID is required."],
