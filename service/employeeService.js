@@ -24,6 +24,7 @@ const ALLOWED_ROLES = ['ROLE_ADMIN', 'ROLE_SUPERVISOR', 'ROLE_MANAGER', 'ROLE_SA
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN;
 const BCRYPT_SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 10;
+const APPROVAL_ROLES = ['ROLE_SUPER_ADMIN', 'ROLE_ADMIN'];
 
 const sanitizeInput = (input) => {
     if (typeof input === 'string') {
@@ -92,6 +93,21 @@ const validateEmployeeData = (employeeRequest, isUpdate = false) => {
     }
 };
 
+const validatePassword = (password) => {
+    if (password === undefined || password === null || password === '') {
+        throw new BadRequestException('Password is required');
+    }
+
+    if (password.length < 8) {
+        throw new BadRequestException('Password must be at least 8 characters long');
+    }
+
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/;
+    if (!passwordRegex.test(password)) {
+        throw new BadRequestException('Password must contain at least one lowercase letter, one uppercase letter, one number, and one special character');
+    }
+};
+
 const checkExistingEmployee = async(email, phone, excludeId = null) => {
     const query = excludeId ? { _id: { $ne: excludeId } } : {};
 
@@ -153,7 +169,7 @@ const mapEntityToResponse = (employeeEntity) => {
     const fieldsToMap = [
         'employee_id', 'employee_name', 'employee_email', 'employee_phone',
         'role', 'status', 'created_by', 'shop_name', 'photo',
-        'district', 'town', 'brand', 'address', 'created_at', 'updated_at'
+        'district', 'town', 'brand', 'address', 'created_at', 'updated_at', 'log_note'
     ];
 
     fieldsToMap.forEach(field => {
@@ -284,7 +300,7 @@ const employeeService = {
         return mapEntityToResponse(employee);
     }),
 
-    getEmployeeById: asyncHandler(async() => {
+    getProfile: asyncHandler(async() => {
         const employeeId = CurrentRequestContext.getEmployeeId();
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
@@ -327,11 +343,7 @@ const employeeService = {
             );
         }
 
-        if (updateData.password) {
-            updateData.password = await hashPassword(updateData.password);
-        }
-
-        const mappedData = mapRequestToEntity(updateData, null, true);
+        const mappedData = mapRequestToEntity(updateData, employeeId, true);
         mappedData.updated_at = new Date();
 
         const updatedEmployee = await employeeSchema.findOneAndUpdate({ employee_id: employeeId },
@@ -350,6 +362,86 @@ const employeeService = {
             throw new BadRequestException(`Role must be one of: ${ALLOWED_ROLES.join(', ')}`);
         }
     },
+
+    resetPassword: asyncHandler(async(updateData) => {
+        const employeeId = CurrentRequestContext.getEmployeeId();
+
+        if (!employeeId) {
+            throw new BadRequestException('Employee ID is required');
+        }
+
+        logger.info(`Reset password request initiated by Employee ID: ${employeeId}`);
+
+        const employee = await employeeSchema.findOne({
+            employee_id: employeeId,
+            status: 'active'
+        });
+
+        if (!employee) {
+            throw new NotFoundException('Active employee not found');
+        }
+
+        const isPasswordValid = await bcrypt.compare(updateData.current_password, employee.password);
+        if (!isPasswordValid) {
+            logger.warn(`Incorrect current password for Employee ID: ${employee.employee_id}`);
+            throw new BadRequestException('Current password is incorrect');
+        }
+
+        validatePassword(updateData.password);
+
+        const hashedPassword = await hashPassword(updateData.password);
+        employee.password = hashedPassword;
+
+        await employee.save();
+
+        logger.info(`Password reset successful for Employee ID: ${employee.employee_id}`);
+
+        return mapEntityToResponse(employee);
+    }),
+
+    deleteEmployee: asyncHandler(async(updateData) => {
+        const { employeeId, reason } = updateData;
+
+        if (!employeeId) {
+            throw new BadRequestException('Employee ID is required for deletion');
+        }
+
+        const requestedById = CurrentRequestContext.getEmployeeId();
+
+        logger.info(`Delete request initiated by Employee ID: ${requestedById} for target ID: ${employeeId}`);
+
+        const requestingEmployee = await employeeSchema.findOne({
+            employee_id: requestedById,
+            status: 'active'
+        });
+
+        if (!requestingEmployee) {
+            throw new NotFoundException('Requesting employee not found or inactive');
+        }
+
+        if (!APPROVAL_ROLES.includes(requestingEmployee.role)) {
+            throw new BadRequestException('Unauthorized: You do not have permission to delete employees');
+        }
+
+        const employeeToDelete = await employeeSchema.findOne({
+            employee_id: employeeId,
+            status: 'active'
+        });
+
+        if (!employeeToDelete) {
+            throw new NotFoundException('Target employee not found or already deleted');
+        }
+
+        const deletionLog = `Deletion by: ${requestingEmployee.employee_name}, Role: ${requestingEmployee.role}, Reason: ${reason}`;
+        employeeToDelete.status = 'deleted';
+        employeeToDelete.log_note = deletionLog;
+
+        await employeeToDelete.save();
+
+        logger.info(`Employee ID ${employeeToDelete.employee_id} marked as deleted by ${requestingEmployee.employee_id}`);
+
+        return mapEntityToResponse(employeeToDelete);
+    }),
 
     createAccountLimiter: rateLimit({
         windowMs: 60 * 60 * 1000,

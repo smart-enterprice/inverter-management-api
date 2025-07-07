@@ -173,7 +173,84 @@ const employeeController = {
                 timestamp: new Date().toISOString()
             });
         })
-    ]
+    ],
+
+    resetPassword: [
+        sanitizeInput,
+        asyncHandler(async(req, res) => {
+
+            const employee = await employeeService.resetPassword(req.body);
+
+            return res.status(200).json({
+                success: true,
+                status: 200,
+                message: "Employee profile retrieved successfully",
+                data: employee,
+                timestamp: new Date().toISOString()
+            });
+        })
+    ],
+
+    deleteEmployee: [
+        sanitizeInput,
+        asyncHandler(async(req, res) => {
+            const { employeeId } = req.params;
+
+            if (!employeeId) {
+                throw new BadRequestException('Employee ID is required');
+            }
+
+            const deletedEmployee = await employeeService.deleteEmployee(employeeId);
+
+            return res.status(200).json({
+                success: true,
+                status: 200,
+                message: 'Employee deleted successfully',
+                data: deletedEmployee,
+                timestamp: new Date().toISOString()
+            });
+        })
+    ],
+
+    getAllDeletedEmployees: [
+        sanitizeInput,
+        asyncHandler(async(req, res) => {
+            if (!req.user || !signUpRoles.includes(req.user.role)) {
+                throw new UnauthorizedException(`Access denied: This action requires one of the following roles: ${signUpRoles.join(', ')}.`);
+            }
+
+            const page = parseInt(req.query.page || "1", 10);
+            const limit = parseInt(req.query.limit || "10", 10);
+            const skip = (page - 1) * limit;
+
+            const [deletedEmployees, totalDeleted] = await Promise.all([
+                employeeSchema
+                .find({ status: "deleted" })
+                .select("-password")
+                .skip(skip)
+                .limit(limit)
+                .sort({ created_at: -1 }),
+                employeeSchema.countDocuments({ status: "deleted" })
+            ]);
+
+            return res.status(200).json({
+                success: true,
+                status: 200,
+                message: "Deleted employees retrieved successfully",
+                data: {
+                    employees: deletedEmployees.map(emp => mapEntityToResponse(emp)),
+                    pagination: {
+                        page,
+                        limit,
+                        total: totalDeleted,
+                        pages: Math.ceil(totalDeleted / limit)
+                    }
+                },
+                timestamp: new Date().toISOString()
+            });
+        })
+    ],
+
 };
 
 export default employeeController;

@@ -20,7 +20,13 @@ router.put('/:employeeId', employeeController.updateProfile);
 
 router.get('/profile', employeeController.getProfile);
 
+router.put('/reset-password', employeeController.resetPassword);
+
+router.put('/delete-employee/:employeeId', employeeController.deleteEmployee);
+
 // @route   GET /api/employees
 router.get('/', employeeController.getAllEmployees);
+
+router.get('/deleted-employees', employeeController.getAllDeletedEmployees);
 
 export default router;
