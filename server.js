@@ -21,6 +21,7 @@ import { requestContextMiddleware } from './middleware/requestContextMiddleware.
 
 import { connectToDatabase, closeDatabaseConnection } from "./config/dbConfig.js";
 import { employeeService } from "./service/employeeService.js";
+import { CurrentRequestContext } from "./utils/CurrentRequestContext.js";
 
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err);
@@ -69,9 +70,20 @@ const corsOptions = {
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 };
+app.use(cors(corsOptions));
 
 app.use(requestContextMiddleware);
-app.use(cors(corsOptions));
+app.use((req, res, next) => {
+    CurrentRequestContext.run({}, () => {
+        if (req.user) {
+            logger.info('user app exist');
+            CurrentRequestContext.setEmployeeId(req.user.employeeId);
+            CurrentRequestContext.setRole(req.user.role);
+        }
+        next();
+    });
+});
+
 app.use(helmet());
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
