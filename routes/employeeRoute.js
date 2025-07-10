@@ -22,7 +22,7 @@ router.get('/get/profile', employeeController.getProfile);
 
 router.put('/update/reset-password', employeeController.resetPassword);
 
-router.put('/delete-employee/:employeeId', employeeController.deleteEmployee);
+router.put('/update/delete-employee', employeeController.deleteEmployee);
 
 // @route   GET /api/employees
 router.get('/', employeeController.getAllEmployees);

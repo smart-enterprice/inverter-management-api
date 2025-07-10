@@ -385,7 +385,8 @@ const employeeService = {
         logger.info(`Reset password request initiated by Employee ID: ${employeeId}`);
 
         const employee = await employeeSchema.findOne({
-            employee_id: employeeId
+            employee_id: employeeId,
+            status: 'active'
         });
 
         if (!employee) {
