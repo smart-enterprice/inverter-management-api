@@ -3,52 +3,37 @@ import { AsyncLocalStorage } from 'async_hooks';
 const asyncLocalStorage = new AsyncLocalStorage();
 
 const CurrentRequestContext = {
-    setContext(context) {
-        asyncLocalStorage.enterWith(context);
+
+    run(context, callback) {
+        return asyncLocalStorage.run(context, callback);
     },
 
     getContext() {
         return asyncLocalStorage.getStore() || {};
     },
 
-    getCurrentTenant() {
-        return this.getContext().tenant;
+    clearContext() {
+        asyncLocalStorage.enterWith({});
     },
 
-    setCurrentTenant(tenant) {
-        const context = this.getContext();
-        context.tenant = tenant;
+    getEmployeeId() {
+        return this.getContext().employeeId;
     },
 
     getRole() {
         return this.getContext().role;
     },
 
-    setRole(role) {
-        const context = this.getContext();
-        context.role = role;
+    getCurrentTenant() {
+        return this.getContext().tenant;
     },
 
     getCurrentIdentifier() {
         return this.getContext().identifier;
     },
 
-    setCurrentIdentifier(identifier) {
-        const context = this.getContext();
-        context.identifier = identifier;
-    },
-
     getCurrentToken() {
         return this.getContext().token;
-    },
-
-    setCurrentToken(token) {
-        const context = this.getContext();
-        context.token = token;
-    },
-
-    getEmployeeId() {
-        return this.getContext().employeeId;
     },
 
     setEmployeeId(id) {
@@ -56,13 +41,25 @@ const CurrentRequestContext = {
         context.employeeId = id;
     },
 
-    clearContext() {
-        asyncLocalStorage.enterWith({});
+    setRole(role) {
+        const context = this.getContext();
+        context.role = role;
     },
 
-    run(context, callback) {
-        return asyncLocalStorage.run(context, callback);
+    setCurrentTenant(tenant) {
+        const context = this.getContext();
+        context.tenant = tenant;
     },
+
+    setCurrentIdentifier(identifier) {
+        const context = this.getContext();
+        context.identifier = identifier;
+    },
+
+    setCurrentToken(token) {
+        const context = this.getContext();
+        context.token = token;
+    }
 };
 
-export { CurrentRequestContext, asyncLocalStorage };
+export { CurrentRequestContext };
