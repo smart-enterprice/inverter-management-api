@@ -203,7 +203,7 @@ const employeeService = {
                 await existingAdmin.save();
                 console.log("✅ Super Admin ID was missing and has been updated.");
             } else {
-                console.log("⚠️ Super Admin already exists with ID:", existingAdmin.employee_id);
+                console.log("⚠️ Super Admin already exists");
             }
             return;
         }
@@ -243,6 +243,7 @@ const employeeService = {
 
         const employeeData = mapRequestToEntity(employeeRequest, employeeId);
         employeeData.password = hashedPassword;
+
         logger.info(`Created Employee ID: ${createdByEmployeeId}`);
         employeeData.created_by = createdByEmployeeId;
 
@@ -311,8 +312,8 @@ const employeeService = {
     getProfile: asyncHandler(async() => {
         const employeeId = CurrentRequestContext.getEmployeeId();
         const role = CurrentRequestContext.getRole();
-        logger.info(`Employee Role ${role}`);
-        logger.info(`Employee ${employeeId}`);
+        logger.info(`Service Employee Role ${role}`);
+        logger.info(`Service Employee ${employeeId}`);
 
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
