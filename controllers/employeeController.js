@@ -178,11 +178,6 @@ const employeeController = {
     resetPassword: [
         sanitizeInput,
         asyncHandler(async(req, res) => {
-            const employeeId = CurrentRequestContext.getEmployeeId();
-            const role = CurrentRequestContext.getRole();
-            console.log(`Employee ${employeeId}`);
-            console.log('ROLE:', role);
-
             const employee = await employeeService.resetPassword(req.body);
 
             return res.status(200).json({
