@@ -178,11 +178,6 @@ const employeeController = {
     resetPassword: [
         sanitizeInput,
         asyncHandler(async(req, res) => {
-            const employeeId = CurrentRequestContext.getEmployeeId();
-            const role = CurrentRequestContext.getRole();
-            console.log(`Employee ${employeeId}`);
-            console.log('ROLE:', role);
-
             const employee = await employeeService.resetPassword(req.body);
 
             return res.status(200).json({
@@ -198,13 +193,13 @@ const employeeController = {
     deleteEmployee: [
         sanitizeInput,
         asyncHandler(async(req, res) => {
-            const { employeeId } = req.params;
+            const { employeeId } = req.body;
 
             if (!employeeId) {
                 throw new BadRequestException('Employee ID is required');
             }
 
-            const deletedEmployee = await employeeService.deleteEmployee(employeeId);
+            const deletedEmployee = await employeeService.deleteEmployee(req.body);
 
             return res.status(200).json({
                 success: true,

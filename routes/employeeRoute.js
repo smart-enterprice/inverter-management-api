@@ -18,15 +18,15 @@ router.get('/:employeeId', employeeController.getProfileByEmployeeId);
 // @route   PUT /api/employees/:employeeId
 router.put('/:employeeId', employeeController.updateProfile);
 
-router.get('/profile', employeeController.getProfile);
+router.get('/get/profile', employeeController.getProfile);
 
-router.put('/reset-password', employeeController.resetPassword);
+router.put('/update/reset-password', employeeController.resetPassword);
 
-router.put('/delete-employee/:employeeId', employeeController.deleteEmployee);
+router.put('/update/delete-employee', employeeController.deleteEmployee);
 
 // @route   GET /api/employees
 router.get('/', employeeController.getAllEmployees);
 
-router.get('/deleted-employees', employeeController.getAllDeletedEmployees);
+router.get('/get/deleted-employees', employeeController.getAllDeletedEmployees);
 
 export default router;

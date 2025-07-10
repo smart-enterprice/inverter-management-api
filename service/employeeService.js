@@ -295,7 +295,7 @@ const employeeService = {
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
         }
-        logger.info(`Employee ;l;l ${employeeId}`);
+        logger.info(`Employee ${employeeId}`);
 
         const employee = await employeeSchema.findOne({
             employee_id: employeeId,
