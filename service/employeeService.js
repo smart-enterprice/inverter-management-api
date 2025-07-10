@@ -16,7 +16,7 @@ import {
 } from '../middleware/CustomError.js';
 import logger from '../utils/logger.js';
 import dotenv from "dotenv";
-import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
+import { CurrentRequestContext } from "../utils/CurrentRequestContext.js";
 
 dotenv.config();
 
@@ -40,8 +40,8 @@ const validateEmployeeData = (employeeRequest, isUpdate = false) => {
         if (!employeeRequest.employee_name || employeeRequest.employee_name.trim().length < 2) {
             errors.push({ field: 'employee_name', message: 'Name must be at least 2 characters long' });
         }
-        if (employeeRequest.employee_name && employeeRequest.employee_name.length > 150) {
-            errors.push({ field: 'employee_name', message: 'Name cannot exceed 150 characters' });
+        if (employeeRequest.employee_name && employeeRequest.employee_name.length > 500) {
+            errors.push({ field: 'employee_name', message: 'Name cannot exceed 500 characters' });
         }
     }
 
@@ -196,7 +196,15 @@ const employeeService = {
 
         const existingAdmin = await employeeSchema.findOne({ employee_email: SUPER_ADMIN_EMAIL });
         if (existingAdmin) {
-            console.log("⚠️ Super Admin already exists. Skipping creation.");
+            if (!existingAdmin.employee_id || existingAdmin.employee_id.trim() === '') {
+                const employeeId = await generateUniqueEmployeeId();
+                existingAdmin.employee_id = employeeId;
+
+                await existingAdmin.save();
+                console.log("✅ Super Admin ID was missing and has been updated.");
+            } else {
+                console.log("⚠️ Super Admin already exists with ID:", existingAdmin.employee_id);
+            }
             return;
         }
 
@@ -302,10 +310,13 @@ const employeeService = {
 
     getProfile: asyncHandler(async() => {
         const employeeId = CurrentRequestContext.getEmployeeId();
+        const role = CurrentRequestContext.getRole();
+        logger.info(`Employee Role ${role}`);
+        logger.info(`Employee ${employeeId}`);
+
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
         }
-        logger.info(`Employee ${employeeId}`);
 
         const employee = await employeeSchema.findOne({
             employee_id: employeeId,
@@ -407,6 +418,7 @@ const employeeService = {
         }
 
         const requestedById = CurrentRequestContext.getEmployeeId();
+        logger.info(`Employee ${employeeId}`);
 
         logger.info(`Delete request initiated by Employee ID: ${requestedById} for target ID: ${employeeId}`);
 
