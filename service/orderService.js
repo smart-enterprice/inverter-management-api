@@ -14,7 +14,13 @@ import {
 import {
     BadRequestException,
     UnauthorizedException
-} from "../exceptions/customExceptions.js";
+} from '../middleware/CustomError.js';
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc.js";
+import timezone from "dayjs/plugin/timezone.js";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 const ALLOWED_ROLES = ["ROLE_ADMIN", "ROLE_SUPER_ADMIN", "ROLE_SALESMAN"];
 
@@ -25,7 +31,7 @@ const validateOrderDTO = async(dto) => {
     const requiredFields = ["dealer_id", "priority", "order_details"];
     for (const field of requiredFields) {
         if (!dto[field]) {
-            throw new BadRequestException(`❌ '${field}' is required.`);
+            throw new BadRequestException(`'${field}' is required.`);
         }
     }
 
@@ -35,12 +41,12 @@ const validateOrderDTO = async(dto) => {
     });
     if (!dealer) {
         throw new BadRequestException(
-            `❌ Invalid dealer ID: ${dto.dealer_id}. Dealer not found or not a dealer role.`
+            `Invalid dealer ID: ${dto.dealer_id}. Dealer not found or not a dealer role.`
         );
     }
 
     if (!Array.isArray(dto.order_details) || dto.order_details.length === 0) {
-        throw new BadRequestException("❌ 'order_details' must be a non-empty array.");
+        throw new BadRequestException("'order_details' must be a non-empty array.");
     }
 
     dto.order_details.forEach((detail, index) => {
@@ -56,19 +62,19 @@ const validateOrderDTO = async(dto) => {
 
         for (const field of requiredDetailFields) {
             if (!detail[field]) {
-                throw new BadRequestException(`❌ order_details[${index}]: '${field}' is required.`);
+                throw new BadRequestException(`order_details[${index}]: '${field}' is required.`);
             }
         }
 
         if (typeof detail.qty_ordered !== "number" || detail.qty_ordered <= 0) {
             throw new BadRequestException(
-                `❌ order_details[${index}]: 'qty_ordered' must be a number greater than 0.`
+                `order_details[${index}]: 'qty_ordered' must be a number greater than 0.`
             );
         }
 
         if (isNaN(Date.parse(detail.delivery_date))) {
             throw new BadRequestException(
-                `❌ order_details[${index}]: 'delivery_date' must be a valid date.`
+                `order_details[${index}]: 'delivery_date' must be a valid date.`
             );
         }
     });
@@ -165,7 +171,7 @@ const createOrder = async(dto) => {
 const getByOrderId = async(orderNumber) => {
     const order = await Order.findOne({ order_number: orderNumber });
     if (!order) {
-        throw new BadRequestException(`❌ No order found for: ${orderNumber}`);
+        throw new BadRequestException(`No order found for: ${orderNumber}`);
     }
 
     const dealer = await Employee.findOne({ employee_id: order.dealer_id });
@@ -197,8 +203,55 @@ const getAllOrders = async() => {
     );
 };
 
+const getOrdersByDateFilter = async({ year, month, start_date, end_date }) => {
+    let startDate, endDate;
+
+    if (year && month) {
+        startDate = dayjs(`${year}-${month}-01`).startOf("month").toDate();
+        endDate = dayjs(startDate).endOf("month").toDate();
+    } else if (start_date && end_date) {
+        startDate = new Date(start_date);
+        endDate = new Date(end_date);
+        if (isNaN(startDate) || isNaN(endDate)) {
+            throw new BadRequestException("Invalid 'start_date' or 'end_date'. Use 'YYYY-MM-DD' format.");
+        }
+    } else {
+        const now = dayjs().tz("Asia/Kolkata");
+        startDate = now.startOf("month").toDate();
+        endDate = now.endOf("month").toDate();
+    }
+
+    console.log("🕒 Filtered Date Range (Asia/Kolkata):");
+    console.log("Start Date:", dayjs(startDate).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss"));
+    console.log("End Date  :", dayjs(endDate).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss"));
+
+    const orders = await Order.find({
+        created_at: { $gte: startDate, $lte: endDate }
+    }).sort({ created_at: -1 });
+
+    const dealerIds = [...new Set(orders.map((o) => o.dealer_id))];
+    const orderNumbers = orders.map((o) => o.order_number);
+
+    const [dealers, orderDetails] = await Promise.all([
+        Employee.find({ employee_id: { $in: dealerIds }, role: "ROLE_DEALER" }),
+        OrderDetails.find({ order_number: { $in: orderNumbers } })
+    ]);
+
+    const dealerMap = Object.fromEntries(dealers.map((d) => [d.employee_id, d]));
+    const detailsMap = orderDetails.reduce((acc, d) => {
+        acc[d.order_number] = acc[d.order_number] || [];
+        acc[d.order_number].push(d);
+        return acc;
+    }, {});
+
+    return orders.map((order) =>
+        mapOrderResponse(order, dealerMap[order.dealer_id], detailsMap[order.order_number])
+    );
+};
+
 export const orderService = {
     createOrder: asyncHandler(createOrder),
     getByOrderId: asyncHandler(getByOrderId),
-    getAllOrders: asyncHandler(getAllOrders)
+    getAllOrders: asyncHandler(getAllOrders),
+    getOrdersByDateFilter: asyncHandler(getOrdersByDateFilter)
 };

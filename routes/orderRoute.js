@@ -11,6 +11,7 @@ router.use(orderController.sanitizeInput);
 router.post('/create', orderController.createOrder);
 router.get('/', orderController.getAll);
 router.get('/:orderId', orderController.getByOrderId);
+router.get("/orders/date-filter", orderController.fetchOrdersByDateFilter);
 // router.put('/:orderId', orderController.updateProduct);
 
 export default router;

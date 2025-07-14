@@ -56,6 +56,24 @@ const orderController = {
         });
     }),
 
+    fetchOrdersByDateFilter: asyncHandler(async(req, res) => {
+        const { year, month, start_date, end_date } = req.query;
+
+        const orders = await orderService.getOrdersByDateFilter({
+            year,
+            month,
+            start_date,
+            end_date
+        });
+
+        res.status(200).json({
+            success: true,
+            count: orders.length,
+            data: orders,
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        });
+    }),
+
     // You can uncomment and implement updateOrder if needed in the future
     /*
     updateOrder: asyncHandler(async (req, res) => {
