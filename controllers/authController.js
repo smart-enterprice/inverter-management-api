@@ -62,7 +62,7 @@ const authController = {
                     token: loginResult.access_token,
                     expiresIn: loginResult.expiresIn
                 },
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
     ],
@@ -92,7 +92,7 @@ const authController = {
             return res.status(200).json({
                 success: true,
                 message: '✅ Successfully logged out',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
     ]

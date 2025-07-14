@@ -27,7 +27,7 @@ const orderController = {
             status: 201,
             message: "🎉 Order created successfully!",
             data: orderData,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),
 
@@ -40,7 +40,7 @@ const orderController = {
             status: 200,
             message: "✅ Order fetched successfully!",
             data: orderData,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),
 
@@ -52,7 +52,7 @@ const orderController = {
             status: 200,
             message: "📦 Order list fetched successfully!",
             data: orders,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),
 
@@ -67,7 +67,7 @@ const orderController = {
         status: 200,
         message: "✅ Order updated successfully!",
         data: updatedOrder,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
       });
     }),
     */
