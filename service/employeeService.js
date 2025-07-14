@@ -116,12 +116,12 @@ const checkExistingEmployee = async(email, phone, excludeId = null) => {
         employeeSchema.findOne({...query, employee_phone: phone })
     ]);
 
-    if (existingEmail) {
-        throw new ConflictException('📧 Email already exists. Please use a different email.');
-    }
+    const errors = [];
+    if (existingEmail) errors.push("📧 Email already exists.");
+    if (existingPhone) errors.push("📱 Phone number already exists.");
 
-    if (existingPhone) {
-        throw new ConflictException('📱 Phone number already exists. Please use a different phone number.');
+    if (errors.length > 0) {
+        throw new ConflictException(errors.join(" "));
     }
 };
 
@@ -445,13 +445,11 @@ const employeeService = {
             throw new NotFoundException('Target employee not found or already deleted');
         }
 
-        const deletionLog = `Deletion by: ${requestingEmployee.employee_name}, Role: ${requestingEmployee.role}, Reason: ${reason}`;
+        const deletionLog = `Deletion by: ${requestingEmployee.employee_name}, Role: ${requestingEmployee.role}, Reason: ${reason}, Date : ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
         employeeToDelete.status = 'deleted';
         employeeToDelete.log_note = deletionLog;
 
         await employeeToDelete.save();
-
-        logger.info(`Employee ID ${employeeToDelete.employee_id} marked as deleted by ${requestingEmployee.employee_id}`);
 
         return mapEntityToResponse(employeeToDelete);
     }),

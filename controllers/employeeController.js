@@ -64,7 +64,7 @@ const employeeController = {
                 status: 201,
                 message: "🎉 Account created successfully! Welcome aboard!",
                 data: newEmployee,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
     ],
@@ -85,7 +85,7 @@ const employeeController = {
                 status: 200,
                 message: "Employee profile retrieved successfully",
                 data: employee,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
     ],
@@ -121,7 +121,7 @@ const employeeController = {
                 status: 200,
                 message: "✅ Profile updated successfully!",
                 data: updatedEmployee,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
     ],
@@ -136,7 +136,7 @@ const employeeController = {
                 status: 200,
                 message: "Employee profile retrieved successfully",
                 data: employee,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
     ],
@@ -170,7 +170,7 @@ const employeeController = {
                         pages: Math.ceil(total / limit)
                     }
                 },
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
     ],
@@ -185,7 +185,7 @@ const employeeController = {
                 status: 200,
                 message: "Employee profile retrieved successfully",
                 data: employee,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
     ],
@@ -205,9 +205,9 @@ const employeeController = {
                 success: true,
                 status: 200,
                 message: 'Employee deleted successfully',
-                data: deletedEmployee,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
+
         })
     ],
 
@@ -245,7 +245,7 @@ const employeeController = {
                         pages: Math.ceil(totalDeleted / limit)
                     }
                 },
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
     ],
