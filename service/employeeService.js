@@ -458,7 +458,7 @@ const employeeService = {
 
     createAccountLimiter: rateLimit({
         windowMs: 60 * 60 * 1000,
-        max: 5,
+        max: 50,
         message: {
             success: false,
             message: 'Too many account creation attempts. Please try again later.',
@@ -469,7 +469,7 @@ const employeeService = {
 
     loginLimiter: rateLimit({
         windowMs: 15 * 60 * 1000,
-        max: 5,
+        max: 25,
         message: {
             success: false,
             message: 'Too many login attempts. Please try again later.',

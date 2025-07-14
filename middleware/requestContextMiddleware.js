@@ -38,11 +38,6 @@ export const requestContextMiddleware = (req, res, next) => {
 
             req.user = { employeeId, role, status };
 
-            console.log('✅ Async context set:', {
-                employeeId: CurrentRequestContext.getEmployeeId(),
-                role: CurrentRequestContext.getRole()
-            });
-
             next();
         });
 
