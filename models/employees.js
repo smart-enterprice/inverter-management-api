@@ -58,7 +58,7 @@ const employeeSchema = new mongoose.Schema({
     photo: String,
     district: String,
     town: String,
-    brand: String,
+    brand: [String],
     address: String,
 }, {
     timestamps: {
