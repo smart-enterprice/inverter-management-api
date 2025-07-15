@@ -24,7 +24,7 @@ const productController = {
             status: 201,
             message: "🎉 Product created successfully!",
             data: productData,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),
 
@@ -36,7 +36,7 @@ const productController = {
             status: 200,
             message: "✅ Product updated successfully!",
             data: productData,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),
 
@@ -48,7 +48,7 @@ const productController = {
             status: 200,
             message: "✅ Product updated successfully!",
             data: productStockData,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),
 
@@ -60,7 +60,7 @@ const productController = {
             status: 200,
             message: "✅ Product fetched successfully!",
             data: productData,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),
 
@@ -71,7 +71,7 @@ const productController = {
             status: 200,
             message: "📦 Product list fetched successfully!",
             data: productList,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),
 };

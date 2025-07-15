@@ -83,7 +83,7 @@ const sendError = (err, req, res) => {
         message: err.message,
         statusCode: err.statusCode || 500,
         errors: err.errors || null,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
     };
 
     if (process.env.NODE_ENV === 'development') {
@@ -108,7 +108,7 @@ const handleRateLimitError = (err, req, res, next) => {
             status: 429,
             message: 'Too many requests. Please try again later.',
             retryAfter,
-            timestamp: new Date().toISOString(),
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }
 

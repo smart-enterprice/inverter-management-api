@@ -8,9 +8,15 @@ const router = express.Router();
 router.use(verifyToken);
 router.use(productController.sanitizeInput);
 
+// @route   POST
 router.post('/create', productController.createProduct);
+
+// @route   GET
 router.get('/', productController.getAll);
+
 router.get('/:productId', productController.getByProductId);
+
+// @route   PUT
 router.put('/:productId', productController.updateProduct);
 
 router.put('/createOrUpdate/product-stocks', productController.createOrUpdateProductStocks);
