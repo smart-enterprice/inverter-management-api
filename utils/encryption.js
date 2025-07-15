@@ -1,13 +1,11 @@
 // encryption.util.js
 import crypto from 'crypto';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import { ENCRYPTION_SECRET_KEY } from './constants';
 
 const algorithm = 'aes-256-cbc';
 const secretKey = crypto
     .createHash('sha256')
-    .update(process.env.ENCRYPTION_SECRET_KEY)
+    .update(ENCRYPTION_SECRET_KEY)
     .digest();
 
 export const encryptText = (plainText) => {
