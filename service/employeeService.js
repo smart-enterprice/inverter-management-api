@@ -1,26 +1,19 @@
 // employeeservice.js
 
 import asyncHandler from "express-async-handler";
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import validator from 'validator';
-import dotenv from "dotenv";
 
 import employeeSchema from '../models/employees.js';
 import { generateUniqueEmployeeId } from '../utils/generatorIds.js';
 import logger from '../utils/logger.js';
-import { decryptText, encryptText } from "../utils/encryption.js";
 import { CurrentRequestContext } from "../utils/CurrentRequestContext.js";
 import {
     BadRequestException,
     ConflictException,
-    ValidationException,
     NotFoundException,
     UnauthorizedException
 } from '../middleware/CustomError.js';
-
-dotenv.config();
 
 import { validateEmployeeData, sanitizeInput, validateRole } from '../utils/employeeValidator.js';
 import { mapRequestToEntity, mapEntityToResponse } from '../utils/employeeMapper.js';
@@ -64,7 +57,6 @@ const findActiveEmployee = async(employeeId, includePassword = false) => {
 
     return employee;
 };
-
 
 async function verifyCurrentPassword(employee, currentPassword) {
     try {
@@ -220,8 +212,6 @@ const employeeService = {
     getProfile: asyncHandler(async() => {
         const employeeId = CurrentRequestContext.getEmployeeId();
         const role = CurrentRequestContext.getRole();
-        logger.info(`Service Employee Role ${role}`);
-        logger.info(`Service Employee ${employeeId}`);
 
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
