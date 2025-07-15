@@ -2,11 +2,12 @@
 import express from 'express';
 import { verifyToken } from '../middleware/verifyToken.js';
 import productController from '../controllers/productController.js';
+import { sanitizeInputBody } from '../utils/employeeValidator.js';
 
 const router = express.Router();
 
 router.use(verifyToken);
-router.use(productController.sanitizeInput);
+router.use(sanitizeInputBody);
 
 // @route   POST
 router.post('/create', productController.createProduct);

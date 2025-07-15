@@ -10,17 +10,7 @@ import employeeSchema from "../models/employees.js";
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 import { mapEntityToResponse } from "../utils/employeeMapper.js";
 import { revealPassword } from "../utils/employeeAuth.js";
-
-const sanitizeInput = (req, res, next) => {
-    if (req.body) {
-        for (const key in req.body) {
-            if (typeof req.body[key] === "string") {
-                req.body[key] = xss(req.body[key]);
-            }
-        }
-    }
-    next();
-};
+import { sanitizeInputBody } from "../utils/employeeValidator.js";
 
 const getPaginationParams = (query) => {
     const page = parseInt(query.page || "1", 10);
@@ -51,11 +41,11 @@ const employeeController = {
         })
     ],
 
-    sanitizeInput,
+    sanitizeInputBody,
 
     signup: [
         employeeService.createAccountLimiter,
-        sanitizeInput,
+        sanitizeInputBody,
         asyncHandler(async(req, res) => {
             if (!req.user || !signUpRoles.includes(req.user.role)) {
                 throw new UnauthorizedException(`Access denied: This action requires one of the following roles: ${signUpRoles.join(', ')}.`);
@@ -79,7 +69,6 @@ const employeeController = {
     ],
 
     getProfileByEmployeeId: [
-        sanitizeInput,
         asyncHandler(async(req, res) => {
             const { employeeId } = req.params;
 
@@ -100,7 +89,7 @@ const employeeController = {
     ],
 
     updateProfile: [
-        sanitizeInput,
+        sanitizeInputBody,
         asyncHandler(async(req, res) => {
             const { employeeId } = req.params;
 
@@ -112,18 +101,9 @@ const employeeController = {
                 throw new BadRequestException("Update data is required");
             }
 
-            logger.info("Profile update attempt:", {
-                employeeId,
-                updatedFields: Object.keys(req.body),
-                ip: req.ip
-            });
-
             const updatedEmployee = await employeeService.updateEmployee(employeeId, req.body);
 
-            logger.info("Profile updated successfully:", {
-                employeeId,
-                ip: req.ip
-            });
+            logger.info("Profile updated successfully: ", employeeId);
 
             return res.status(200).json({
                 success: true,
@@ -136,7 +116,6 @@ const employeeController = {
     ],
 
     getProfile: [
-        sanitizeInput,
         asyncHandler(async(req, res) => {
             const employee = await employeeService.getProfile();
 
@@ -151,7 +130,6 @@ const employeeController = {
     ],
 
     getAllEmployees: [
-        sanitizeInput,
         asyncHandler(async(req, res) => {
             const { page, limit, skip } = getPaginationParams(req.query);
 
@@ -182,7 +160,6 @@ const employeeController = {
     ],
 
     getAllEmployeesWithPassword: [
-        sanitizeInput,
         asyncHandler(async(req, res) => {
             const { page, limit, skip } = getPaginationParams(req.query);
 
@@ -220,7 +197,7 @@ const employeeController = {
     ],
 
     resetPassword: [
-        sanitizeInput,
+        sanitizeInputBody,
         asyncHandler(async(req, res) => {
             const employee = await employeeService.resetPassword(req.body);
 
@@ -235,7 +212,7 @@ const employeeController = {
     ],
 
     resetPasswordById: [
-        sanitizeInput,
+        sanitizeInputBody,
         asyncHandler(async(req, res) => {
             const { employeeId } = req.params;
 
@@ -260,7 +237,7 @@ const employeeController = {
     ],
 
     deleteEmployee: [
-        sanitizeInput,
+        sanitizeInputBody,
         asyncHandler(async(req, res) => {
             const { employeeId } = req.body;
 
@@ -281,7 +258,6 @@ const employeeController = {
     ],
 
     getAllDeletedEmployees: [
-        sanitizeInput,
         asyncHandler(async(req, res) => {
             if (!req.user || !signUpRoles.includes(req.user.role)) {
                 throw new UnauthorizedException(`Access denied: This action requires one of the following roles: ${signUpRoles.join(', ')}.`);

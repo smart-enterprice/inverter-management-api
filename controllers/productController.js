@@ -1,22 +1,12 @@
 // controller/productController.js
 import asyncHandler from "express-async-handler";
 import xss from "xss";
-import { productService, mapEntityToResponse } from "../service/productService.js";
-import logger from "../utils/logger.js";
-
-function sanitizeInput(req, res, next) {
-    if (req.body) {
-        for (const key in req.body) {
-            if (typeof req.body[key] === "string") {
-                req.body[key] = xss(req.body[key]);
-            }
-        }
-    }
-    next();
-}
+import { productService } from "../service/productService.js";
+import { sanitizeInputBody } from "../utils/employeeValidator.js";
 
 const productController = {
-    sanitizeInput,
+    sanitizeInputBody,
+
     createProduct: asyncHandler(async(req, res) => {
         const productData = await productService.createProduct(req.body);
         res.status(201).json({

@@ -60,3 +60,19 @@ export const APPROVAL_ROLES = {
     SUPER_ADMIN: 'ROLE_SUPER_ADMIN',
     ADMIN: 'ROLE_ADMIN',
 };
+
+export const MAIN_ROLES = {
+    SUPER_ADMIN: 'ROLE_SUPER_ADMIN',
+    ADMIN: 'ROLE_ADMIN',
+    MANAGER: 'ROLE_MANAGER',
+};
+
+export const STOCK_ACTIONS = {
+    STOCK_ADD: 'ADD',
+    STOCK_RETURN: 'RETURN'
+};
+
+export const STOCK_TYPES = {
+    STOCK_PACKED: 'PACKED',
+    STOCK_UNPACKED: 'UNPACKED'
+};

@@ -2,11 +2,22 @@
 
 import validator from 'validator';
 import { BadRequestException, ValidationException } from '../middleware/CustomError.js';
-import { ALLOWED_ROLES } from './constants.js';
+import { ALLOWED_ROLES, APPROVAL_ROLES, MAIN_ROLES, STOCK_ACTIONS, STOCK_TYPES } from './constants.js';
 import { validatePassword } from './employeeAuth.js';
 
 export const sanitizeInput = (input) =>
     typeof input === 'string' ? validator.escape(input.trim()) : input;
+
+export const sanitizeInputBody = (req, res, next) => {
+    if (req.body && typeof req.body === 'object') {
+        for (const key in req.body) {
+            if (typeof req.body[key] === 'string') {
+                req.body[key] = sanitizeInput(req.body[key]);
+            }
+        }
+    }
+    next();
+};
 
 export const validateEmployeeData = (data, isUpdate = false) => {
     const errors = [];
@@ -55,15 +66,27 @@ export const validateEmployeeData = (data, isUpdate = false) => {
     if (errors.length) throw new ValidationException('Validation failed', errors);
 };
 
-export const validateRole = (role) => {
-    if (!role || typeof role !== 'string') {
-        throw new BadRequestException('Role is required and must be a string');
+export const validateRole = () => {
+    const employee_id = CurrentRequestContext.getEmployeeId();
+    const role = CurrentRequestContext.getRole();
+    if (!employee_id || !role || !Object.values(MAIN_ROLES).includes(role.toUpperCase())) {
+        throw new UnauthorizedException(`You do not have permission to perform this action. Allowed roles: ${Object.values(MAIN_ROLES).join(', ')}`);
     }
-    const normalizedRole = role.toUpperCase();
+    return { employee_id, role };
+};
 
-    if (!Object.values(ALLOWED_ROLES).includes(normalizedRole)) {
-        throw new BadRequestException(
-            `Role must be one of: ${Object.values(ALLOWED_ROLES).join(', ')}`
-        );
+export const validateStockAction = action => {
+    const type = typeof action === "string" ? action.toUpperCase() : null;
+    if (!Object.values(STOCK_ACTIONS).includes(type.toUpperCase())) {
+        throw new BadRequestException(`Invalid stock action: ${action}. Allowed: ${Object.values(STOCK_ACTIONS).join(', ')}`);
     }
+    return type;
+};
+
+export const normalizeStockType = stock_type => {
+    const type = typeof stock_type === "string" ? stock_type.trim().toUpperCase() : null;
+    if (!Object.values(STOCK_TYPES).includes(type.toUpperCase())) {
+        throw new BadRequestException(`Invalid stock_type: ${stock_type}. Allowed: ${Object.values(STOCK_TYPES).join(", ")}`);
+    }
+    return type;
 };
