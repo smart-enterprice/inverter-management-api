@@ -1,6 +1,6 @@
 // encryption.util.js
 import crypto from 'crypto';
-import { ENCRYPTION_SECRET_KEY } from './constants';
+import { ENCRYPTION_SECRET_KEY } from './constants.js';
 
 const algorithm = 'aes-256-cbc';
 const secretKey = crypto
