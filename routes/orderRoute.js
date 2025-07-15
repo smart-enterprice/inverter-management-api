@@ -8,10 +8,17 @@ const router = express.Router();
 router.use(verifyToken);
 router.use(orderController.sanitizeInput);
 
+// @route   POST
 router.post('/create', orderController.createOrder);
+
+// @route   GET
 router.get('/', orderController.getAll);
+
 router.get('/:orderId', orderController.getByOrderId);
+
 router.get("/orders/date-filter", orderController.fetchOrdersByDateFilter);
+
+// @route   PUT
 // router.put('/:orderId', orderController.updateProduct);
 
 export default router;

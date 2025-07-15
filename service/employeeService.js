@@ -5,8 +5,13 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import validator from 'validator';
+import dotenv from "dotenv";
+
 import employeeSchema from '../models/employees.js';
 import { generateUniqueEmployeeId } from '../utils/generatorIds.js';
+import logger from '../utils/logger.js';
+import { decryptText, encryptText } from "../utils/encryption.js";
+import { CurrentRequestContext } from "../utils/CurrentRequestContext.js";
 import {
     BadRequestException,
     ConflictException,
@@ -14,99 +19,21 @@ import {
     NotFoundException,
     UnauthorizedException
 } from '../middleware/CustomError.js';
-import logger from '../utils/logger.js';
-import dotenv from "dotenv";
-import { CurrentRequestContext } from "../utils/CurrentRequestContext.js";
 
 dotenv.config();
 
-const ALLOWED_ROLES = ['ROLE_ADMIN', 'ROLE_SUPERVISOR', 'ROLE_MANAGER', 'ROLE_SALESMAN', 'ROLE_PRODUCTION', 'ROLE_PACKING', 'ROLE_ACCOUNTS', 'ROLE_DELIVERY', 'ROLE_DEALER', 'ROLE_SUPER_ADMIN'];
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN;
-const BCRYPT_SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 10;
-const APPROVAL_ROLES = ['ROLE_SUPER_ADMIN', 'ROLE_ADMIN'];
-
-const sanitizeInput = (input) => {
-    if (typeof input === 'string') {
-        return validator.escape(input.trim());
-    }
-    return input;
-};
-
-const validateEmployeeData = (employeeRequest, isUpdate = false) => {
-    const errors = [];
-
-    if (!isUpdate || employeeRequest.employee_name !== undefined) {
-        if (!employeeRequest.employee_name || employeeRequest.employee_name.trim().length < 2) {
-            errors.push({ field: 'employee_name', message: 'Name must be at least 2 characters long' });
-        }
-        if (employeeRequest.employee_name && employeeRequest.employee_name.length > 500) {
-            errors.push({ field: 'employee_name', message: 'Name cannot exceed 500 characters' });
-        }
-    }
-
-    if (!isUpdate || employeeRequest.employee_email !== undefined) {
-        if (!employeeRequest.employee_email) {
-            errors.push({ field: 'employee_email', message: 'Email is required' });
-        } else if (!validator.isEmail(employeeRequest.employee_email)) {
-            errors.push({ field: 'employee_email', message: 'Please provide a valid email address' });
-        }
-    }
-
-    if (!isUpdate || employeeRequest.password !== undefined) {
-        if (!employeeRequest.password) {
-            errors.push({ field: 'password', message: 'Password is required' });
-        } else {
-            if (employeeRequest.password.length < 9) {
-                errors.push({ field: 'password', message: 'Password must be at least 8 characters long' });
-            }
-            if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/.test(employeeRequest.password)) {
-                errors.push({
-                    field: 'password',
-                    message: 'Password must contain at least one lowercase letter, one uppercase letter, one number, and one special character'
-                });
-            }
-        }
-    }
-
-    if (!isUpdate || employeeRequest.employee_phone !== undefined) {
-        if (!employeeRequest.employee_phone) {
-            errors.push({ field: 'employee_phone', message: 'Phone number is required' });
-        } else if (!validator.isMobilePhone(employeeRequest.employee_phone, 'any', { strictMode: false })) {
-            errors.push({ field: 'employee_phone', message: 'Please provide a valid phone number' });
-        }
-    }
-
-    if (!isUpdate || employeeRequest.role !== undefined) {
-        if (!employeeRequest.role) {
-            errors.push({ field: 'role', message: 'Role is required' });
-        } else if (!ALLOWED_ROLES.includes(employeeRequest.role.toUpperCase())) {
-            errors.push({
-                field: 'role',
-                message: `Role must be one of: ${ALLOWED_ROLES.join(', ')}`
-            });
-        }
-    }
-
-    if (errors.length > 0) {
-        throw new ValidationException('Validation failed', errors);
-    }
-};
-
-const validatePassword = (password) => {
-    if (password === undefined || password === null || password === '') {
-        throw new BadRequestException('Password is required');
-    }
-
-    if (password.length < 8) {
-        throw new BadRequestException('Password must be at least 8 characters long');
-    }
-
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/;
-    if (!passwordRegex.test(password)) {
-        throw new BadRequestException('Password must contain at least one lowercase letter, one uppercase letter, one number, and one special character');
-    }
-};
+import { validateEmployeeData, sanitizeInput, validateRole } from '../utils/employeeValidator.js';
+import { mapRequestToEntity, mapEntityToResponse } from '../utils/employeeMapper.js';
+import { hashPassword, generateToken, revealPassword, validatePassword } from '../utils/employeeAuth.js';
+import {
+    ALLOWED_ROLES,
+    APPROVAL_ROLES,
+    JWT_EXPIRES_IN,
+    SUPER_ADMIN,
+    SUPER_ADMIN_PHONE,
+    SUPER_ADMIN_EMAIL,
+    SUPER_ADMIN_PASSWORD
+} from '../utils/constants.js';
 
 const checkExistingEmployee = async(email, phone, excludeId = null) => {
     const query = excludeId ? { _id: { $ne: excludeId } } : {};
@@ -125,71 +52,45 @@ const checkExistingEmployee = async(email, phone, excludeId = null) => {
     }
 };
 
-const hashPassword = async(password) => {
-    return await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
-};
+const findActiveEmployee = async(employeeId, includePassword = false) => {
+    const query = employeeSchema.findOne({ employee_id: employeeId, status: 'active' });
+    if (includePassword) query.select('+password');
 
-const generateToken = (employeeId, role, status) => {
-    return jwt.sign({
-            employee_id: employeeId,
-            role,
-            status,
-            iat: Math.floor(Date.now() / 1000)
-        },
-        JWT_SECRET, { expiresIn: JWT_EXPIRES_IN }
-    );
-};
-
-const mapRequestToEntity = (employeeRequest, employeeId, isUpdate = false) => {
-    const entity = {};
-
-    if (employeeId) entity.employee_id = employeeId;
-    if (!isUpdate) entity.status = 'active';
-
-    const fieldsToMap = [
-        'employee_name', 'employee_email', 'employee_phone', 'role', 'shop_name', 'district', 'town', 'brand', 'address'
-    ];
-
-    fieldsToMap.forEach(field => {
-        if (employeeRequest[field] !== undefined) {
-            entity[field] = sanitizeInput(employeeRequest[field]);
-        }
-    });
-
-    if (employeeRequest.photo !== undefined) {
-        entity.photo = employeeRequest.photo;
+    const employee = await query;
+    if (!employee) {
+        logger.warn(`No active employee for ID: ${employeeId}`);
+        throw new BadRequestException('');
     }
 
-    return entity;
+    return employee;
 };
 
-const mapEntityToResponse = (employeeEntity) => {
-    const response = {};
 
-    const fieldsToMap = [
-        'employee_id', 'employee_name', 'employee_email', 'employee_phone',
-        'role', 'status', 'created_by', 'shop_name', 'photo',
-        'district', 'town', 'brand', 'address', 'created_at', 'updated_at', 'log_note'
-    ];
-
-    fieldsToMap.forEach(field => {
-        if (employeeEntity[field] !== undefined) {
-            response[field] = employeeEntity[field];
+async function verifyCurrentPassword(employee, currentPassword) {
+    try {
+        const decryptedPassword = await revealPassword(employee.password);
+        if (currentPassword !== decryptedPassword) {
+            logger.warn(`Invalid current password for: ${employee.employee_email}`);
+            throw new UnauthorizedException('Invalid credentials');
         }
-    });
+    } catch (error) {
+        logger.error(`Password decryption failed for ID: ${employee.employee_email}`, error);
+        throw new BadRequestException('Password decryption error');
+    }
+}
 
-    return response;
-};
+async function updateEmployeePassword(employee, newPassword, updatedBy, role, reason) {
+    const hashedPassword = await hashPassword(newPassword);
+    employee.password = hashedPassword;
+
+    const timeStamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    employee.log_note = `${employee.log_note || ''} | Password reset by: ${updatedBy}, Role: ${role}, Reason: ${reason}, Date: ${timeStamp}`;
+
+    await employee.save();
+}
 
 const employeeService = {
     defaultSuperAdminSetup: asyncHandler(async() => {
-        const {
-            SUPER_ADMIN,
-            SUPER_ADMIN_PHONE,
-            SUPER_ADMIN_EMAIL,
-            SUPER_ADMIN_PASSWORD
-        } = process.env;
-
         if (!SUPER_ADMIN || !SUPER_ADMIN_PHONE || !SUPER_ADMIN_EMAIL || !SUPER_ADMIN_PASSWORD) {
             throw new Error("❌ Missing required SUPER_ADMIN environment variables.");
         }
@@ -218,7 +119,7 @@ const employeeService = {
             employee_email: SUPER_ADMIN_EMAIL,
             employee_phone: SUPER_ADMIN_PHONE,
             password: hashedPassword,
-            role: 'ROLE_SUPER_ADMIN',
+            role: ALLOWED_ROLES.SUPER_ADMIN,
             status: 'active',
             created_by: 'APPLICATION',
         });
@@ -275,10 +176,17 @@ const employeeService = {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        const isPasswordValid = await bcrypt.compare(password, employee.password);
-        if (!isPasswordValid) {
-            logger.warn(`Invalid password for: ${employee.employee_id}`);
-            throw new UnauthorizedException('Invalid credentials');
+        let decryptedPassword;
+        try {
+            decryptedPassword = await revealPassword(employee.password);
+        } catch (error) {
+            logger.error(`Password decryption failed for ID: ${employee.employee_email}`, error);
+            throw new BadRequestException("Password decryption error");
+        }
+
+        if (password !== decryptedPassword) {
+            logger.warn(`Invalid password attempt for: ${employee.employee_email}`);
+            throw new UnauthorizedException("Invalid credentials");
         }
 
         const token = generateToken(employee.employee_id, employee.role, employee.status);
@@ -356,7 +264,7 @@ const employeeService = {
         }
 
         const mappedData = mapRequestToEntity(updateData, employeeId, true);
-        mappedData.updated_at = new Date();
+        mappedData.updated_at = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
         const updatedEmployee = await employeeSchema.findOneAndUpdate({ employee_id: employeeId },
             mappedData, { new: true, runValidators: true }
@@ -366,15 +274,6 @@ const employeeService = {
         return mapEntityToResponse(updatedEmployee);
     }),
 
-    validateEmployeeRole: (role) => {
-        if (!role || typeof role !== 'string') {
-            throw new BadRequestException('Role is required and must be a string');
-        }
-        if (!ALLOWED_ROLES.includes(role.toUpperCase())) {
-            throw new BadRequestException(`Role must be one of: ${ALLOWED_ROLES.join(', ')}`);
-        }
-    },
-
     resetPassword: asyncHandler(async(updateData) => {
         const employeeId = CurrentRequestContext.getEmployeeId();
 
@@ -382,33 +281,35 @@ const employeeService = {
             throw new BadRequestException('Employee ID is required');
         }
 
-        logger.info(`Reset password request initiated by Employee ID: ${employeeId}`);
+        logger.info(`Password reset (self) initiated by Employee ID: ${employeeId}`);
 
-        const employee = await employeeSchema.findOne({
-            employee_id: employeeId,
-            status: 'active'
-        });
-
-        if (!employee) {
-            throw new NotFoundException('Active employee not found');
-        }
-
-        const isPasswordValid = await bcrypt.compare(updateData.current_password, employee.password);
-        if (!isPasswordValid) {
-            logger.warn(`Incorrect current password for Employee ID: ${employee.employee_id}`);
-            throw new BadRequestException('Current password is incorrect');
-        }
-
+        const employee = await findActiveEmployee(employeeId, true);
+        await verifyCurrentPassword(employee, updateData.current_password);
         validatePassword(updateData.password);
 
-        const hashedPassword = await hashPassword(updateData.password);
-        employee.password = hashedPassword;
+        await updateEmployeePassword(employee, updateData.password, employee.employee_name, employee.role, 'update password for own');
 
-        await employee.save();
-
-        logger.info(`Password reset successful for Employee ID: ${employee.employee_id}`);
-
+        logger.info(`Password reset (self) successful for Employee ID: ${employee.employee_id}`);
         return mapEntityToResponse(employee);
+    }),
+
+    resetPasswordById: asyncHandler(async(employeeId, updateData) => {
+        const requesterId = CurrentRequestContext.getEmployeeId();
+
+        if (!requesterId || !employeeId) {
+            throw new BadRequestException('Employee ID is required');
+        }
+
+        logger.info(`Password reset (admin) initiated by Employee ID: ${requesterId} for target ID: ${employeeId}`);
+
+        const targetEmployee = await findActiveEmployee(employeeId, true);
+        validatePassword(updateData.password);
+
+        const requestingEmployee = await findActiveEmployee(requesterId);
+        await updateEmployeePassword(targetEmployee, updateData.password, requestingEmployee.employee_name, requestingEmployee.role, `admin reset password`);
+
+        logger.info(`Password reset (admin) successful for Employee ID: ${targetEmployee.employee_id}`);
+        return mapEntityToResponse(targetEmployee);
     }),
 
     deleteEmployee: asyncHandler(async(updateData) => {
@@ -432,7 +333,7 @@ const employeeService = {
             throw new NotFoundException('Requesting employee not found or inactive');
         }
 
-        if (!APPROVAL_ROLES.includes(requestingEmployee.role)) {
+        if (!Object.values(APPROVAL_ROLES).includes(requestingEmployee.role.toUpperCase())) {
             throw new BadRequestException('Unauthorized: You do not have permission to delete employees');
         }
 
@@ -445,7 +346,7 @@ const employeeService = {
             throw new NotFoundException('Target employee not found or already deleted');
         }
 
-        const deletionLog = `Deletion by: ${requestingEmployee.employee_name}, Role: ${requestingEmployee.role}, Reason: ${reason}, Date : ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
+        const deletionLog = `${ employeeToDelete.log_note || '' } | Deletion by: ${ requestingEmployee.employee_name }, Role: ${ requestingEmployee.role }, Reason: ${ reason }, Date: ${ new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) }`;
         employeeToDelete.status = 'deleted';
         employeeToDelete.log_note = deletionLog;
 
@@ -477,4 +378,4 @@ const employeeService = {
     })
 };
 
-export { employeeService, mapEntityToResponse };
+export { employeeService };

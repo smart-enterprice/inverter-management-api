@@ -132,7 +132,7 @@ app.get("/", (req, res) => {
         message: "👋 Welcome to Smart Enterprice",
         version: "1.0.0",
         status: "operational",
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
     });
 });
 
@@ -159,7 +159,7 @@ app.get("/health", async(req, res) => {
         service: "Smart Enterprice",
         environment: process.env.NODE_ENV || "development",
         version: "1.0.0",
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
         db: {
             status: dbStatus,
             name: dbName

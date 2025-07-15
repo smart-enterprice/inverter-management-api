@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 const STATUS_CODES = {
     OK: 200,
     CREATED: 201,
@@ -29,3 +32,37 @@ const PATH_ROUTES = {
 };
 
 export { STATUS_CODES, PATH_ROUTES };
+
+export const {
+    JWT_SECRET,
+    JWT_EXPIRES_IN,
+    SUPER_ADMIN,
+    SUPER_ADMIN_PHONE,
+    SUPER_ADMIN_EMAIL,
+    SUPER_ADMIN_PASSWORD
+} = process.env;
+
+// export const ALLOWED_ROLES = [
+//     'ROLE_ADMIN', 'ROLE_SUPERVISOR', 'ROLE_MANAGER',
+//     'ROLE_SALESMAN', 'ROLE_PRODUCTION', 'ROLE_PACKING',
+//     'ROLE_ACCOUNTS', 'ROLE_DELIVERY', 'ROLE_DEALER',
+//     'ROLE_SUPER_ADMIN'
+// ];
+
+export const ALLOWED_ROLES = {
+    SUPER_ADMIN: 'ROLE_SUPER_ADMIN',
+    ADMIN: 'ROLE_ADMIN',
+    SUPERVISOR: 'ROLE_SUPERVISOR',
+    MANAGER: 'ROLE_MANAGER',
+    SALESMAN: 'ROLE_SALESMAN',
+    PRODUCTION: 'ROLE_PRODUCTION',
+    PACKING: 'ROLE_PACKING',
+    ACCOUNTS: 'ROLE_ACCOUNTS',
+    DELIVERY: 'ROLE_DELIVERY',
+    DEALER: 'ROLE_DEALER'
+};
+
+export const APPROVAL_ROLES = {
+    SUPER_ADMIN: 'ROLE_SUPER_ADMIN',
+    ADMIN: 'ROLE_ADMIN',
+};
