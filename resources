@@ -17,3 +17,4 @@ SUPER_ADMIN_PHONE = 9995235115
 SUPER_ADMIN_PASSWORD = superadmin@123
 
 ENCRYPTION_SECRET_KEY = your encryption key
+ALLOWED_ORIGINS=http://localhost:5173,your urls

@@ -1,45 +1,35 @@
 // service/orderService.js
 
 import asyncHandler from "express-async-handler";
-import validator from "validator";
-import logger from "../utils/logger.js";
-import { CurrentRequestContext } from "../utils/CurrentRequestContext.js";
-import Employee from "../models/employees.js";
-import Order from "../models/order.js";
-import OrderDetails from "../models/orderDetails.js";
-import {
-    generateUniqueOrderDetailsId,
-    generateUniqueOrderId
-} from "../utils/generatorIds.js";
-import {
-    BadRequestException,
-    UnauthorizedException
-} from '../middleware/CustomError.js';
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc.js";
 import timezone from "dayjs/plugin/timezone.js";
-import { sanitizeInput } from "../utils/validationUtils.js";
-import { ORDER_CREATOR_ROLES, ROLES } from "../utils/constants.js";
+
+import logger from "../utils/logger.js";
+import Employee from "../models/employees.js";
+import Order from "../models/order.js";
+import OrderDetails from "../models/orderDetails.js";
+
+import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../utils/generatorIds.js";
+import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";
+import { getAuthenticatedEmployeeContext, sanitizeInput } from "../utils/validationUtils.js";
+
+import { ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIELDS, ORDER_REQUIRED_FIELDS, ROLES } from "../utils/constants.js";
+import { transformOrderToResponse } from "../utils/modelMapper.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
 const validateOrderDTO = async(dto) => {
-    const requiredFields = ["dealer_id", "priority", "order_details"];
-    for (const field of requiredFields) {
+    for (const field of ORDER_REQUIRED_FIELDS) {
         if (!dto[field]) {
             throw new BadRequestException(`'${field}' is required.`);
         }
     }
 
-    const dealer = await Employee.findOne({
-        employee_id: dto.dealer_id,
-        role: ROLES.DEALER
-    });
+    const dealer = await Employee.findOne({ employee_id: dto.dealer_id, role: ROLES.DEALER });
     if (!dealer) {
-        throw new BadRequestException(
-            `Invalid dealer ID: ${dto.dealer_id}. Dealer not found or not a dealer role.`
-        );
+        throw new BadRequestException(`Invalid dealer ID: ${dto.dealer_id}. Dealer not found or not a dealer role.`);
     }
 
     if (!Array.isArray(dto.order_details) || dto.order_details.length === 0) {
@@ -47,17 +37,7 @@ const validateOrderDTO = async(dto) => {
     }
 
     dto.order_details.forEach((detail, index) => {
-        const requiredDetailFields = [
-            "product_id",
-            "product_brand",
-            "product_name",
-            "product_model",
-            "product_type",
-            "qty_ordered",
-            "delivery_date"
-        ];
-
-        for (const field of requiredDetailFields) {
+        for (const field of ORDER_DETAILS_REQUIRED_FIELDS) {
             if (!detail[field]) {
                 throw new BadRequestException(`order_details[${index}]: '${field}' is required.`);
             }
@@ -79,122 +59,15 @@ const validateOrderDTO = async(dto) => {
     return dealer;
 };
 
-const mapOrderResponse = (order, dealer, orderDetailsList = []) => {
-    return {
-        order: order && {
-            order_number: order.order_number,
-            dealer_id: order.dealer_id,
-            priority: order.priority,
-            order_note: order.order_note,
-            status: order.status,
-            delivery_date: order.delivery_date,
-            created_by: order.created_by,
-            created_at: order.created_at,
-            updated_at: order.updated_at
-        },
-        dealer: dealer && {
-            employee_id: dealer.employee_id,
-            employee_name: dealer.employee_name,
-            employee_email: dealer.employee_email,
-            employee_phone: dealer.employee_phone,
-            shop_name: dealer.shop_name,
-            district: dealer.district,
-            town: dealer.town,
-            brand: dealer.brand,
-            address: dealer.address,
-            status: dealer.status,
-            created_at: dealer.created_at,
-            updated_at: dealer.updated_at
-        },
-        order_details: orderDetailsList.map((detail) => ({
-            order_details_number: detail.order_details_number,
-            product_id: detail.product_id,
-            product_brand: detail.product_brand,
-            product_name: detail.product_name,
-            product_model: detail.product_model,
-            product_type: detail.product_type,
-            qty_ordered: detail.qty_ordered,
-            qty_delivered: detail.qty_delivered,
-            delivery_date: detail.delivery_date,
-            status: detail.status,
-            created_at: detail.created_at,
-            updated_at: detail.updated_at
-        }))
-    };
-};
-
-const createOrder = async(dto) => {
-    const employeeId = CurrentRequestContext.getEmployeeId();
-    const role = CurrentRequestContext.getRole();
-
-    if (!employeeId || !role || !Object.values(ORDER_CREATOR_ROLES).includes(role.toUpperCase())) {
-        throw new UnauthorizedException(`Access denied: only users with roles ${Object.values(ORDER_CREATOR_ROLES).join(', ')} are authorized to create orders.`);
-    }
-
-    const dealer = await validateOrderDTO(dto);
-
-    const orderNumber = await generateUniqueOrderId();
-    const order = new Order({
-        order_number: orderNumber,
-        dealer_id: sanitizeInput(dealer.employee_id),
-        created_by: employeeId,
-        priority: sanitizeInput(dto.priority),
-        order_note: sanitizeInput(dto.order_note || "")
-    });
-
-    await order.save();
-    logger.info(`✅
-                    Order created: $ { orderNumber }
-                    `, { orderNumber });
-
-    const orderDetailsList = await Promise.all(
-        dto.order_details.map(async(detail) => {
-            const orderDetail = new OrderDetails({
-                order_details_number: await generateUniqueOrderDetailsId(),
-                order_number: orderNumber,
-                product_id: sanitizeInput(detail.product_id),
-                product_brand: sanitizeInput(detail.product_brand),
-                product_name: sanitizeInput(detail.product_name),
-                product_model: sanitizeInput(detail.product_model),
-                product_type: sanitizeInput(detail.product_type),
-                qty_ordered: Number(detail.qty_ordered),
-                delivery_date: new Date(detail.delivery_date)
-            });
-            return await orderDetail.save();
-        })
-    );
-
-    return mapOrderResponse(order, dealer, orderDetailsList);
-};
-
-const getByOrderId = async(orderNumber) => {
-    const order = await Order.findOne({ order_number: orderNumber });
-    if (!order) {
-        throw new BadRequestException(`
-                    No order found
-                    for: $ { orderNumber }
-                    `);
-    }
-
-    const dealer = await Employee.findOne({ employee_id: order.dealer_id });
-    const orderDetails = await OrderDetails.find({ order_number: orderNumber });
-
-    return mapOrderResponse(order, dealer, orderDetails);
-};
-
-const getAllOrders = async() => {
-    const orders = await Order.find().sort({ created_at: -1 });
-
+const fetchDealerAndOrderDetails = async(orders) => {
     const dealerIds = [...new Set(orders.map((o) => o.dealer_id))];
     const orderNumbers = orders.map((o) => o.order_number);
 
     const [dealers, orderDetails] = await Promise.all([
-        Employee.find({
-            employee_id: { $in: dealerIds },
-            role: ROLES.DEALER
-        }),
-        OrderDetails.find({ order_number: { $in: orderNumbers } })
+        Employee.find({ employee_id: { $in: dealerIds }, role: ROLES.DEALER }),
+        OrderDetails.find({ order_number: { $in: orderNumbers } }),
     ]);
+
 
     const dealerMap = Object.fromEntries(dealers.map((d) => [d.employee_id, d]));
     const detailsMap = orderDetails.reduce((acc, d) => {
@@ -203,64 +76,108 @@ const getAllOrders = async() => {
         return acc;
     }, {});
 
-    return orders.map((order) =>
-        mapOrderResponse(order, dealerMap[order.dealer_id], detailsMap[order.order_number])
-    );
+    return { dealerMap, detailsMap };
 };
 
-const getOrdersByDateFilter = async({ year, month, start_date, end_date }) => {
-    let startDate, endDate;
+const orderService = {
+    createOrder: asyncHandler(async(dto) => {
+        const { employeeId, role } = getAuthenticatedEmployeeContext();
 
-    if (year && month) {
-        startDate = dayjs(`
-                    $ { year } - $ { month } - 01 `).startOf("month").toDate();
-        endDate = dayjs(startDate).endOf("month").toDate();
-    } else if (start_date && end_date) {
-        startDate = new Date(start_date);
-        endDate = new Date(end_date);
-        if (isNaN(startDate) || isNaN(endDate)) {
-            throw new BadRequestException("Invalid 'start_date' or 'end_date'. Use 'YYYY-MM-DD' format.");
+        if (!employeeId || !role || !Object.values(ORDER_CREATOR_ROLES).includes(role.toUpperCase())) {
+            throw new UnauthorizedException(`Access denied: only users with roles ${Object.values(ORDER_CREATOR_ROLES).join(', ')} are authorized to create orders.`);
         }
-    } else {
-        const now = dayjs().tz("Asia/Kolkata");
-        startDate = now.startOf("month").toDate();
-        endDate = now.endOf("month").toDate();
-    }
 
-    console.log("🕒 Filtered Date Range (Asia/Kolkata):");
-    console.log("Start Date:", dayjs(startDate).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss"));
-    console.log("End Date  :", dayjs(endDate).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss"));
+        const dealer = await validateOrderDTO(dto);
+        const orderNumber = await generateUniqueOrderId();
 
-    const orders = await Order.find({
-        created_at: { $gte: startDate, $lte: endDate }
-    }).sort({ created_at: -1 });
+        const order = new Order({
+            order_number: orderNumber,
+            dealer_id: sanitizeInput(dealer.employee_id),
+            created_by: employeeId,
+            priority: sanitizeInput(dto.priority),
+            order_note: sanitizeInput(dto.order_note || ""),
+        });
 
-    const dealerIds = [...new Set(orders.map((o) => o.dealer_id))];
-    const orderNumbers = orders.map((o) => o.order_number);
+        await order.save();
+        logger.info(`✅Order created: ${ orderNumber }`, { orderNumber });
 
-    const [dealers, orderDetails] = await Promise.all([
-        Employee.find({
-            employee_id: { $in: dealerIds },
-            role: ROLES.DEALER
-        }),
-        OrderDetails.find({ order_number: { $in: orderNumbers } })
-    ]);
+        const orderDetailsList = await Promise.all(
+            dto.order_details.map(async(detail) => {
+                const orderDetail = new OrderDetails({
+                    order_details_number: await generateUniqueOrderDetailsId(),
+                    order_number: orderNumber,
+                    product_id: sanitizeInput(detail.product_id),
+                    product_brand: sanitizeInput(detail.product_brand),
+                    product_name: sanitizeInput(detail.product_name),
+                    product_model: sanitizeInput(detail.product_model),
+                    product_type: sanitizeInput(detail.product_type),
+                    qty_ordered: Number(detail.qty_ordered),
+                    delivery_date: new Date(detail.delivery_date)
+                });
 
-    const dealerMap = Object.fromEntries(dealers.map((d) => [d.employee_id, d]));
-    const detailsMap = orderDetails.reduce((acc, d) => {
-        acc[d.order_number] = acc[d.order_number] || [];
-        acc[d.order_number].push(d);
-        return acc;
-    }, {});
+                return await orderDetail.save();
+            })
+        );
 
-    return orders.map((order) =>
-        mapOrderResponse(order, dealerMap[order.dealer_id], detailsMap[order.order_number])
-    );
-};
+        return transformOrderToResponse(order, dealer, orderDetailsList);
+    }),
 
-export const orderService = {
-    createOrder: asyncHandler(createOrder),
-    getByOrderId: asyncHandler(getByOrderId),
-    getAllOrders: asyncHandler(getAllOrders),
-    getOrdersByDateFilter: asyncHandler(getOrdersByDateFilter)
-};
+    getByOrderId: asyncHandler(async(orderNumber) => {
+        const order = await Order.findOne({ order_number: orderNumber });
+        if (!order) {
+            throw new BadRequestException(`No order found for: ${ orderNumber }`);
+        }
+
+        const dealer = await Employee.findOne({ employee_id: order.dealer_id, role: ROLES.DEALER });
+        const orderDetails = await OrderDetails.find({ order_number: orderNumber });
+
+        return transformOrderToResponse(order, dealer, orderDetails);
+    }),
+
+    getAllOrders: asyncHandler(async() => {
+        const orders = await Order.find().sort({ created_at: -1 });
+        const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
+
+        return orders.map((order) =>
+            transformOrderToResponse(order, dealerMap[order.dealer_id], detailsMap[order.order_number])
+        );
+    }),
+
+    getOrdersByDateFilter: asyncHandler(async({ year, month, start_date, end_date }) => {
+        let startDate, endDate;
+
+        if (year && month) {
+            const safeDate = `${year}-${String(month).padStart(2, "0")}-01`;
+
+            startDate = dayjs(safeDate).startOf("month").toDate();
+            endDate = dayjs(safeDate).endOf("month").toDate();
+        } else if (start_date && end_date) {
+            if (!dayjs(start_date).isValid() || !dayjs(end_date).isValid()) {
+                throw new BadRequestException("Invalid 'start_date' or 'end_date'. Use 'YYYY-MM-DD'.");
+            }
+            startDate = dayjs(start_date).toDate();
+            endDate = dayjs(end_date).toDate();
+        } else {
+            const now = dayjs().tz("Asia/Kolkata");
+            startDate = now.startOf("month").toDate();
+            endDate = now.endOf("month").toDate();
+        }
+
+        logger.debug("🕒 Filtered Date Range", {
+            start: dayjs(startDate).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss"),
+            end: dayjs(endDate).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss"),
+        });
+
+        const orders = await Order.find({
+            created_at: { $gte: startDate, $lte: endDate }
+        }).sort({ created_at: -1 });
+
+        const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
+
+        return orders.map((order) =>
+            transformOrderToResponse(order, dealerMap[order.dealer_id], detailsMap[order.order_number])
+        );
+    }),
+}
+
+export { orderService };

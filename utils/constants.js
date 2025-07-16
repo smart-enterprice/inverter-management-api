@@ -81,5 +81,8 @@ export const STOCK_TYPES = {
     STOCK_UNPACKED: 'UNPACKED'
 };
 
-export const REQUIRED_FIELDS = ["brand", "model", "product_type", "product_name"];
-export const UPDATABLE_FIELDS = [...REQUIRED_FIELDS, "status"];
+export const PRODUCT_REQUIRED_FIELDS = ["brand", "model", "product_type", "product_name"];
+export const PRODUCT_UPDATABLE_FIELDS = [...PRODUCT_REQUIRED_FIELDS, "status"];
+
+export const ORDER_REQUIRED_FIELDS = ["dealer_id", "priority", "order_details"];
+export const ORDER_DETAILS_REQUIRED_FIELDS = ["product_id", "product_brand", "product_name", "product_model", "product_type", "qty_ordered", "delivery_date"];

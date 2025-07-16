@@ -11,7 +11,7 @@ import { generateUniqueProductId, generateUniqueStockId } from "../utils/generat
 import { BadRequestException } from "../middleware/CustomError.js";
 import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType } from "../utils/validationUtils.js";
 import { mapProductEntityToResponse, mapStockEntityToResponse } from "../utils/modelMapper.js";
-import { UPDATABLE_FIELDS } from "../utils/constants.js";
+import { PRODUCT_UPDATABLE_FIELDS } from "../utils/constants.js";
 
 async function updateExistingStock(existing, newData, action) {
     existing.stock += newData.stock;
@@ -61,7 +61,7 @@ const productService = {
         const { employee_id } = validateMainRoleAccess();
         const updates = {};
 
-        for (const key of UPDATABLE_FIELDS) {
+        for (const key of PRODUCT_UPDATABLE_FIELDS) {
             if (dto[key] !== undefined) {
                 updates[key] = sanitizeInput(dto[key]);
             }

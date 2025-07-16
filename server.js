@@ -53,21 +53,21 @@ const globalLimiter = rateLimit({
 const corsOptions = {
     origin: function(origin, callback) {
         const allowedOrigins = process.env.ALLOWED_ORIGINS ?
-            process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()) : ["http://localhost:5173"];
+            process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : ['http://localhost:5173'];
 
         if (!origin) return callback(null, true);
 
         if (allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
-            securityLogger.warn("CORS violation attempt", { origin });
-            callback(new Error("Not allowed by CORS"));
+            securityLogger.warn('CORS violation attempt', { origin });
+            callback(new Error('Not allowed by CORS'));
         }
     },
     credentials: true,
     optionsSuccessStatus: 200,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 };
 app.use(cors(corsOptions));
 

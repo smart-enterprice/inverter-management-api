@@ -2,7 +2,7 @@
 
 import validator from 'validator';
 import { BadRequestException, ValidationException, UnauthorizedException } from '../middleware/CustomError.js';
-import { APPROVAL_GRANTED_ROLES, ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, REQUIRED_FIELDS, ROLES, } from './constants.js';
+import { APPROVAL_GRANTED_ROLES, ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, ROLES, PRODUCT_REQUIRED_FIELDS, } from './constants.js';
 import { validatePassword } from './employeeAuth.js';
 
 export const sanitizeInput = (input) =>
@@ -75,6 +75,18 @@ export const validateMainRoleAccess = () => {
     return { employee_id, role };
 };
 
+export const getAuthenticatedEmployeeContext = () => {
+    const employeeId = CurrentRequestContext.getEmployeeId();
+    const employeeRole = CurrentRequestContext.getRole();
+
+    if (!employeeId || !employeeRole) {
+        throw new UnauthorizedException(`You do not have permission to perform this action. Allowed roles: ${Object.values(ROLES).join(', ')}`);
+    }
+
+    return { employeeId, employeeRole };
+};
+
+
 export const validateStockActionType = (action) => {
     const type = typeof action === "string" ? action.toUpperCase() : null;
     if (!Object.values(STOCK_ACTIONS).includes(type)) {
@@ -92,7 +104,7 @@ export const validateStockType = (stockType) => {
 };
 
 export const validateProductRequiredFields = (dto) => {
-    for (const field of REQUIRED_FIELDS) {
+    for (const field of PRODUCT_REQUIRED_FIELDS) {
         if (!dto[field]) throw new BadRequestException(`${field} is required`);
     }
 };

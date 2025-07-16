@@ -25,6 +25,17 @@ const STOCK_RESPONSE_FIELDS = [
     'created_at', 'updated_at'
 ];
 
+const ORDER_RESPONSE_FIELDS = [
+    'order_number', 'dealer_id', 'priority', 'order_note', 'status',
+    'delivery_date', 'created_by', 'created_at', 'updated_at'
+];
+
+const ORDER_DETAILS_RESPONSE_FIELDS = [
+    'order_number', 'order_details_number', 'product_id', 'product_brand',
+    'product_name', 'product_model', 'product_type', 'qty_ordered',
+    'qty_delivered', 'delivery_date', 'status', 'created_at', 'updated_at'
+];
+
 export const mapEmployeeRequestToEntity = (data, employeeId = null, isUpdate = false) => {
     const entity = {};
 
@@ -80,4 +91,39 @@ export const mapStockEntityToResponse = (stock) => {
     });
 
     return response;
+};
+
+export const transformOrderToResponse = (order, dealer, orderDetailsList = []) => {
+    if (!order) return { order: null };
+
+    const orderData = {};
+
+    ORDER_RESPONSE_FIELDS.forEach((field) => {
+        if (order[field] !== undefined) {
+            orderData[field] = order[field];
+        }
+    });
+
+    const dealerData = {};
+    if (dealer) {
+        EMPLOYEE_RESPONSE_FIELDS.forEach((field) => {
+            if (dealer[field] !== undefined) {
+                dealerData[field] = dealer[field];
+            }
+        });
+    }
+
+    orderData.dealer = dealerData;
+
+    orderData.order_details = orderDetailsList.map((detail) => {
+        const orderDetailData = {};
+        ORDER_DETAILS_RESPONSE_FIELDS.forEach((field) => {
+            if (detail[field] !== undefined) {
+                orderDetailData[field] = detail[field];
+            }
+        });
+        return orderDetailData;
+    });
+
+    return { order: orderData };
 };
