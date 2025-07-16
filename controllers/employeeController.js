@@ -8,9 +8,9 @@ import { BadRequestException, UnauthorizedException } from "../middleware/Custom
 import logger from "../utils/logger.js";
 import employeeSchema from "../models/employees.js";
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
-import { mapEntityToResponse } from "../utils/employeeMapper.js";
+import { mapEmployeeEntityToResponse } from "../utils/modelMapper.js";
 import { revealPassword } from "../utils/employeeAuth.js";
-import { sanitizeInputBody } from "../utils/employeeValidator.js";
+import { sanitizeInputBody } from "../utils/validationUtils.js";
 
 const getPaginationParams = (query) => {
     const page = parseInt(query.page || "1", 10);
@@ -148,7 +148,7 @@ const employeeController = {
                 status: 200,
                 message: "Employees retrieved successfully",
                 data: {
-                    employees: employees.map(mapEntityToResponse),
+                    employees: employees.map(mapEmployeeEntityToResponse),
                     pagination: page,
                     limit,
                     total,
@@ -177,7 +177,7 @@ const employeeController = {
                     throw new BadRequestException(`Missing password for employee ID: ${emp._id}`);
                 }
                 const decryptedPassword = await revealPassword(emp.password);
-                return mapEntityToResponse(emp, decryptedPassword);
+                return mapEmployeeEntityToResponse(emp, decryptedPassword);
             }));
 
             res.status(200).json({
@@ -282,7 +282,7 @@ const employeeController = {
                 status: 200,
                 message: "Deleted employees retrieved successfully",
                 data: {
-                    employees: deletedEmployees.map(emp => mapEntityToResponse(emp)),
+                    employees: deletedEmployees.map(emp => mapEmployeeEntityToResponse(emp)),
                     pagination: {
                         page,
                         limit,

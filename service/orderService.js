@@ -18,14 +18,11 @@ import {
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc.js";
 import timezone from "dayjs/plugin/timezone.js";
+import { sanitizeInput } from "../utils/validationUtils.js";
+import { ORDER_CREATOR_ROLES, ROLES } from "../utils/constants.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
-
-const ALLOWED_ROLES = ["ROLE_ADMIN", "ROLE_SUPER_ADMIN", "ROLE_SALESMAN"];
-
-const sanitize = (value) =>
-    typeof value === "string" ? validator.escape(value.trim()) : value;
 
 const validateOrderDTO = async(dto) => {
     const requiredFields = ["dealer_id", "priority", "order_details"];
@@ -37,7 +34,7 @@ const validateOrderDTO = async(dto) => {
 
     const dealer = await Employee.findOne({
         employee_id: dto.dealer_id,
-        role: "ROLE_DEALER"
+        role: ROLES.DEALER
     });
     if (!dealer) {
         throw new BadRequestException(
@@ -130,8 +127,8 @@ const createOrder = async(dto) => {
     const employeeId = CurrentRequestContext.getEmployeeId();
     const role = CurrentRequestContext.getRole();
 
-    if (!employeeId || !role || !ALLOWED_ROLES.includes(role)) {
-        throw new UnauthorizedException("Only admins or salesmen can create orders.");
+    if (!employeeId || !role || !Object.values(ORDER_CREATOR_ROLES).includes(role.toUpperCase())) {
+        throw new UnauthorizedException(`Access denied: only users with roles ${Object.values(ORDER_CREATOR_ROLES).join(', ')} are authorized to create orders.`);
     }
 
     const dealer = await validateOrderDTO(dto);
@@ -139,25 +136,27 @@ const createOrder = async(dto) => {
     const orderNumber = await generateUniqueOrderId();
     const order = new Order({
         order_number: orderNumber,
-        dealer_id: sanitize(dealer.employee_id),
+        dealer_id: sanitizeInput(dealer.employee_id),
         created_by: employeeId,
-        priority: sanitize(dto.priority),
-        order_note: sanitize(dto.order_note || "")
+        priority: sanitizeInput(dto.priority),
+        order_note: sanitizeInput(dto.order_note || "")
     });
 
     await order.save();
-    logger.info(`✅ Order created: ${orderNumber}`, { orderNumber });
+    logger.info(`✅
+                    Order created: $ { orderNumber }
+                    `, { orderNumber });
 
     const orderDetailsList = await Promise.all(
         dto.order_details.map(async(detail) => {
             const orderDetail = new OrderDetails({
                 order_details_number: await generateUniqueOrderDetailsId(),
                 order_number: orderNumber,
-                product_id: sanitize(detail.product_id),
-                product_brand: sanitize(detail.product_brand),
-                product_name: sanitize(detail.product_name),
-                product_model: sanitize(detail.product_model),
-                product_type: sanitize(detail.product_type),
+                product_id: sanitizeInput(detail.product_id),
+                product_brand: sanitizeInput(detail.product_brand),
+                product_name: sanitizeInput(detail.product_name),
+                product_model: sanitizeInput(detail.product_model),
+                product_type: sanitizeInput(detail.product_type),
                 qty_ordered: Number(detail.qty_ordered),
                 delivery_date: new Date(detail.delivery_date)
             });
@@ -171,7 +170,10 @@ const createOrder = async(dto) => {
 const getByOrderId = async(orderNumber) => {
     const order = await Order.findOne({ order_number: orderNumber });
     if (!order) {
-        throw new BadRequestException(`No order found for: ${orderNumber}`);
+        throw new BadRequestException(`
+                    No order found
+                    for: $ { orderNumber }
+                    `);
     }
 
     const dealer = await Employee.findOne({ employee_id: order.dealer_id });
@@ -187,7 +189,10 @@ const getAllOrders = async() => {
     const orderNumbers = orders.map((o) => o.order_number);
 
     const [dealers, orderDetails] = await Promise.all([
-        Employee.find({ employee_id: { $in: dealerIds }, role: "ROLE_DEALER" }),
+        Employee.find({
+            employee_id: { $in: dealerIds },
+            role: ROLES.DEALER
+        }),
         OrderDetails.find({ order_number: { $in: orderNumbers } })
     ]);
 
@@ -207,7 +212,8 @@ const getOrdersByDateFilter = async({ year, month, start_date, end_date }) => {
     let startDate, endDate;
 
     if (year && month) {
-        startDate = dayjs(`${year}-${month}-01`).startOf("month").toDate();
+        startDate = dayjs(`
+                    $ { year } - $ { month } - 01 `).startOf("month").toDate();
         endDate = dayjs(startDate).endOf("month").toDate();
     } else if (start_date && end_date) {
         startDate = new Date(start_date);
@@ -233,7 +239,10 @@ const getOrdersByDateFilter = async({ year, month, start_date, end_date }) => {
     const orderNumbers = orders.map((o) => o.order_number);
 
     const [dealers, orderDetails] = await Promise.all([
-        Employee.find({ employee_id: { $in: dealerIds }, role: "ROLE_DEALER" }),
+        Employee.find({
+            employee_id: { $in: dealerIds },
+            role: ROLES.DEALER
+        }),
         OrderDetails.find({ order_number: { $in: orderNumbers } })
     ]);
 

@@ -5,20 +5,10 @@ import xss from "xss";
 
 import { orderService } from "../service/orderService.js";
 import logger from "../utils/logger.js";
-
-const sanitizeInput = (req, res, next) => {
-    if (req.body) {
-        for (const key in req.body) {
-            if (typeof req.body[key] === "string") {
-                req.body[key] = xss(req.body[key]);
-            }
-        }
-    }
-    next();
-};
+import { sanitizeInputBody } from "../utils/validationUtils.js";
 
 const orderController = {
-    sanitizeInput,
+    sanitizeInputBody,
     createOrder: asyncHandler(async(req, res) => {
         const orderData = await orderService.createOrder(req.body);
 

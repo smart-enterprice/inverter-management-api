@@ -15,17 +15,17 @@ import {
     UnauthorizedException
 } from '../middleware/CustomError.js';
 
-import { validateEmployeeData, sanitizeInput, validateRole } from '../utils/employeeValidator.js';
-import { mapRequestToEntity, mapEntityToResponse } from '../utils/employeeMapper.js';
+import { validateEmployeeData } from '../utils/validationUtils.js';
+import { mapEmployeeRequestToEntity, mapEmployeeEntityToResponse } from '../utils/modelMapper.js';
 import { hashPassword, generateToken, revealPassword, validatePassword } from '../utils/employeeAuth.js';
 import {
-    ALLOWED_ROLES,
-    APPROVAL_ROLES,
+    APPROVAL_GRANTED_ROLES,
     JWT_EXPIRES_IN,
     SUPER_ADMIN,
     SUPER_ADMIN_PHONE,
     SUPER_ADMIN_EMAIL,
-    SUPER_ADMIN_PASSWORD
+    SUPER_ADMIN_PASSWORD,
+    ROLES
 } from '../utils/constants.js';
 
 const checkExistingEmployee = async(email, phone, excludeId = null) => {
@@ -111,7 +111,7 @@ const employeeService = {
             employee_email: SUPER_ADMIN_EMAIL,
             employee_phone: SUPER_ADMIN_PHONE,
             password: hashedPassword,
-            role: ALLOWED_ROLES.SUPER_ADMIN,
+            role: ROLES.SUPER_ADMIN,
             status: 'active',
             created_by: 'APPLICATION',
         });
@@ -134,7 +134,7 @@ const employeeService = {
 
         const hashedPassword = await hashPassword(employeeRequest.password);
 
-        const employeeData = mapRequestToEntity(employeeRequest, employeeId);
+        const employeeData = mapEmployeeRequestToEntity(employeeRequest, employeeId);
         employeeData.password = hashedPassword;
 
         logger.info(`Created Employee ID: ${createdByEmployeeId}`);
@@ -144,7 +144,7 @@ const employeeService = {
         await newEmployee.save();
 
         logger.info(`Employee created: ${employeeId}`);
-        return mapEntityToResponse(newEmployee);
+        return mapEmployeeEntityToResponse(newEmployee);
     }),
 
     loginEmployee: asyncHandler(async(loginRequest) => {
@@ -185,7 +185,7 @@ const employeeService = {
         logger.info(`Employee logged in: ${employee.employee_id}`);
 
         return {
-            employee: mapEntityToResponse(employee),
+            employee: mapEmployeeEntityToResponse(employee),
             access_token: token,
             expiresIn: JWT_EXPIRES_IN
         };
@@ -206,7 +206,7 @@ const employeeService = {
             throw new NotFoundException('Employee not found');
         }
 
-        return mapEntityToResponse(employee);
+        return mapEmployeeEntityToResponse(employee);
     }),
 
     getProfile: asyncHandler(async() => {
@@ -226,7 +226,7 @@ const employeeService = {
             throw new NotFoundException('Employee not found');
         }
 
-        return mapEntityToResponse(employee);
+        return mapEmployeeEntityToResponse(employee);
     }),
 
     updateEmployee: asyncHandler(async(employeeId, updateData) => {
@@ -253,7 +253,7 @@ const employeeService = {
             );
         }
 
-        const mappedData = mapRequestToEntity(updateData, employeeId, true);
+        const mappedData = mapEmployeeRequestToEntity(updateData, employeeId, true);
         mappedData.updated_at = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
         const updatedEmployee = await employeeSchema.findOneAndUpdate({ employee_id: employeeId },
@@ -261,7 +261,7 @@ const employeeService = {
         );
 
         logger.info(`Employee updated: ${employeeId}`);
-        return mapEntityToResponse(updatedEmployee);
+        return mapEmployeeEntityToResponse(updatedEmployee);
     }),
 
     resetPassword: asyncHandler(async(updateData) => {
@@ -280,7 +280,7 @@ const employeeService = {
         await updateEmployeePassword(employee, updateData.password, employee.employee_name, employee.role, 'update password for own');
 
         logger.info(`Password reset (self) successful for Employee ID: ${employee.employee_id}`);
-        return mapEntityToResponse(employee);
+        return mapEmployeeEntityToResponse(employee);
     }),
 
     resetPasswordById: asyncHandler(async(employeeId, updateData) => {
@@ -299,7 +299,7 @@ const employeeService = {
         await updateEmployeePassword(targetEmployee, updateData.password, requestingEmployee.employee_name, requestingEmployee.role, `admin reset password`);
 
         logger.info(`Password reset (admin) successful for Employee ID: ${targetEmployee.employee_id}`);
-        return mapEntityToResponse(targetEmployee);
+        return mapEmployeeEntityToResponse(targetEmployee);
     }),
 
     deleteEmployee: asyncHandler(async(updateData) => {
@@ -323,7 +323,7 @@ const employeeService = {
             throw new NotFoundException('Requesting employee not found or inactive');
         }
 
-        if (!Object.values(APPROVAL_ROLES).includes(requestingEmployee.role.toUpperCase())) {
+        if (!Object.values(APPROVAL_GRANTED_ROLES).includes(requestingEmployee.role.toUpperCase())) {
             throw new BadRequestException('Unauthorized: You do not have permission to delete employees');
         }
 
@@ -342,7 +342,7 @@ const employeeService = {
 
         await employeeToDelete.save();
 
-        return mapEntityToResponse(employeeToDelete);
+        return mapEmployeeEntityToResponse(employeeToDelete);
     }),
 
     createAccountLimiter: rateLimit({

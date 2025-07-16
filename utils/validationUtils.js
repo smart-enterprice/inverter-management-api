@@ -1,8 +1,8 @@
-// employeeValidator.js
+// validationUtils.js
 
 import validator from 'validator';
-import { BadRequestException, ValidationException } from '../middleware/CustomError.js';
-import { ALLOWED_ROLES, APPROVAL_ROLES, MAIN_ROLES, STOCK_ACTIONS, STOCK_TYPES } from './constants.js';
+import { BadRequestException, ValidationException, UnauthorizedException } from '../middleware/CustomError.js';
+import { APPROVAL_GRANTED_ROLES, ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, REQUIRED_FIELDS, ROLES, } from './constants.js';
 import { validatePassword } from './employeeAuth.js';
 
 export const sanitizeInput = (input) =>
@@ -59,34 +59,40 @@ export const validateEmployeeData = (data, isUpdate = false) => {
     if (!isUpdate || role !== undefined) {
         if (!role)
             errors.push({ field: 'role', message: 'Role is required' });
-        else if (!Object.values(ALLOWED_ROLES).includes(role.toUpperCase()))
-            errors.push({ field: 'role', message: `Allowed roles: ${Object.values(ALLOWED_ROLES).join(', ')}` });
+        else if (!Object.values(ROLES).includes(role.toUpperCase()))
+            errors.push({ field: 'role', message: `Allowed roles: ${Object.values(ROLES).join(', ')}` });
     }
 
-    if (errors.length) throw new ValidationException('Validation failed', errors);
+    if (errors.length > 0) throw new ValidationException('Validation failed', errors);
 };
 
-export const validateRole = () => {
+export const validateMainRoleAccess = () => {
     const employee_id = CurrentRequestContext.getEmployeeId();
     const role = CurrentRequestContext.getRole();
-    if (!employee_id || !role || !Object.values(MAIN_ROLES).includes(role.toUpperCase())) {
-        throw new UnauthorizedException(`You do not have permission to perform this action. Allowed roles: ${Object.values(MAIN_ROLES).join(', ')}`);
+    if (!employee_id || !role || !Object.values(ADMIN_PRIVILEGED_ROLES).includes(role.toUpperCase())) {
+        throw new UnauthorizedException(`You do not have permission to perform this action. Allowed roles: ${Object.values(ADMIN_PRIVILEGED_ROLES).join(', ')}`);
     }
     return { employee_id, role };
 };
 
-export const validateStockAction = action => {
+export const validateStockActionType = (action) => {
     const type = typeof action === "string" ? action.toUpperCase() : null;
-    if (!Object.values(STOCK_ACTIONS).includes(type.toUpperCase())) {
+    if (!Object.values(STOCK_ACTIONS).includes(type)) {
         throw new BadRequestException(`Invalid stock action: ${action}. Allowed: ${Object.values(STOCK_ACTIONS).join(', ')}`);
     }
     return type;
 };
 
-export const normalizeStockType = stock_type => {
-    const type = typeof stock_type === "string" ? stock_type.trim().toUpperCase() : null;
-    if (!Object.values(STOCK_TYPES).includes(type.toUpperCase())) {
-        throw new BadRequestException(`Invalid stock_type: ${stock_type}. Allowed: ${Object.values(STOCK_TYPES).join(", ")}`);
+export const validateStockType = (stockType) => {
+    const type = typeof stockType === "string" ? stockType.trim().toUpperCase() : null;
+    if (!Object.values(STOCK_TYPES).includes(type)) {
+        throw new BadRequestException(`Invalid stock_type: ${stockType}. Allowed: ${Object.values(STOCK_TYPES).join(", ")}`);
     }
     return type;
+};
+
+export const validateProductRequiredFields = (dto) => {
+    for (const field of REQUIRED_FIELDS) {
+        if (!dto[field]) throw new BadRequestException(`${field} is required`);
+    }
 };

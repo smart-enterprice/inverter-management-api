@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 import { UnauthorizedException } from './CustomError.js';
 import { tokenBlacklistService } from '../service/tokenBlacklistService.js';
-import { PATH_ROUTES, ALLOWED_ROLES, JWT_SECRET } from '../utils/constants.js';
+import { PATH_ROUTES, ROLES, JWT_SECRET, APPROVAL_GRANTED_ROLES } from '../utils/constants.js';
 
 const PUBLIC_ROUTES = [
     `${PATH_ROUTES.AUTH_ROUTE}/signin`
@@ -53,11 +53,11 @@ export const requestContextMiddleware = (req, res, next) => {
     const { employee_id: employeeId, role, status } = decoded;
 
     // Role-based access checks
-    if (isSuperAdminOnlyRoute(path) && role !== ALLOWED_ROLES.SUPER_ADMIN) {
+    if (isSuperAdminOnlyRoute(path) && role !== ROLES.SUPER_ADMIN) {
         return next(new UnauthorizedException('Access restricted to Super Admins only'));
     }
 
-    if (isAdminOrSuperAdminRoute(path) && ![ALLOWED_ROLES.SUPER_ADMIN, ALLOWED_ROLES.ADMIN].includes(role)) {
+    if (isAdminOrSuperAdminRoute(path) && !Object.values(APPROVAL_GRANTED_ROLES).includes(role)) {
         return next(new UnauthorizedException('Access restricted to Admins or Super Admins'));
     }
 
