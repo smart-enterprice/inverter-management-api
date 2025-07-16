@@ -9,18 +9,7 @@ import { employeeService } from "../service/employeeService.js";
 import { BadRequestException } from "../middleware/CustomError.js";
 import logger from "../utils/logger.js";
 import { tokenBlacklistService } from "../service/tokenBlacklistService.js";
-
-
-const sanitizeInput = (req, res, next) => {
-    if (req.body) {
-        for (const key in req.body) {
-            if (typeof req.body[key] === "string") {
-                req.body[key] = xss(req.body[key]);
-            }
-        }
-    }
-    next();
-};
+import { sanitizeInputBody } from "../utils/validationUtils.js";
 
 const authController = {
     employeeSecurityMiddleware: [
@@ -41,11 +30,11 @@ const authController = {
         })
     ],
 
-    sanitizeInput,
+    sanitizeInputBody,
 
     signin: [
         employeeService.loginLimiter,
-        sanitizeInput,
+        sanitizeInputBody,
         asyncHandler(async(req, res) => {
             if (!req.body || !req.body.employee_email || !req.body.password) {
                 throw new BadRequestException("Email and password are required");

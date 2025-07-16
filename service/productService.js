@@ -9,47 +9,9 @@ import Order from "../models/order.js";
 import logger from "../utils/logger.js";
 import { generateUniqueProductId, generateUniqueStockId } from "../utils/generatorIds.js";
 import { BadRequestException } from "../middleware/CustomError.js";
-import { sanitizeInput, validateRole, validateStockAction, normalizeStockType } from "../utils/employeeValidator.js";
-
-const REQUIRED_FIELDS = ["brand", "model", "product_type", "product_name"];
-const UPDATABLE_FIELDS = [...REQUIRED_FIELDS, "status"];
-
-const validateRequiredFields = (dto) => {
-    for (const field of REQUIRED_FIELDS) {
-        if (!dto[field]) throw new BadRequestException(`${field} is required`);
-    }
-};
-
-function mapEntityToResponse(product, stocks = []) {
-    return {
-        product_id: product.product_id,
-        brand: product.brand,
-        product_name: product.product_name,
-        model: product.model,
-        product_type: product.product_type,
-        status: product.status,
-        available_stock: product.available_stock,
-        created_by: product.created_by,
-        created_at: product.created_at,
-        updated_at: product.updated_at,
-        stocks
-    };
-}
-
-function mapStockEntityToResponse(stock) {
-    return {
-        stock_id: stock.stock_id,
-        product_id: stock.product_id,
-        stock: stock.stock,
-        add_stock: stock.add_stock,
-        return_stock: stock.return_stock,
-        stock_type: stock.stock_type,
-        stock_notes: stock.stock_notes,
-        created_by: stock.created_by,
-        created_at: stock.created_at,
-        updated_at: stock.updated_at
-    };
-}
+import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType } from "../utils/validationUtils.js";
+import { mapProductEntityToResponse, mapStockEntityToResponse } from "../utils/modelMapper.js";
+import { PRODUCT_UPDATABLE_FIELDS } from "../utils/constants.js";
 
 async function updateExistingStock(existing, newData, action) {
     existing.stock += newData.stock;
@@ -62,14 +24,14 @@ async function updateExistingStock(existing, newData, action) {
 
 async function fetchProductWithStocks(product) {
     const stocks = await Stock.find({ product_id: product.product_id });
-    return mapEntityToResponse(product, stocks.map(mapStockEntityToResponse));
+    return mapProductEntityToResponse(product, stocks.map(mapStockEntityToResponse));
 }
 
 const productService = {
     createProduct: asyncHandler(async(dto) => {
-        const { employee_id } = validateRole();
+        const { employee_id } = validateMainRoleAccess();
 
-        validateRequiredFields(dto);
+        validateProductRequiredFields(dto);
 
         const productId = await generateUniqueProductId();
 
@@ -87,7 +49,7 @@ const productService = {
         logger.info(`✅ Product created: ${productId}`);
 
         if (Array.isArray(dto.stocks) && dto.stocks.length > 0) {
-            await createOrUpdateProductStock({
+            await productService.createOrUpdateProductStock({
                 [productId]: dto.stocks
             });
         }
@@ -96,10 +58,10 @@ const productService = {
     }),
 
     updateProduct: asyncHandler(async(productId, dto) => {
-        const { employee_id } = validateRole();
+        const { employee_id } = validateMainRoleAccess();
         const updates = {};
 
-        for (const key of UPDATABLE_FIELDS) {
+        for (const key of PRODUCT_UPDATABLE_FIELDS) {
             if (dto[key] !== undefined) {
                 updates[key] = sanitizeInput(dto[key]);
             }
@@ -126,7 +88,7 @@ const productService = {
     }),
 
     createOrUpdateProductStock: asyncHandler(async(stockMap) => {
-        const { employee_id, role } = validateRole();
+        const { employee_id, role } = validateMainRoleAccess();
 
         if (!stockMap || typeof stockMap !== "object" || Array.isArray(stockMap)) {
             throw new BadRequestException("Expected a product-wise stock object.");
@@ -142,8 +104,8 @@ const productService = {
             const stockResponses = [];
 
             for (const entry of entries) {
-                const action = validateStockAction(entry.type);
-                const stockType = normalizeStockType(entry.stock_type);
+                const action = validateStockActionType(entry.type);
+                const stockType = validateStockType(entry.stock_type);
 
                 if (typeof entry.stock !== "number" || entry.stock <= 0) {
                     throw new BadRequestException("Stock must be a positive number.");
@@ -189,7 +151,7 @@ const productService = {
             product.available_stock = allStocks.reduce((acc, s) => acc + s.stock, 0);
             await product.save();
 
-            result.push(mapEntityToResponse(product, stockResponses));
+            result.push(mapProductEntityToResponse(product, stockResponses));
         }
 
         return result;
@@ -207,7 +169,7 @@ const productService = {
 
         for (const product of products) {
             const stocks = await Stock.find({ product_id: product.product_id });
-            result.push(mapEntityToResponse(product, stocks.map(mapStockEntityToResponse)));
+            result.push(mapProductEntityToResponse(product, stocks.map(mapStockEntityToResponse)));
         }
 
         return result;

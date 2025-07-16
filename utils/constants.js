@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-const STATUS_CODES = {
+export const STATUS_CODES = {
     OK: 200,
     CREATED: 201,
     BAD_REQUEST: 400,
@@ -14,8 +14,8 @@ const STATUS_CODES = {
     INTERNAL_SERVER_ERROR: 500,
 };
 
-const PATH_ROUTES = {
-    BASIC_ROUTE: "/api/v1",
+export const PATH_ROUTES = {
+    BASIC_ROUTE: '/api/v1',
 
     get EMPLOYEE_ROUTE() {
         return `${this.BASIC_ROUTE}/employees`;
@@ -31,8 +31,6 @@ const PATH_ROUTES = {
     }
 };
 
-export { STATUS_CODES, PATH_ROUTES };
-
 export const {
     JWT_SECRET,
     JWT_EXPIRES_IN,
@@ -43,7 +41,7 @@ export const {
     ENCRYPTION_SECRET_KEY
 } = process.env;
 
-export const ALLOWED_ROLES = {
+export const ROLES = {
     SUPER_ADMIN: 'ROLE_SUPER_ADMIN',
     ADMIN: 'ROLE_ADMIN',
     SUPERVISOR: 'ROLE_SUPERVISOR',
@@ -56,15 +54,21 @@ export const ALLOWED_ROLES = {
     DEALER: 'ROLE_DEALER'
 };
 
-export const APPROVAL_ROLES = {
-    SUPER_ADMIN: 'ROLE_SUPER_ADMIN',
-    ADMIN: 'ROLE_ADMIN',
+export const APPROVAL_GRANTED_ROLES = {
+    SUPER_ADMIN: ROLES.SUPER_ADMIN,
+    ADMIN: ROLES.ADMIN,
 };
 
-export const MAIN_ROLES = {
-    SUPER_ADMIN: 'ROLE_SUPER_ADMIN',
-    ADMIN: 'ROLE_ADMIN',
-    MANAGER: 'ROLE_MANAGER',
+export const ADMIN_PRIVILEGED_ROLES = {
+    SUPER_ADMIN: ROLES.SUPER_ADMIN,
+    ADMIN: ROLES.ADMIN,
+    MANAGER: ROLES.MANAGER,
+};
+
+export const ORDER_CREATOR_ROLES = {
+    SUPER_ADMIN: ROLES.SUPER_ADMIN,
+    ADMIN: ROLES.ADMIN,
+    SALESMAN: ROLES.SALESMAN,
 };
 
 export const STOCK_ACTIONS = {
@@ -76,3 +80,9 @@ export const STOCK_TYPES = {
     STOCK_PACKED: 'PACKED',
     STOCK_UNPACKED: 'UNPACKED'
 };
+
+export const PRODUCT_REQUIRED_FIELDS = ["brand", "model", "product_type", "product_name"];
+export const PRODUCT_UPDATABLE_FIELDS = [...PRODUCT_REQUIRED_FIELDS, "status"];
+
+export const ORDER_REQUIRED_FIELDS = ["dealer_id", "priority", "order_details"];
+export const ORDER_DETAILS_REQUIRED_FIELDS = ["product_id", "product_brand", "product_name", "product_model", "product_type", "qty_ordered", "delivery_date"];

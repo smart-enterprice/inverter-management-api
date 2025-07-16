@@ -2,7 +2,7 @@
 import asyncHandler from "express-async-handler";
 import xss from "xss";
 import { productService } from "../service/productService.js";
-import { sanitizeInputBody } from "../utils/employeeValidator.js";
+import { sanitizeInputBody } from "../utils/validationUtils.js";
 
 const productController = {
     sanitizeInputBody,

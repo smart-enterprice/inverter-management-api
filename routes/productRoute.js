@@ -2,7 +2,7 @@
 import express from 'express';
 import { verifyToken } from '../middleware/verifyToken.js';
 import productController from '../controllers/productController.js';
-import { sanitizeInputBody } from '../utils/employeeValidator.js';
+import { sanitizeInputBody } from '../utils/validationUtils.js';
 
 const router = express.Router();
 
