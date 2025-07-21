@@ -16,6 +16,7 @@ import { getAuthenticatedEmployeeContext, sanitizeInput } from "../utils/validat
 
 import { ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIELDS, ORDER_REQUIRED_FIELDS, ROLES } from "../utils/constants.js";
 import { transformOrderToResponse } from "../utils/modelMapper.js";
+import { productService } from "./productService.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -87,43 +88,66 @@ const orderService = {
             throw new UnauthorizedException(`Access denied: only users with roles ${Object.values(ORDER_CREATOR_ROLES).join(', ')} are authorized to create orders.`);
         }
 
-        const dealer = await validateOrderDTO(dto);
-        const orderNumber = await generateUniqueOrderId();
+        const salesmanId = role === "ROLE_SALESMAN" ? employeeId : sanitizeInput(dto.salesman_id);
 
-        const order = new Order({
+        if ((Object.values(APPROVAL_GRANTED_ROLES).includes(role.toUpperCase())) && !salesmanId) {
+            throw new BadRequestException("salesman_id is required when ADMIN or SUPER_ADMIN creates the order.");
+        }
+
+        const dealer = await validateOrderDTO(dto);
+
+        const orderNumber = await generateUniqueOrderId();
+        const order = await new Order({
             order_number: orderNumber,
             dealer_id: sanitizeInput(dealer.employee_id),
             created_by: employeeId,
-            priority: sanitizeInput(dto.priority),
+            salesman_id: salesmanId,
+            priority: sanitizeInput(dto.priority || "LOW"),
             order_note: sanitizeInput(dto.order_note || ""),
-        });
+        }).save();
 
-        await order.save();
-        logger.info(`✅Order created: ${ orderNumber }`, { orderNumber });
+        const productIds = dto.order_details.map(detail => detail.product_id);
+        const { productMap, productStockMap } = await productService.getProductsByIds(productIds);
 
-        const orderDetailsList = await Promise.all(
-            dto.order_details.map(async(detail) => {
-                const orderDetail = new OrderDetails({
+        const orderDetailsPayload = await Promise.all(
+            dto.order_details.map(async (detail) => {
+                const product = productMap.get(detail.product_id);
+                const stocks = productStockMap.get(detail.product_id) || [];
+
+                if (!product) {
+                    throw new BadRequestException(`Product not found: ${detail.product_id}`);
+                }
+
+                console.log("📦 Stocks for", detail.product_id, stocks);
+
+                const { productionRequired } = await productService.checkAndReserveStock(product, stocks, Number(detail.qty_ordered), employeeId, role);
+                
+                return {
                     order_details_number: await generateUniqueOrderDetailsId(),
                     order_number: orderNumber,
-                    product_id: sanitizeInput(detail.product_id),
-                    product_brand: sanitizeInput(detail.product_brand),
-                    product_name: sanitizeInput(detail.product_name),
-                    product_model: sanitizeInput(detail.product_model),
-                    product_type: sanitizeInput(detail.product_type),
+                    product_id: product.product_id,
+                    product_brand: product.brand,
+                    product_name: product.product_name,
+                    product_model: product.model,
+                    product_type: product.product_type,
                     qty_ordered: Number(detail.qty_ordered),
-                    delivery_date: new Date(detail.delivery_date)
-                });
-
-                return await orderDetail.save();
+                    delivery_date: new Date(detail.delivery_date),
+                    status: productionRequired > 0 ? "PENDING_PRODUCTION" : "PENDING"
+                };
             })
         );
 
+        const orderDetailsList = await OrderDetails.insertMany(orderDetailsPayload);
+
+        order.sales_target_updated = false;
+        await order.save();
+        logger.info(`✅Order created: ${ orderNumber }`, { orderNumber });
+        
         return transformOrderToResponse(order, dealer, orderDetailsList);
     }),
 
     getByOrderId: asyncHandler(async(orderNumber) => {
-        const order = await Order.findOne({ order_number: orderNumber });
+        const order = await Order.findByOrderNumber(orderNumber);
         if (!order) {
             throw new BadRequestException(`No order found for: ${ orderNumber }`);
         }

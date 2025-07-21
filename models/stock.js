@@ -33,11 +33,20 @@ const stockSchema = new mongoose.Schema({
         default: 0,
         min: [0, "Return stock cannot be negative"]
     },
+    stock_action: {
+        type: String,
+        required: [true, "⚠️ Stock action is required!"],
+        enum: {
+            values: ["ADD", "RETURN", "ORDERED", "OTHER"],
+            message: "Invalid stock type"
+        },
+        trim: true
+    },
     stock_type: {
         type: String,
         required: [true, "⚠️ Stock type is required!"],
         enum: {
-            values: ["PACKED", "UNPACKED"],
+            values: ["PACKED", "UNPACKED", "SALE", "OTHER"],
             message: "Invalid stock type"
         },
         trim: true
@@ -45,6 +54,9 @@ const stockSchema = new mongoose.Schema({
     stock_notes: {
         type: String,
         trim: true
+    },
+    order_number: {
+        type: String,
     },
     created_by: {
         type: String,

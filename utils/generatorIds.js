@@ -61,7 +61,7 @@ export const generateUniqueOrderId = async() => {
 
     do {
         order_number = generateSegmentedOrderId();
-        exists = await Order.findOne({ order_number: order_number });
+        exists = await Order.findByOrderNumber(order_number);
     } while (exists);
 
     return order_number;
