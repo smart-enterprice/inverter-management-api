@@ -73,12 +73,16 @@ export const ORDER_CREATOR_ROLES = {
 
 export const STOCK_ACTIONS = {
     STOCK_ADD: 'ADD',
-    STOCK_RETURN: 'RETURN'
+    STOCK_RETURN: 'RETURN',
+    STOCK_ORDERED: 'ORDERED',
+    STOCK_OTHER: 'OTHER'
 };
 
 export const STOCK_TYPES = {
     STOCK_PACKED: 'PACKED',
-    STOCK_UNPACKED: 'UNPACKED'
+    STOCK_UNPACKED: 'UNPACKED',
+    STOCK_SALE: 'SALE',
+    STOCK_OTHER: 'OTHER'
 };
 
 export const PRODUCT_REQUIRED_FIELDS = ["brand", "model", "product_type", "product_name"];
