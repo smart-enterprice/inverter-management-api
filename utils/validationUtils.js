@@ -86,7 +86,6 @@ export const getAuthenticatedEmployeeContext = () => {
     return { employeeId, employeeRole };
 };
 
-
 export const validateStockActionType = (action) => {
     const type = typeof action === "string" ? action.toUpperCase() : null;
     if (!Object.values(STOCK_ACTIONS).includes(type)) {
