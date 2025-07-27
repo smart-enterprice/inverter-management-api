@@ -3,6 +3,7 @@ import asyncHandler from "express-async-handler";
 import xss from "xss";
 import { productService } from "../service/productService.js";
 import { sanitizeInputBody } from "../utils/validationUtils.js";
+import { BadRequestException } from "../middleware/CustomError.js";
 
 const productController = {
     sanitizeInputBody,
@@ -64,6 +65,34 @@ const productController = {
             timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),
+
+    getAllBrands: asyncHandler(async(req, res) => {
+        const brandListData = await productService.getAllBrands();
+        res.status(200).json({
+            success: true,
+            status: 200,
+            message: "📦 Product Brand list fetched successfully!",
+            data: brandListData,
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        });
+    }),
+
+    createProductBrands: asyncHandler(async(req, res) => {
+        if (!Array.isArray(req.body) || req.body.length === 0) {
+            throw new BadRequestException("Invalid brand list.Provide a non - empty array ");
+        }
+
+        const brands = await productService.createProductBrands(req.body);
+
+        res.status(201).json({
+            success: true,
+            status: 201,
+            message: "✅ Product Brands created successfully!",
+            data: brands,
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        });
+    }),
+
 };
 
 export default productController;

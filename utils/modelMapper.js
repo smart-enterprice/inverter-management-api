@@ -19,6 +19,11 @@ const PRODUCT_RESPONSE_FIELDS = [
     'created_at', 'updated_at'
 ];
 
+const PRODUCT_BRAND_RESPONSE_FIELDS = [
+    'brand_id', 'brand_name', 'brand_models', 'description',
+    'status', 'created_by', 'created_at', 'updated_at'
+];
+
 const STOCK_RESPONSE_FIELDS = [
     'stock_id', 'product_id', 'stock', 'add_stock', 'return_stock',
     'stock_type', 'stock_notes', 'created_by',
@@ -126,4 +131,16 @@ export const transformOrderToResponse = (order, dealer, orderDetailsList = []) =
     });
 
     return { order: orderData };
+};
+
+export const mapProductBrandEntityToResponse = (brand) => {
+    const response = {};
+
+    PRODUCT_BRAND_RESPONSE_FIELDS.forEach(field => {
+        if (brand[field] !== undefined) {
+            response[field] = brand[field];
+        }
+    });
+
+    return response;
 };

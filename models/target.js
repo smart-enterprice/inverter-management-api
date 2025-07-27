@@ -51,5 +51,14 @@ targetSchema.pre("findOneAndUpdate", function(next) {
     next();
 });
 
-const Target = mongoose.model("Target", targetSchema);
-export default Target;
+const TargetModel = mongoose.model("Target", targetSchema);
+
+export default class Target extends TargetModel {
+    constructor(targetData) {
+        super(targetData);
+    }
+
+    static async getAllTarget() {
+        return await this.find({});
+    }
+}

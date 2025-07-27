@@ -19,9 +19,7 @@ const ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES = [
     `${PATH_ROUTES.EMPLOYEE_ROUTE}/update/delete-employee`
 ];
 
-// console.log(`[Auth Middleware] Checking if ${req.path} is in public paths: ${JSON.stringify(PUBLIC_PATHS)}`);
 const isPublicRoute = (path) => PUBLIC_ROUTES.includes(path);
-
 const isSuperAdminOnlyRoute = (path) => SUPER_ADMIN_ONLY_ROUTES.includes(path);
 const isAdminOrSuperAdminRoute = (path) => ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES.includes(path);
 
@@ -36,12 +34,14 @@ export const requestContextMiddleware = (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
+    if (!token || token === 'undefined' || token === 'null') {
+        return next(new UnauthorizedException('Authentication failed: Token is missing or invalid.'));
+    }
 
     let decoded;
     try {
         decoded = jwt.verify(token, JWT_SECRET);
     } catch (err) {
-        console.error('[Auth Middleware] JWT verification failed:', err.message);
         return next(new UnauthorizedException('Invalid or expired token'));
     }
 
@@ -60,7 +60,6 @@ export const requestContextMiddleware = (req, res, next) => {
         return next(new UnauthorizedException('Access restricted to Admins or Super Admins'));
     }
 
-    // Set request-scoped context
     CurrentRequestContext.run({}, () => {
         CurrentRequestContext.setEmployeeId(employeeId);
         CurrentRequestContext.setRole(role);

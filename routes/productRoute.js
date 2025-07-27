@@ -11,11 +11,14 @@ router.use(sanitizeInputBody);
 
 // @route   POST
 router.post('/create', productController.createProduct);
+router.post('/create/brands', productController.createProductBrands);
 
 // @route   GET
 router.get('/', productController.getAll);
 
 router.get('/:productId', productController.getByProductId);
+
+router.get('/getAll/brands', productController.getAllBrands);
 
 // @route   PUT
 router.put('/:productId', productController.updateProduct);

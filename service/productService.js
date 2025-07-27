@@ -7,11 +7,12 @@ import Stock from "../models/stock.js";
 import Order from "../models/order.js";
 
 import logger from "../utils/logger.js";
-import { generateUniqueProductId, generateUniqueStockId } from "../utils/generatorIds.js";
+import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId } from "../utils/generatorIds.js";
 import { BadRequestException } from "../middleware/CustomError.js";
-import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType } from "../utils/validationUtils.js";
-import { mapProductEntityToResponse, mapStockEntityToResponse } from "../utils/modelMapper.js";
+import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext } from "../utils/validationUtils.js";
+import { mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse } from "../utils/modelMapper.js";
 import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS } from "../utils/constants.js";
+import Brand from "../models/brand.js";
 
 async function fetchProductWithStocks(product) {
     const stocks = await Stock.find({ product_id: product.product_id });
@@ -23,7 +24,7 @@ async function calculateAvailableStock(productId) {
 
     const sumByType = (type) =>
         allStocks.filter((s) => s.stock_type === type)
-            .reduce((total, s) => total + s.stock, 0);
+        .reduce((total, s) => total + s.stock, 0);
 
     const packed = sumByType(STOCK_TYPES.STOCK_PACKED);
     const unpacked = sumByType(STOCK_TYPES.STOCK_UNPACKED);
@@ -60,7 +61,7 @@ async function saveOrUpdateStockTransaction({
     }
 
     const productionNote = productionRequired > 0 ? ` | Production Required: ${productionRequired}` : "";
-    const newNote =`${action} for ${orderNumber ? `Order:${orderNumber}` : ""}${productionNote} -- Employee:${employeeId}; Role:${role}; Action:${action}; ${returnReason}; Date:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
+    const newNote = `${action} for ${orderNumber ? `Order:${orderNumber}` : ""}${productionNote} -- Employee:${employeeId}; Role:${role}; Action:${action}; ${returnReason}; Date:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
     const combinedNotes = stockNotes ? `${stockNotes} || ${newNote}` : newNote;
 
     const query = { product_id: product.product_id, stock_type: stockType || action };
@@ -287,7 +288,54 @@ const productService = {
         return { availableStockUsed, productionRequired, packedUsed, unpackedUsed };
     }),
 
+    getAllBrands: asyncHandler(async() => {
+        const productBrands = await Brand.find().sort({ created_at: -1 });
+        console.log("SIJDGIJ", productBrands);
+        
+        const result = productBrands.map((brand) =>
+            mapProductBrandEntityToResponse(brand)
+        );
+
+        return result;
+    }),
+
+    createProductBrands: asyncHandler(async(brandsData) => {
+        const { employee_id, role } = getAuthenticatedEmployeeContext();
+        
+        const brandDocs = [];
+
+        for (const brand of brandsData) {
+            const brand_name = brand.brand_name?.toUpperCase().trim();
+            if (!brand_name) {
+                throw new BadRequestException("Brand name is missing or invalid.");
+            }
+
+            const existingBrand = await Brand.findOne({ brand_name: brand_name });
+            if (existingBrand) {
+                throw new BadRequestException(`Brand "${brand_name}" already exists.`);
+            }
+
+            const brand_models = [...new Set(
+                brand.brand_models.map((model) => model.trim().toUpperCase())
+            )];
+            
+            const brandDoc = new Brand({
+                brand_id: await generateUniqueBrandId(),
+                brand_name,
+                brand_models,
+                description: brand.description?.trim() || "",
+                created_by: employee_id
+            });
+
+            brandDocs.push(brandDoc);
+        }
+
+        await Brand.insertMany(brandDocs);
+        return brandDocs.map((brand) =>
+            mapProductBrandEntityToResponse(brand)
+        );
+    }),
+
 }
 
 export { productService };
-

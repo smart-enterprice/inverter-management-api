@@ -94,9 +94,9 @@ const employeeService = {
                 existingAdmin.employee_id = employeeId;
 
                 await existingAdmin.save();
-                console.log("✅ Super Admin ID was missing and has been updated.");
+                logger.info("✅ Super Admin ID was missing and has been updated.");
             } else {
-                console.log("⚠️ Super Admin already exists");
+                logger.info("⚠️ Super Admin already exists");
             }
             return;
         }
@@ -118,7 +118,7 @@ const employeeService = {
 
         await superAdmin.save();
 
-        console.log("✅ Default Super Admin created successfully.");
+        logger.info("✅ Default Super Admin created successfully.");
     }),
 
     createEmployee: asyncHandler(async(employeeRequest, createdByEmployeeId) => {

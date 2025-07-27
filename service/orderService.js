@@ -110,7 +110,7 @@ const orderService = {
         const { productMap, productStockMap } = await productService.getProductsByIds(productIds);
 
         const orderDetailsPayload = await Promise.all(
-            dto.order_details.map(async (detail) => {
+            dto.order_details.map(async(detail) => {
                 const product = productMap.get(detail.product_id);
                 const stocks = productStockMap.get(detail.product_id) || [];
 
@@ -118,10 +118,10 @@ const orderService = {
                     throw new BadRequestException(`Product not found: ${detail.product_id}`);
                 }
 
-                console.log("📦 Stocks for", detail.product_id, stocks);
+                logger.info("📦 Stocks for", detail.product_id, stocks);
 
                 const { productionRequired } = await productService.checkAndReserveStock(product, stocks, Number(detail.qty_ordered), employeeId, role);
-                
+
                 return {
                     order_details_number: await generateUniqueOrderDetailsId(),
                     order_number: orderNumber,
@@ -142,7 +142,7 @@ const orderService = {
         order.sales_target_updated = false;
         await order.save();
         logger.info(`✅Order created: ${ orderNumber }`, { orderNumber });
-        
+
         return transformOrderToResponse(order, dealer, orderDetailsList);
     }),
 
