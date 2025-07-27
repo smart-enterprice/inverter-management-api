@@ -11,8 +11,6 @@ export const validatePassword = (password) => {
         throw new BadRequestException('Password must be at least 8 characters long');
 
     const pattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/;
-    console.log('password : ', password);
-    console.log('password match : ', !pattern.test(password));
 
     if (!pattern.test(password)) {
         throw new BadRequestException('Password must include lowercase, uppercase, number, and special character');

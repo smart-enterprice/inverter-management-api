@@ -1,9 +1,11 @@
 // generatorIds.js
+import Brand from '../models/brand.js';
 import Employee from '../models/employees.js';
 import Order from '../models/order.js';
 import OrderDetails from '../models/orderDetails.js';
 import Product from '../models/product.js';
 import Stock from '../models/stock.js';
+import { v4 as uuidv4 } from 'uuid';
 
 const generateRandomString = (length) => {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -78,3 +80,15 @@ export const generateUniqueOrderDetailsId = async() => {
 
     return order__details_number;
 };
+
+export const generateUniqueBrandId = async() => {
+    let brand_id;
+    let exists;
+
+    do {
+        brand_id = 'BRAND_' + uuidv4().split('-')[0].toUpperCase();
+        exists = await Brand.findOne({ brand_id: brand_id });
+    } while (exists);
+
+    return brand_id;
+}

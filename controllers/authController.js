@@ -36,8 +36,6 @@ const authController = {
         employeeService.loginLimiter,
         sanitizeInputBody,
         asyncHandler(async(req, res) => {
-            console.log('sign up call dev');
-
             if (!req.body || !req.body.employee_email || !req.body.password) {
                 throw new BadRequestException("Email and password are required");
             }
