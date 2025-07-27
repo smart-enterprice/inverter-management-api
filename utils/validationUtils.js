@@ -1,9 +1,11 @@
 // validationUtils.js
 
 import validator from 'validator';
+
 import { BadRequestException, ValidationException, UnauthorizedException } from '../middleware/CustomError.js';
 import { APPROVAL_GRANTED_ROLES, ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, ROLES, PRODUCT_REQUIRED_FIELDS, } from './constants.js';
 import { validatePassword } from './employeeAuth.js';
+import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 
 export const sanitizeInput = (input) =>
     typeof input === 'string' ? validator.escape(input.trim()) : input;
