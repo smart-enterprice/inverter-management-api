@@ -22,7 +22,6 @@ const ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES = [
 // console.log(`[Auth Middleware] Checking if ${req.path} is in public paths: ${JSON.stringify(PUBLIC_PATHS)}`);
 const isPublicRoute = (path) => PUBLIC_ROUTES.includes(path);
 
-
 const isSuperAdminOnlyRoute = (path) => SUPER_ADMIN_ONLY_ROUTES.includes(path);
 const isAdminOrSuperAdminRoute = (path) => ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES.includes(path);
 
