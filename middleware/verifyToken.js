@@ -1,9 +1,11 @@
 import jwt from 'jsonwebtoken';
 import { UnauthorizedException } from './CustomError.js';
+import Employee from '../models/employees.js';
+import { employeeService } from '../service/employeeService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
-export const verifyToken = (req, res, next) => {
+export const verifyToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -15,14 +17,26 @@ export const verifyToken = (req, res, next) => {
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
 
+        const { employee_id, role, status } = decoded;
+        if (!employee_id || !role) {
+            throw new UnauthorizedException('Invalid token payload.');
+        }
+
+        const employee = await Employee.findOne({ employee_id, status: 'active' });
+        if (!employee) {
+            employeeService.logout(token);
+            throw new UnauthorizedException('User does not exist or is inactive.');
+        }
+
         req.user = {
-            employee_id: decoded.employee_id,
-            role: decoded.role,
-            status: decoded.status
+            employee_id,
+            role,
+            status
         };
 
         next();
     } catch (err) {
+        console.warn('[Auth Error]:', err.message);
         throw new UnauthorizedException('Invalid or expired token');
     }
 };

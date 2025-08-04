@@ -11,7 +11,7 @@ import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId }
 import { BadRequestException } from "../middleware/CustomError.js";
 import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext } from "../utils/validationUtils.js";
 import { mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse } from "../utils/modelMapper.js";
-import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS } from "../utils/constants.js";
+import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS } from "../utils/constants.js";
 import Brand from "../models/brand.js";
 
 async function fetchProductWithStocks(product) {
@@ -24,7 +24,7 @@ async function calculateAvailableStock(productId) {
 
     const sumByType = (type) =>
         allStocks.filter((s) => s.stock_type === type)
-        .reduce((total, s) => total + s.stock, 0);
+            .reduce((total, s) => total + s.stock, 0);
 
     const packed = sumByType(STOCK_TYPES.STOCK_PACKED);
     const unpacked = sumByType(STOCK_TYPES.STOCK_UNPACKED);
@@ -103,15 +103,33 @@ async function saveOrUpdateStockTransaction({
 }
 
 const productService = {
-    createProduct: asyncHandler(async(dto) => {
+    createProduct: asyncHandler(async (dto) => {
         const { employee_id } = validateMainRoleAccess();
         validateProductRequiredFields(dto);
+
+        const productBrands = await Brand.find({ status: "active" }).sort({ created_at: -1 });
+        const brandModelMap = new Map();
+        productBrands.forEach(({ brand_name, brand_models }) => {
+            brandModelMap.set(brand_name.toUpperCase(), brand_models.map(m => m.toUpperCase()));
+        });
+
+        const brandInput = sanitizeInput(dto.brand).toUpperCase();
+        const modelInput = sanitizeInput(dto.model).toUpperCase();
+
+        if (!brandModelMap.has(brandInput)) {
+            throw new Error(`Brand ${dto.brand} does not exist or is not active.`);
+        }
+
+        const validModels = brandModelMap.get(brandInput);
+        if (!validModels.includes(modelInput)) {
+            throw new Error(`Model ${dto.model} is not associated with brand ${dto.brand}.`);
+        }
 
         const productId = await generateUniqueProductId();
         const product = new Product({
             product_id: productId,
-            brand: sanitizeInput(dto.brand),
-            model: sanitizeInput(dto.model),
+            brand: brandInput,
+            model: modelInput,
             product_type: sanitizeInput(dto.product_type),
             product_name: sanitizeInput(dto.product_name),
             available_stock: Number(dto.available_stock || 0),
@@ -128,7 +146,7 @@ const productService = {
         return fetchProductWithStocks(product);
     }),
 
-    updateProduct: asyncHandler(async(productId, dto) => {
+    updateProduct: asyncHandler(async (productId, dto) => {
         const { employee_id } = validateMainRoleAccess();
         const updates = {};
 
@@ -146,7 +164,7 @@ const productService = {
         return fetchProductWithStocks(updated);
     }),
 
-    createOrUpdateProductStock: asyncHandler(async(stockMap) => {
+    createOrUpdateProductStock: asyncHandler(async (stockMap) => {
         const { employee_id, role } = validateMainRoleAccess();
 
         if (!stockMap || typeof stockMap !== "object" || Array.isArray(stockMap)) {
@@ -192,13 +210,13 @@ const productService = {
         return result;
     }),
 
-    getByProductId: asyncHandler(async(productId) => {
+    getByProductId: asyncHandler(async (productId) => {
         const product = await Product.findOne({ product_id: productId });
         if (!product) throw new BadRequestException(`No product found with ID ${productId}`);
         return fetchProductWithStocks(product);
     }),
 
-    getAllProducts: asyncHandler(async(filter = {}) => {
+    getAllProducts: asyncHandler(async (filter = {}) => {
         const products = await Product.find(filter).sort({ created_at: -1 });
         const result = [];
 
@@ -288,10 +306,9 @@ const productService = {
         return { availableStockUsed, productionRequired, packedUsed, unpackedUsed };
     }),
 
-    getAllBrands: asyncHandler(async() => {
+    getAllBrands: asyncHandler(async () => {
         const productBrands = await Brand.find().sort({ created_at: -1 });
-        console.log("SIJDGIJ", productBrands);
-        
+
         const result = productBrands.map((brand) =>
             mapProductBrandEntityToResponse(brand)
         );
@@ -299,9 +316,9 @@ const productService = {
         return result;
     }),
 
-    createProductBrands: asyncHandler(async(brandsData) => {
+    createProductBrands: asyncHandler(async (brandsData) => {
         const { employee_id, role } = getAuthenticatedEmployeeContext();
-        
+
         const brandDocs = [];
 
         for (const brand of brandsData) {
@@ -312,13 +329,13 @@ const productService = {
 
             const existingBrand = await Brand.findOne({ brand_name: brand_name });
             if (existingBrand) {
-                throw new BadRequestException(`Brand "${brand_name}" already exists.`);
+                throw new BadRequestException(`Brand ${brand_name} already exists.`);
             }
 
             const brand_models = [...new Set(
                 brand.brand_models.map((model) => model.trim().toUpperCase())
             )];
-            
+
             const brandDoc = new Brand({
                 brand_id: await generateUniqueBrandId(),
                 brand_name,
@@ -334,6 +351,37 @@ const productService = {
         return brandDocs.map((brand) =>
             mapProductBrandEntityToResponse(brand)
         );
+    }),
+
+    statusChangeByBrandName: asyncHandler(async (brandName, bodyData) => {
+        const { status } = bodyData;
+        const normalizedStatus = status.trim().toLowerCase();
+        const normalizedBrandName = brandName.trim().toUpperCase();
+        
+        if (!normalizedBrandName || typeof normalizedBrandName !== 'string' || !normalizedBrandName.trim()) {
+            throw new BadRequestException("Brand name parameter is missing or invalid.");
+        }
+
+        if (!normalizedStatus || !STATUS.includes(normalizedStatus)) {
+            throw new BadRequestException("Status must be either 'active' or 'inactive'.");
+        }
+        
+        const brand = await Brand.findOne({ brand_name: normalizedBrandName });
+
+        if (!brand) {
+            throw new BadRequestException(`Brand ${normalizedBrandName} not found.`);
+        }
+        
+        if (brand.status.toLowerCase() === normalizedStatus) {
+            return mapProductBrandEntityToResponse(brand);
+        }
+
+        brand.status = normalizedStatus;
+        brand.updated_at = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+
+        await brand.save();
+
+        return mapProductBrandEntityToResponse(brand);
     }),
 
 }

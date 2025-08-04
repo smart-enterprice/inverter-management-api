@@ -1,14 +1,9 @@
 // authController.js
 import asyncHandler from "express-async-handler";
 import helmet from "helmet";
-import xss from "xss";
-
-import jwt from 'jsonwebtoken';
 
 import { employeeService } from "../service/employeeService.js";
 import { BadRequestException } from "../middleware/CustomError.js";
-import logger from "../utils/logger.js";
-import { tokenBlacklistService } from "../service/tokenBlacklistService.js";
 import { sanitizeInputBody } from "../utils/validationUtils.js";
 
 const authController = {
@@ -65,18 +60,7 @@ const authController = {
             }
 
             const token = authHeader.split(' ')[1];
-            const decoded = jwt.decode(token);
-
-            if (!decoded || !decoded.exp) {
-                throw new UnauthorizedException('Invalid token');
-            }
-
-            const currentTime = Math.floor(Date.now() / 1000);
-            const ttl = decoded.exp - currentTime;
-
-            if (ttl > 0) {
-                tokenBlacklistService.blacklistToken(token, ttl);
-            }
+            await employeeService.logout(token);
 
             return res.status(200).json({
                 success: true,

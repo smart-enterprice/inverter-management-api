@@ -93,6 +93,20 @@ const productController = {
         });
     }),
 
+    statusChangeByBrandName: asyncHandler(async (req, res) => {
+        const { brandName } = req.params;
+
+        const updatedBrand = await productService.statusChangeByBrandName(brandName.trim(), req.body);
+        
+        res.status(200).json({
+            success: true,
+            status: 200,
+            message: `Brand ${brandName} status updated.`,
+            data: updatedBrand,
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        });
+    }),
+
 };
 
 export default productController;

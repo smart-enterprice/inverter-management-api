@@ -15,14 +15,12 @@ router.post('/create/brands', productController.createProductBrands);
 
 // @route   GET
 router.get('/', productController.getAll);
-
 router.get('/:productId', productController.getByProductId);
-
 router.get('/getAll/brands', productController.getAllBrands);
 
 // @route   PUT
 router.put('/:productId', productController.updateProduct);
-
 router.put('/createOrUpdate/product-stocks', productController.createOrUpdateProductStocks);
+router.put('/brand/:brandName', productController.statusChangeByBrandName);
 
 export default router;
