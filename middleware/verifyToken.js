@@ -6,9 +6,12 @@ import { employeeService } from '../service/employeeService.js';
 const JWT_SECRET = process.env.JWT_SECRET;
 
 export const verifyToken = async (req, res, next) => {
+    console.log('[Auth] Verifying authorization header...');
+
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.error('[Auth] Missing or malformed token.');
         throw new UnauthorizedException('Authorization token missing or malformed');
     }
 
@@ -24,7 +27,7 @@ export const verifyToken = async (req, res, next) => {
 
         const employee = await Employee.findOne({ employee_id, status: 'active' });
         if (!employee) {
-            employeeService.logout(token);
+            await employeeService.logout(token);
             throw new UnauthorizedException('User does not exist or is inactive.');
         }
 
@@ -34,6 +37,7 @@ export const verifyToken = async (req, res, next) => {
             status
         };
 
+        console.log('[Auth] Authentication passed. Attaching user to request.');
         next();
     } catch (err) {
         console.warn('[Auth Error]:', err.message);

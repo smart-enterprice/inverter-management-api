@@ -2,7 +2,7 @@
 
 import jwt from 'jsonwebtoken';
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
-import { UnauthorizedException } from './CustomError.js';
+import { UnauthorizedException, BadRequestException } from './CustomError.js';
 import { tokenBlacklistService } from '../service/tokenBlacklistService.js';
 import { PATH_ROUTES, ROLES, JWT_SECRET, APPROVAL_GRANTED_ROLES } from '../utils/constants.js';
 
@@ -38,10 +38,17 @@ export const requestContextMiddleware = (req, res, next) => {
         return next(new UnauthorizedException('Authentication failed: Token is missing or invalid.'));
     }
 
+    if (!JWT_SECRET) {
+        console.error('[Auth] JWT_SECRET is not defined in environment.');
+        return next(new BadRequestException('JWT_SECRET is missing in environment variables'));
+    }
+
     let decoded;
     try {
         decoded = jwt.verify(token, JWT_SECRET);
+        console.log('[Auth] Token verified successfully.');
     } catch (err) {
+        console.error('[Auth Error] JWT verification failed:', err.message);
         return next(new UnauthorizedException('Invalid or expired token'));
     }
 
@@ -51,6 +58,10 @@ export const requestContextMiddleware = (req, res, next) => {
 
     const { employee_id: employeeId, role, status } = decoded;
 
+    if (!employeeId || !role) {
+        return next(new UnauthorizedException('Invalid token payload'));
+    }
+    
     // Role-based access checks
     if (isSuperAdminOnlyRoute(path) && role !== ROLES.SUPER_ADMIN) {
         return next(new UnauthorizedException('Access restricted to Super Admins only'));
