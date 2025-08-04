@@ -60,7 +60,7 @@ const validateOrderDTO = async(dto) => {
     return dealer;
 };
 
-const fetchDealerAndOrderDetails = async(orders) => {
+export const fetchDealerAndOrderDetails = async(orders) => {
     const dealerIds = [...new Set(orders.map((o) => o.dealer_id))];
     const orderNumbers = orders.map((o) => o.order_number);
 
