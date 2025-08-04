@@ -3,6 +3,7 @@
 import asyncHandler from "express-async-handler";
 import rateLimit from 'express-rate-limit';
 import validator from 'validator';
+import jwt from 'jsonwebtoken';
 
 import employeeSchema from '../models/employees.js';
 import { generateUniqueEmployeeId } from '../utils/generatorIds.js';
@@ -27,6 +28,7 @@ import {
     SUPER_ADMIN_PASSWORD,
     ROLES
 } from '../utils/constants.js';
+import { tokenBlacklistService } from "./tokenBlacklistService.js";
 
 const checkExistingEmployee = async(email, phone, excludeId = null) => {
     const query = excludeId ? { _id: { $ne: excludeId } } : {};
@@ -343,6 +345,21 @@ const employeeService = {
         await employeeToDelete.save();
 
         return mapEmployeeEntityToResponse(employeeToDelete);
+    }),
+
+    logout: asyncHandler(async (token) => {
+        const decoded = jwt.decode(token);
+
+        if (!decoded || !decoded.exp) {
+            throw new UnauthorizedException('Invalid token');
+        }
+
+        const currentTime = Math.floor(Date.now() / 1000);
+        const ttl = decoded.exp - currentTime;
+
+        if (ttl > 0) {
+            tokenBlacklistService.blacklistToken(token, ttl);
+        }
     }),
 
     createAccountLimiter: rateLimit({
