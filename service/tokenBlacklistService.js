@@ -1,4 +1,3 @@
-
 const blacklist = new Map();
 
 function cleanupExpiredTokens() {

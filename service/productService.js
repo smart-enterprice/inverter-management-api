@@ -318,7 +318,6 @@ const productService = {
 
     createProductBrands: asyncHandler(async (brandsData) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
-        logger.info(`customer id i required : ${employeeId}`);
 
         const brandDocs = [];
 
