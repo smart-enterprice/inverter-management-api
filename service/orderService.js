@@ -14,7 +14,7 @@ import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../utils/ge
 import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";
 import { getAuthenticatedEmployeeContext, sanitizeInput } from "../utils/validationUtils.js";
 
-import { ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIELDS, ORDER_REQUIRED_FIELDS, ROLES } from "../utils/constants.js";
+import { APPROVAL_GRANTED_ROLES, ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIELDS, ORDER_REQUIRED_FIELDS, ROLES } from "../utils/constants.js";
 import { transformOrderToResponse } from "../utils/modelMapper.js";
 import { productService } from "./productService.js";
 
@@ -82,15 +82,15 @@ export const fetchDealerAndOrderDetails = async(orders) => {
 
 const orderService = {
     createOrder: asyncHandler(async(dto) => {
-        const { employeeId, role } = getAuthenticatedEmployeeContext();
+        const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
-        if (!employeeId || !role || !Object.values(ORDER_CREATOR_ROLES).includes(role.toUpperCase())) {
+        if (!employeeId || !employeeRole || !Object.values(ORDER_CREATOR_ROLES).includes(employeeRole.toUpperCase())) {
             throw new UnauthorizedException(`Access denied: only users with roles ${Object.values(ORDER_CREATOR_ROLES).join(', ')} are authorized to create orders.`);
         }
 
-        const salesmanId = role === "ROLE_SALESMAN" ? employeeId : sanitizeInput(dto.salesman_id);
+        const salesmanId = employeeRole === "ROLE_SALESMAN" ? employeeId : sanitizeInput(dto.salesman_id);
 
-        if ((Object.values(APPROVAL_GRANTED_ROLES).includes(role.toUpperCase())) && !salesmanId) {
+        if ((Object.values(APPROVAL_GRANTED_ROLES).includes(employeeRole.toUpperCase())) && !salesmanId) {
             throw new BadRequestException("salesman_id is required when ADMIN or SUPER_ADMIN creates the order.");
         }
 
@@ -120,7 +120,7 @@ const orderService = {
 
                 logger.info("📦 Stocks for", detail.product_id, stocks);
 
-                const { productionRequired } = await productService.checkAndReserveStock(product, stocks, Number(detail.qty_ordered), employeeId, role);
+                const { productionRequired } = await productService.checkAndReserveStock(product, stocks, Number(detail.qty_ordered), employeeId, employeeRole);
 
                 return {
                     order_details_number: await generateUniqueOrderDetailsId(),

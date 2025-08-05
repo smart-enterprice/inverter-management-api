@@ -6,6 +6,7 @@ import { BadRequestException, ValidationException, UnauthorizedException } from 
 import { APPROVAL_GRANTED_ROLES, ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, ROLES, PRODUCT_REQUIRED_FIELDS, } from './constants.js';
 import { validatePassword } from './employeeAuth.js';
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
+import logger from './logger.js';
 
 export const sanitizeInput = (input) =>
     typeof input === 'string' ? validator.escape(input.trim()) : input;
@@ -71,6 +72,7 @@ export const validateEmployeeData = (data, isUpdate = false) => {
 export const validateMainRoleAccess = () => {
     const employee_id = CurrentRequestContext.getEmployeeId();
     const role = CurrentRequestContext.getRole();
+
     if (!employee_id || !role || !Object.values(ADMIN_PRIVILEGED_ROLES).includes(role.toUpperCase())) {
         throw new UnauthorizedException(`You do not have permission to perform this action. Allowed roles: ${Object.values(ADMIN_PRIVILEGED_ROLES).join(', ')}`);
     }

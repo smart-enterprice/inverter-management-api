@@ -317,7 +317,8 @@ const productService = {
     }),
 
     createProductBrands: asyncHandler(async (brandsData) => {
-        const { employee_id, role } = getAuthenticatedEmployeeContext();
+        const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+        logger.info(`customer id i required : ${employeeId}`);
 
         const brandDocs = [];
 
@@ -341,7 +342,7 @@ const productService = {
                 brand_name,
                 brand_models,
                 description: brand.description?.trim() || "",
-                created_by: employee_id
+                created_by: employeeId
             });
 
             brandDocs.push(brandDoc);

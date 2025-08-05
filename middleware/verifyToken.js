@@ -1,7 +1,5 @@
 import jwt from 'jsonwebtoken';
 import { UnauthorizedException } from './CustomError.js';
-import Employee from '../models/employees.js';
-import { employeeService } from '../service/employeeService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -24,20 +22,7 @@ export const verifyToken = async (req, res, next) => {
         if (!employee_id || !role) {
             throw new UnauthorizedException('Invalid token payload.');
         }
-
-        const employee = await Employee.findOne({ employee_id, status: 'active' });
-        if (!employee) {
-            await employeeService.logout(token);
-            throw new UnauthorizedException('User does not exist or is inactive.');
-        }
-
-        req.user = {
-            employee_id,
-            role,
-            status
-        };
-
-        console.log('[Auth] Authentication passed. Attaching user to request.');
+        
         next();
     } catch (err) {
         console.warn('[Auth Error]:', err.message);
