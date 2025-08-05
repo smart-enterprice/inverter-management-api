@@ -21,7 +21,6 @@ export const tokenBlacklistService = {
 
     isBlacklisted: (token) => {
         const expireAt = blacklist.get(token);
-        logger.info('expireAt - ${expireAt}');
         if (!expireAt) return false;
         if (Date.now() > expireAt) {
             blacklist.delete(token);
