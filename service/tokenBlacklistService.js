@@ -1,4 +1,3 @@
-import logger from "../utils/logger";
 
 const blacklist = new Map();
 
