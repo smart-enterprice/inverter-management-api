@@ -1,10 +1,18 @@
 // middleware/requestContextMiddleware.js
 
 import jwt from 'jsonwebtoken';
-import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
+import Employee from '../models/employees.js';
 import { UnauthorizedException, BadRequestException } from './CustomError.js';
 import { tokenBlacklistService } from '../service/tokenBlacklistService.js';
-import { PATH_ROUTES, ROLES, JWT_SECRET, APPROVAL_GRANTED_ROLES } from '../utils/constants.js';
+import { employeeService } from '../service/employeeService.js';
+import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
+import logger from '../utils/logger.js';
+import {
+    PATH_ROUTES,
+    ROLES,
+    JWT_SECRET,
+    APPROVAL_GRANTED_ROLES,
+} from '../utils/constants.js';
 
 const PUBLIC_ROUTES = [
     `${PATH_ROUTES.AUTH_ROUTE}/signin`
@@ -23,32 +31,36 @@ const isPublicRoute = (path) => PUBLIC_ROUTES.includes(path);
 const isSuperAdminOnlyRoute = (path) => SUPER_ADMIN_ONLY_ROUTES.includes(path);
 const isAdminOrSuperAdminRoute = (path) => ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES.includes(path);
 
-export const requestContextMiddleware = (req, res, next) => {
+export const requestContextMiddleware = async (req, res, next) => {
     const { path, headers } = req;
 
-    if (isPublicRoute(path)) return next();
+    if (isPublicRoute(path)) {
+        return next();
+    }
 
     const authHeader = headers.authorization;
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return next(new UnauthorizedException('Authorization token missing or malformed'));
     }
 
     const token = authHeader.split(' ')[1];
+
     if (!token || token === 'undefined' || token === 'null') {
         return next(new UnauthorizedException('Authentication failed: Token is missing or invalid.'));
     }
 
     if (!JWT_SECRET) {
-        console.error('[Auth] JWT_SECRET is not defined in environment.');
+        logger.error('[Auth] JWT_SECRET is not defined in environment.');
         return next(new BadRequestException('JWT_SECRET is missing in environment variables'));
     }
 
     let decoded;
     try {
         decoded = jwt.verify(token, JWT_SECRET);
-        console.log('[Auth] Token verified successfully.');
+        logger.info('[Auth] Token verified successfully.');
     } catch (err) {
-        console.error('[Auth Error] JWT verification failed:', err.message);
+        logger.warn('[Auth] JWT verification failed:', err.message);
         return next(new UnauthorizedException('Invalid or expired token'));
     }
 
@@ -61,8 +73,13 @@ export const requestContextMiddleware = (req, res, next) => {
     if (!employeeId || !role) {
         return next(new UnauthorizedException('Invalid token payload'));
     }
-    
-    // Role-based access checks
+
+    const employee = await Employee.findOne({ employee_id: employeeId, status: 'active' });
+    if (!employee) {
+        await employeeService.logout(token);
+        return next(new UnauthorizedException('User does not exist or is inactive.'));
+    }
+
     if (isSuperAdminOnlyRoute(path) && role !== ROLES.SUPER_ADMIN) {
         return next(new UnauthorizedException('Access restricted to Super Admins only'));
     }
@@ -76,7 +93,12 @@ export const requestContextMiddleware = (req, res, next) => {
         CurrentRequestContext.setRole(role);
         CurrentRequestContext.setCurrentToken(token);
 
-        req.user = { employeeId, role, status };
+        req.user = {
+            employeeId,
+            role,
+            status
+        };
+
         next();
     });
 };

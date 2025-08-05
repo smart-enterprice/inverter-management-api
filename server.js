@@ -18,7 +18,7 @@ import publicRoute from "./routes/publicRoute.js";
 
 import { STATUS_CODES, PATH_ROUTES } from "./utils/constants.js";
 import { NotFoundException } from "./middleware/CustomError.js";
-import { requestContextMiddleware } from './middleware/requestContextMiddleware.js';
+import { requestContextMiddleware } from "./middleware/requestContextMiddleware.js";
 
 import { connectToDatabase, closeDatabaseConnection } from "./config/dbConfig.js";
 import { employeeService } from "./service/employeeService.js";
