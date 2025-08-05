@@ -21,10 +21,9 @@ export const hashPassword = async(password) => encryptText(password);
 export const revealPassword = async(encryptedPassword) => decryptText(encryptedPassword);
 
 export const generateToken = (employeeId, role, status) => {
-    const istTime = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-    const iat = Math.floor(new Date(istTime).getTime() / 1000);
-
-    return jwt.sign({ employee_id: employeeId, role, status, iat }, JWT_SECRET, {
-        expiresIn: JWT_EXPIRES_IN
-    });
+    return jwt.sign(
+        { employee_id: employeeId, role, status },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN }
+    );
 };
