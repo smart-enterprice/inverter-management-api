@@ -1,26 +1,10 @@
 // authController.js
 import asyncHandler from "express-async-handler";
 import helmet from "helmet";
-import xss from "xss";
-
-import jwt from 'jsonwebtoken';
 
 import { employeeService } from "../service/employeeService.js";
 import { BadRequestException } from "../middleware/CustomError.js";
-import logger from "../utils/logger.js";
-import { tokenBlacklistService } from "../service/tokenBlacklistService.js";
-
-
-const sanitizeInput = (req, res, next) => {
-    if (req.body) {
-        for (const key in req.body) {
-            if (typeof req.body[key] === "string") {
-                req.body[key] = xss(req.body[key]);
-            }
-        }
-    }
-    next();
-};
+import { sanitizeInputBody } from "../utils/validationUtils.js";
 
 const authController = {
     employeeSecurityMiddleware: [
@@ -41,11 +25,11 @@ const authController = {
         })
     ],
 
-    sanitizeInput,
+    sanitizeInputBody,
 
     signin: [
         employeeService.loginLimiter,
-        sanitizeInput,
+        sanitizeInputBody,
         asyncHandler(async(req, res) => {
             if (!req.body || !req.body.employee_email || !req.body.password) {
                 throw new BadRequestException("Email and password are required");
@@ -62,7 +46,7 @@ const authController = {
                     token: loginResult.access_token,
                     expiresIn: loginResult.expiresIn
                 },
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
     ],
@@ -76,23 +60,12 @@ const authController = {
             }
 
             const token = authHeader.split(' ')[1];
-            const decoded = jwt.decode(token);
-
-            if (!decoded || !decoded.exp) {
-                throw new UnauthorizedException('Invalid token');
-            }
-
-            const currentTime = Math.floor(Date.now() / 1000);
-            const ttl = decoded.exp - currentTime;
-
-            if (ttl > 0) {
-                tokenBlacklistService.blacklistToken(token, ttl);
-            }
+            await employeeService.logout(token);
 
             return res.status(200).json({
                 success: true,
                 message: '✅ Successfully logged out',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
     ]

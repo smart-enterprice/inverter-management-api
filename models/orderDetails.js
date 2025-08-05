@@ -10,6 +10,7 @@ const orderDetailsSchema = new mongoose.Schema({
     order_details_number: {
         type: String,
         required: [true, "🚨 Order Details ID is required!"],
+        unique: true,
     },
     order_number: {
         type: String,
@@ -73,6 +74,46 @@ orderDetailsSchema.pre("findOneAndUpdate", function(next) {
     next();
 });
 
-const OrderDetails = mongoose.model("OrderDetails", orderDetailsSchema);
+const OrderDetailsModel = mongoose.model("OrderDetails", orderDetailsSchema);
 
-export default OrderDetails;
+export default class OrderDetails extends OrderDetailsModel {
+    constructor(detailsData) {
+        super(detailsData);
+    }
+
+    async markDelivered(deliveredQty) {
+        if (deliveredQty <= 0) {
+            throw new Error("❌ Delivered quantity must be greater than 0.");
+        }
+        if (deliveredQty > this.qty_ordered) {
+            throw new Error("❌ Delivered quantity cannot exceed ordered quantity.");
+        }
+
+        this.qty_delivered = deliveredQty;
+        this.status = deliveredQty === this.qty_ordered ? "DELIVERED" : "DISPATCHED";
+        await this.save();
+        return this;
+    }
+
+    async cancel() {
+        if (this.status === "DELIVERED") {
+            throw new Error("❌ Cannot cancel an already delivered product.");
+        }
+        this.status = "CANCELLED";
+        await this.save();
+        return this;
+    }
+
+    static async findByOrderNumber(orderNumber) {
+        return await this.findAll({ order_number: orderNumber });
+    }
+
+    static async findByOrderDetailsNumber(orderDetailsNumber) {
+        return await this.findOne({ order_details_number: orderDetailsNumber });
+    }
+
+    static async findByOrderNumber(orderNumber) {
+        return await this.find({ order_number: orderNumber });
+    }
+
+}

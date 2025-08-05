@@ -14,10 +14,11 @@ import employeeRoute from "./routes/employeeRoute.js";
 import authRoute from "./routes/authRoute.js";
 import orderRoute from "./routes/orderRoute.js";
 import productRoute from "./routes/productRoute.js";
+import publicRoute from "./routes/publicRoute.js";
 
 import { STATUS_CODES, PATH_ROUTES } from "./utils/constants.js";
 import { NotFoundException } from "./middleware/CustomError.js";
-import { requestContextMiddleware } from './middleware/requestContextMiddleware.js';
+import { requestContextMiddleware } from "./middleware/requestContextMiddleware.js";
 
 import { connectToDatabase, closeDatabaseConnection } from "./config/dbConfig.js";
 import { employeeService } from "./service/employeeService.js";
@@ -53,25 +54,26 @@ const globalLimiter = rateLimit({
 const corsOptions = {
     origin: function(origin, callback) {
         const allowedOrigins = process.env.ALLOWED_ORIGINS ?
-            process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()) : ["http://localhost:5173"];
+            process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : ['http://localhost:5173'];
 
         if (!origin) return callback(null, true);
 
         if (allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
-            securityLogger.warn("CORS violation attempt", { origin });
-            callback(new Error("Not allowed by CORS"));
+            securityLogger.warn('CORS violation attempt', { origin });
+            callback(new Error('Not allowed by CORS'));
         }
     },
     credentials: true,
     optionsSuccessStatus: 200,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 };
+app.use(cors(corsOptions));
 
 app.use(requestContextMiddleware);
-app.use(cors(corsOptions));
+
 app.use(helmet());
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
@@ -131,7 +133,7 @@ app.get("/", (req, res) => {
         message: "👋 Welcome to Smart Enterprice",
         version: "1.0.0",
         status: "operational",
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
     });
 });
 
@@ -158,7 +160,7 @@ app.get("/health", async(req, res) => {
         service: "Smart Enterprice",
         environment: process.env.NODE_ENV || "development",
         version: "1.0.0",
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
         db: {
             status: dbStatus,
             name: dbName
@@ -170,6 +172,7 @@ app.use(PATH_ROUTES.AUTH_ROUTE, authRoute);
 app.use(PATH_ROUTES.EMPLOYEE_ROUTE, employeeRoute);
 app.use(PATH_ROUTES.PRODUCT_ROUTE, productRoute);
 app.use(PATH_ROUTES.ORDER_ROUTE, orderRoute);
+app.use(PATH_ROUTES.BASIC_ROUTE, publicRoute);
 
 app.use((req, res, next) => {
     next(new NotFoundException(`Endpoint '${req.method} ${req.originalUrl}' not found.`));

@@ -1,96 +1,34 @@
 // employeeservice.js
 
 import asyncHandler from "express-async-handler";
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import validator from 'validator';
+import jwt from 'jsonwebtoken';
+
 import employeeSchema from '../models/employees.js';
 import { generateUniqueEmployeeId } from '../utils/generatorIds.js';
+import logger from '../utils/logger.js';
+import { CurrentRequestContext } from "../utils/CurrentRequestContext.js";
 import {
     BadRequestException,
     ConflictException,
-    ValidationException,
     NotFoundException,
     UnauthorizedException
 } from '../middleware/CustomError.js';
-import logger from '../utils/logger.js';
-import dotenv from "dotenv";
-import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 
-dotenv.config();
-
-const ALLOWED_ROLES = ['ROLE_ADMIN', 'ROLE_SUPERVISOR', 'ROLE_MANAGER', 'ROLE_SALESMAN', 'ROLE_PRODUCTION', 'ROLE_PACKING', 'ROLE_ACCOUNTS', 'ROLE_DELIVERY', 'ROLE_DEALER', 'ROLE_SUPER_ADMIN'];
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN;
-const BCRYPT_SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 10;
-
-const sanitizeInput = (input) => {
-    if (typeof input === 'string') {
-        return validator.escape(input.trim());
-    }
-    return input;
-};
-
-const validateEmployeeData = (employeeRequest, isUpdate = false) => {
-    const errors = [];
-
-    if (!isUpdate || employeeRequest.employee_name !== undefined) {
-        if (!employeeRequest.employee_name || employeeRequest.employee_name.trim().length < 2) {
-            errors.push({ field: 'employee_name', message: 'Name must be at least 2 characters long' });
-        }
-        if (employeeRequest.employee_name && employeeRequest.employee_name.length > 150) {
-            errors.push({ field: 'employee_name', message: 'Name cannot exceed 150 characters' });
-        }
-    }
-
-    if (!isUpdate || employeeRequest.employee_email !== undefined) {
-        if (!employeeRequest.employee_email) {
-            errors.push({ field: 'employee_email', message: 'Email is required' });
-        } else if (!validator.isEmail(employeeRequest.employee_email)) {
-            errors.push({ field: 'employee_email', message: 'Please provide a valid email address' });
-        }
-    }
-
-    if (!isUpdate || employeeRequest.password !== undefined) {
-        if (!employeeRequest.password) {
-            errors.push({ field: 'password', message: 'Password is required' });
-        } else {
-            if (employeeRequest.password.length < 9) {
-                errors.push({ field: 'password', message: 'Password must be at least 8 characters long' });
-            }
-            if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/.test(employeeRequest.password)) {
-                errors.push({
-                    field: 'password',
-                    message: 'Password must contain at least one lowercase letter, one uppercase letter, one number, and one special character'
-                });
-            }
-        }
-    }
-
-    if (!isUpdate || employeeRequest.employee_phone !== undefined) {
-        if (!employeeRequest.employee_phone) {
-            errors.push({ field: 'employee_phone', message: 'Phone number is required' });
-        } else if (!validator.isMobilePhone(employeeRequest.employee_phone, 'any', { strictMode: false })) {
-            errors.push({ field: 'employee_phone', message: 'Please provide a valid phone number' });
-        }
-    }
-
-    if (!isUpdate || employeeRequest.role !== undefined) {
-        if (!employeeRequest.role) {
-            errors.push({ field: 'role', message: 'Role is required' });
-        } else if (!ALLOWED_ROLES.includes(employeeRequest.role.toUpperCase())) {
-            errors.push({
-                field: 'role',
-                message: `Role must be one of: ${ALLOWED_ROLES.join(', ')}`
-            });
-        }
-    }
-
-    if (errors.length > 0) {
-        throw new ValidationException('Validation failed', errors);
-    }
-};
+import { validateEmployeeData } from '../utils/validationUtils.js';
+import { mapEmployeeRequestToEntity, mapEmployeeEntityToResponse } from '../utils/modelMapper.js';
+import { hashPassword, generateToken, revealPassword, validatePassword } from '../utils/employeeAuth.js';
+import {
+    APPROVAL_GRANTED_ROLES,
+    JWT_EXPIRES_IN,
+    SUPER_ADMIN,
+    SUPER_ADMIN_PHONE,
+    SUPER_ADMIN_EMAIL,
+    SUPER_ADMIN_PASSWORD,
+    ROLES
+} from '../utils/constants.js';
+import { tokenBlacklistService } from "./tokenBlacklistService.js";
 
 const checkExistingEmployee = async(email, phone, excludeId = null) => {
     const query = excludeId ? { _id: { $ne: excludeId } } : {};
@@ -100,87 +38,68 @@ const checkExistingEmployee = async(email, phone, excludeId = null) => {
         employeeSchema.findOne({...query, employee_phone: phone })
     ]);
 
-    if (existingEmail) {
-        throw new ConflictException('📧 Email already exists. Please use a different email.');
+    const errors = [];
+    if (existingEmail) errors.push("📧 Email already exists.");
+    if (existingPhone) errors.push("📱 Phone number already exists.");
+
+    if (errors.length > 0) {
+        throw new ConflictException(errors.join(" "));
+    }
+};
+
+const findActiveEmployee = async(employeeId, includePassword = false) => {
+    const query = employeeSchema.findOne({ employee_id: employeeId, status: 'active' });
+    if (includePassword) query.select('+password');
+
+    const employee = await query;
+    if (!employee) {
+        logger.warn(`No active employee for ID: ${employeeId}`);
+        throw new BadRequestException('');
     }
 
-    if (existingPhone) {
-        throw new ConflictException('📱 Phone number already exists. Please use a different phone number.');
-    }
+    return employee;
 };
 
-const hashPassword = async(password) => {
-    return await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
-};
-
-const generateToken = (employeeId, role, status) => {
-    return jwt.sign({
-            employee_id: employeeId,
-            role,
-            status,
-            iat: Math.floor(Date.now() / 1000)
-        },
-        JWT_SECRET, { expiresIn: JWT_EXPIRES_IN }
-    );
-};
-
-const mapRequestToEntity = (employeeRequest, employeeId, isUpdate = false) => {
-    const entity = {};
-
-    if (employeeId) entity.employee_id = employeeId;
-    if (!isUpdate) entity.status = 'active';
-
-    const fieldsToMap = [
-        'employee_name', 'employee_email', 'employee_phone', 'role', 'shop_name', 'district', 'town', 'brand', 'address'
-    ];
-
-    fieldsToMap.forEach(field => {
-        if (employeeRequest[field] !== undefined) {
-            entity[field] = sanitizeInput(employeeRequest[field]);
+async function verifyCurrentPassword(employee, currentPassword) {
+    try {
+        const decryptedPassword = await revealPassword(employee.password);
+        if (currentPassword !== decryptedPassword) {
+            logger.warn(`Invalid current password for: ${employee.employee_email}`);
+            throw new UnauthorizedException('Invalid credentials');
         }
-    });
-
-    if (employeeRequest.photo !== undefined) {
-        entity.photo = employeeRequest.photo;
+    } catch (error) {
+        logger.error(`Password decryption failed for ID: ${employee.employee_email}`, error);
+        throw new BadRequestException('Password decryption error');
     }
+}
 
-    return entity;
-};
+async function updateEmployeePassword(employee, newPassword, updatedBy, role, reason) {
+    const hashedPassword = await hashPassword(newPassword);
+    employee.password = hashedPassword;
 
-const mapEntityToResponse = (employeeEntity) => {
-    const response = {};
+    const timeStamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    employee.log_note = `${employee.log_note || ''} | Password reset by: ${updatedBy}, Role: ${role}, Reason: ${reason}, Date: ${timeStamp}`;
 
-    const fieldsToMap = [
-        'employee_id', 'employee_name', 'employee_email', 'employee_phone',
-        'role', 'status', 'created_by', 'shop_name', 'photo',
-        'district', 'town', 'brand', 'address', 'created_at', 'updated_at'
-    ];
-
-    fieldsToMap.forEach(field => {
-        if (employeeEntity[field] !== undefined) {
-            response[field] = employeeEntity[field];
-        }
-    });
-
-    return response;
-};
+    await employee.save();
+}
 
 const employeeService = {
     defaultSuperAdminSetup: asyncHandler(async() => {
-        const {
-            SUPER_ADMIN,
-            SUPER_ADMIN_PHONE,
-            SUPER_ADMIN_EMAIL,
-            SUPER_ADMIN_PASSWORD
-        } = process.env;
-
         if (!SUPER_ADMIN || !SUPER_ADMIN_PHONE || !SUPER_ADMIN_EMAIL || !SUPER_ADMIN_PASSWORD) {
             throw new Error("❌ Missing required SUPER_ADMIN environment variables.");
         }
 
         const existingAdmin = await employeeSchema.findOne({ employee_email: SUPER_ADMIN_EMAIL });
         if (existingAdmin) {
-            console.log("⚠️ Super Admin already exists. Skipping creation.");
+            if (!existingAdmin.employee_id || existingAdmin.employee_id.trim() === '') {
+                const employeeId = await generateUniqueEmployeeId();
+                existingAdmin.employee_id = employeeId;
+
+                await existingAdmin.save();
+                logger.info("✅ Super Admin ID was missing and has been updated.");
+            } else {
+                logger.info("⚠️ Super Admin already exists");
+            }
             return;
         }
 
@@ -194,14 +113,14 @@ const employeeService = {
             employee_email: SUPER_ADMIN_EMAIL,
             employee_phone: SUPER_ADMIN_PHONE,
             password: hashedPassword,
-            role: 'ROLE_SUPER_ADMIN',
+            role: ROLES.SUPER_ADMIN,
             status: 'active',
             created_by: 'APPLICATION',
         });
 
         await superAdmin.save();
 
-        console.log("✅ Default Super Admin created successfully.");
+        logger.info("✅ Default Super Admin created successfully.");
     }),
 
     createEmployee: asyncHandler(async(employeeRequest, createdByEmployeeId) => {
@@ -217,8 +136,9 @@ const employeeService = {
 
         const hashedPassword = await hashPassword(employeeRequest.password);
 
-        const employeeData = mapRequestToEntity(employeeRequest, employeeId);
+        const employeeData = mapEmployeeRequestToEntity(employeeRequest, employeeId);
         employeeData.password = hashedPassword;
+
         logger.info(`Created Employee ID: ${createdByEmployeeId}`);
         employeeData.created_by = createdByEmployeeId;
 
@@ -226,7 +146,7 @@ const employeeService = {
         await newEmployee.save();
 
         logger.info(`Employee created: ${employeeId}`);
-        return mapEntityToResponse(newEmployee);
+        return mapEmployeeEntityToResponse(newEmployee);
     }),
 
     loginEmployee: asyncHandler(async(loginRequest) => {
@@ -250,42 +170,30 @@ const employeeService = {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        const isPasswordValid = await bcrypt.compare(password, employee.password);
-        if (!isPasswordValid) {
-            logger.warn(`Invalid password for: ${employee.employee_id}`);
-            throw new UnauthorizedException('Invalid credentials');
+        let decryptedPassword;
+        try {
+            decryptedPassword = await revealPassword(employee.password);
+        } catch (error) {
+            logger.error(`Password decryption failed for ID: ${employee.employee_email}`, error);
+            throw new BadRequestException("Password decryption error");
+        }
+
+        if (password !== decryptedPassword) {
+            logger.warn(`Invalid password attempt for: ${employee.employee_email}`);
+            throw new UnauthorizedException("Invalid credentials");
         }
 
         const token = generateToken(employee.employee_id, employee.role, employee.status);
         logger.info(`Employee logged in: ${employee.employee_id}`);
 
         return {
-            employee: mapEntityToResponse(employee),
+            employee: mapEmployeeEntityToResponse(employee),
             access_token: token,
             expiresIn: JWT_EXPIRES_IN
         };
     }),
 
     getEmployeeById: asyncHandler(async(employeeId) => {
-        if (!employeeId) {
-            throw new BadRequestException('Employee ID is required');
-        }
-        logger.info(`Employee ;l;l ${employeeId}`);
-
-        const employee = await employeeSchema.findOne({
-            employee_id: employeeId,
-            status: 'active'
-        });
-
-        if (!employee) {
-            throw new NotFoundException('Employee not found');
-        }
-
-        return mapEntityToResponse(employee);
-    }),
-
-    getEmployeeById: asyncHandler(async() => {
-        const employeeId = CurrentRequestContext.getEmployeeId();
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
         }
@@ -300,7 +208,27 @@ const employeeService = {
             throw new NotFoundException('Employee not found');
         }
 
-        return mapEntityToResponse(employee);
+        return mapEmployeeEntityToResponse(employee);
+    }),
+
+    getProfile: asyncHandler(async() => {
+        const employeeId = CurrentRequestContext.getEmployeeId();
+        const role = CurrentRequestContext.getRole();
+
+        if (!employeeId) {
+            throw new BadRequestException('Employee ID is required');
+        }
+
+        const employee = await employeeSchema.findOne({
+            employee_id: employeeId,
+            status: 'active'
+        });
+
+        if (!employee) {
+            throw new NotFoundException('Employee not found');
+        }
+
+        return mapEmployeeEntityToResponse(employee);
     }),
 
     updateEmployee: asyncHandler(async(employeeId, updateData) => {
@@ -327,33 +255,116 @@ const employeeService = {
             );
         }
 
-        if (updateData.password) {
-            updateData.password = await hashPassword(updateData.password);
-        }
-
-        const mappedData = mapRequestToEntity(updateData, null, true);
-        mappedData.updated_at = new Date();
+        const mappedData = mapEmployeeRequestToEntity(updateData, employeeId, true);
+        mappedData.updated_at = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
         const updatedEmployee = await employeeSchema.findOneAndUpdate({ employee_id: employeeId },
             mappedData, { new: true, runValidators: true }
         );
 
         logger.info(`Employee updated: ${employeeId}`);
-        return mapEntityToResponse(updatedEmployee);
+        return mapEmployeeEntityToResponse(updatedEmployee);
     }),
 
-    validateEmployeeRole: (role) => {
-        if (!role || typeof role !== 'string') {
-            throw new BadRequestException('Role is required and must be a string');
+    resetPassword: asyncHandler(async(updateData) => {
+        const employeeId = CurrentRequestContext.getEmployeeId();
+
+        if (!employeeId) {
+            throw new BadRequestException('Employee ID is required');
         }
-        if (!ALLOWED_ROLES.includes(role.toUpperCase())) {
-            throw new BadRequestException(`Role must be one of: ${ALLOWED_ROLES.join(', ')}`);
+
+        logger.info(`Password reset (self) initiated by Employee ID: ${employeeId}`);
+
+        const employee = await findActiveEmployee(employeeId, true);
+        await verifyCurrentPassword(employee, updateData.current_password);
+        validatePassword(updateData.password);
+
+        await updateEmployeePassword(employee, updateData.password, employee.employee_name, employee.role, 'update password for own');
+
+        logger.info(`Password reset (self) successful for Employee ID: ${employee.employee_id}`);
+        return mapEmployeeEntityToResponse(employee);
+    }),
+
+    resetPasswordById: asyncHandler(async(employeeId, updateData) => {
+        const requesterId = CurrentRequestContext.getEmployeeId();
+
+        if (!requesterId || !employeeId) {
+            throw new BadRequestException('Employee ID is required');
         }
-    },
+
+        logger.info(`Password reset (admin) initiated by Employee ID: ${requesterId} for target ID: ${employeeId}`);
+
+        const targetEmployee = await findActiveEmployee(employeeId, true);
+        validatePassword(updateData.password);
+
+        const requestingEmployee = await findActiveEmployee(requesterId);
+        await updateEmployeePassword(targetEmployee, updateData.password, requestingEmployee.employee_name, requestingEmployee.role, `admin reset password`);
+
+        logger.info(`Password reset (admin) successful for Employee ID: ${targetEmployee.employee_id}`);
+        return mapEmployeeEntityToResponse(targetEmployee);
+    }),
+
+    deleteEmployee: asyncHandler(async(updateData) => {
+        const { employeeId, reason } = updateData;
+
+        if (!employeeId) {
+            throw new BadRequestException('Employee ID is required for deletion');
+        }
+
+        const requestedById = CurrentRequestContext.getEmployeeId();
+        logger.info(`Employee ${employeeId}`);
+
+        logger.info(`Delete request initiated by Employee ID: ${requestedById} for target ID: ${employeeId}`);
+
+        const requestingEmployee = await employeeSchema.findOne({
+            employee_id: requestedById,
+            status: 'active'
+        });
+
+        if (!requestingEmployee) {
+            throw new NotFoundException('Requesting employee not found or inactive');
+        }
+
+        if (!Object.values(APPROVAL_GRANTED_ROLES).includes(requestingEmployee.role.toUpperCase())) {
+            throw new BadRequestException('Unauthorized: You do not have permission to delete employees');
+        }
+
+        const employeeToDelete = await employeeSchema.findOne({
+            employee_id: employeeId,
+            status: 'active'
+        });
+
+        if (!employeeToDelete) {
+            throw new NotFoundException('Target employee not found or already deleted');
+        }
+
+        const deletionLog = `${ employeeToDelete.log_note || '' } | Deletion by: ${ requestingEmployee.employee_name }, Role: ${ requestingEmployee.role }, Reason: ${ reason }, Date: ${ new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) }`;
+        employeeToDelete.status = 'deleted';
+        employeeToDelete.log_note = deletionLog;
+
+        await employeeToDelete.save();
+
+        return mapEmployeeEntityToResponse(employeeToDelete);
+    }),
+
+    logout: asyncHandler(async (token) => {
+        const decoded = jwt.decode(token);
+
+        if (!decoded || !decoded.exp) {
+            throw new UnauthorizedException('Invalid token');
+        }
+
+        const currentTime = Math.floor(Date.now() / 1000);
+        const ttl = decoded.exp - currentTime;
+
+        if (ttl > 0) {
+            tokenBlacklistService.blacklistToken(token, ttl);
+        }
+    }),
 
     createAccountLimiter: rateLimit({
         windowMs: 60 * 60 * 1000,
-        max: 5,
+        max: 50,
         message: {
             success: false,
             message: 'Too many account creation attempts. Please try again later.',
@@ -364,7 +375,7 @@ const employeeService = {
 
     loginLimiter: rateLimit({
         windowMs: 15 * 60 * 1000,
-        max: 5,
+        max: 25,
         message: {
             success: false,
             message: 'Too many login attempts. Please try again later.',
@@ -374,4 +385,4 @@ const employeeService = {
     })
 };
 
-export { employeeService, mapEntityToResponse };
+export { employeeService };

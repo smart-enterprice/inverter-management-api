@@ -20,6 +20,10 @@ const orderSchema = new mongoose.Schema({
         type: String,
         required: [true, "📝 Creator ID is required!"],
     },
+    salesman_id: {
+        type: String,
+        required: [true, "🚨 Salesman ID is required!"],
+    },
     priority: {
         type: String,
         default: "LOW", // LOW, MEDIUM, HIGH
@@ -32,9 +36,13 @@ const orderSchema = new mongoose.Schema({
         type: String,
         default: "PENDING", // enum: ["pending", "approved", "cancelled", "in_progress", "delivered"],
     },
-    delivery_date: {
-        type: Date,
+    promised_delivery_date: {
+        type: Date
     },
+    sales_target_updated: {
+        type: Boolean,
+        default: false,
+    }
 }, {
     timestamps: {
         createdAt: 'created_at',
@@ -54,5 +62,31 @@ orderSchema.pre('findOneAndUpdate', function(next) {
     next();
 });
 
-const Order = mongoose.model("Order", orderSchema);
-export default Order;
+const OrderModel = mongoose.model("Order", orderSchema);
+
+export default class Order extends OrderModel {
+    constructor(orderData) {
+        super(orderData);
+    }
+
+    async updateStatus(newStatus) {
+        const validStatuses = ["PENDING", "APPROVED", "CANCELLED", "IN_PROGRESS", "DELIVERED", ];
+        if (!validStatuses.includes(newStatus)) {
+            throw new Error(`Invalid status: ${newStatus}`);
+        }
+        this.status = newStatus;
+        await this.save();
+        return this;
+    }
+
+    async markSalesTargetUpdated() {
+        this.sales_target_updated = true;
+        await this.save();
+        return this;
+    }
+
+    static async findByOrderNumber(orderNumber) {
+        return await this.findOne({ order_number: orderNumber });
+    }
+    
+}

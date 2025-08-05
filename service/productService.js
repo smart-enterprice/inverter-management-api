@@ -1,312 +1,390 @@
-// service/productService.js
+// productService.js
+
 import asyncHandler from "express-async-handler";
-import validator from "validator";
 
 import Product from "../models/product.js";
 import Stock from "../models/stock.js";
 import Order from "../models/order.js";
 
-import { generateUniqueProductId, generateUniqueStockId } from "../utils/generatorIds.js";
-import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";
 import logger from "../utils/logger.js";
-import { CurrentRequestContext } from "../utils/CurrentRequestContext.js";
+import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId } from "../utils/generatorIds.js";
+import { BadRequestException } from "../middleware/CustomError.js";
+import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext } from "../utils/validationUtils.js";
+import { mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse } from "../utils/modelMapper.js";
+import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS } from "../utils/constants.js";
+import Brand from "../models/brand.js";
 
-const ALLOWED_ROLES = ['ROLE_ADMIN', 'ROLE_SUPER_ADMIN'];
-const STOCK_TYPES = ['PACKED', 'UNPACKED'];
-const STOCK_ACTIONS = ['ADD', 'RETURN'];
-
-function sanitizeInput(input) {
-    return typeof input === 'string' ? validator.escape(input.trim()) : input;
+async function fetchProductWithStocks(product) {
+    const stocks = await Stock.find({ product_id: product.product_id });
+    return mapProductEntityToResponse(product, stocks.map(mapStockEntityToResponse));
 }
 
-async function createProduct(dto) {
-    const employee_id = CurrentRequestContext.getEmployeeId();
-    const role = CurrentRequestContext.getRole();
+async function calculateAvailableStock(productId) {
+    const allStocks = await Stock.find({ product_id: productId });
 
-    if (!employee_id || !role || !ALLOWED_ROLES.includes(role)) {
-        throw new UnauthorizedException("Only admins can create products.");
-    }
+    const sumByType = (type) =>
+        allStocks.filter((s) => s.stock_type === type)
+            .reduce((total, s) => total + s.stock, 0);
 
-    const requiredFields = ['brand', 'model', 'product_type', 'product_name'];
-    for (const field of requiredFields) {
-        if (!dto[field]) {
-            throw new BadRequestException(`${field} is required`);
+    const packed = sumByType(STOCK_TYPES.STOCK_PACKED);
+    const unpacked = sumByType(STOCK_TYPES.STOCK_UNPACKED);
+    const sale = sumByType(STOCK_TYPES.STOCK_SALE);
+    const other = sumByType(STOCK_TYPES.STOCK_OTHER);
+
+    const available = (packed + unpacked) - (sale + other);
+    logger.info(`📊 Stock Calculation → Product:${productId}, PACKED=${packed}, UNPACKED=${unpacked}, SALE=${sale}, OTHER=${other}, AVAILABLE=${available}`);
+    return available;
+}
+
+async function saveOrUpdateStockTransaction({
+    product,
+    quantity,
+    action,
+    stockType,
+    employeeId,
+    role,
+    orderNumber = null,
+    stockNotes = "",
+    productionRequired = 0
+}) {
+    if (!product || !product.product_id)
+        throw new BadRequestException("❌ Product information is required for stock transaction.");
+
+    let returnReason = "";
+    if (action === STOCK_ACTIONS.STOCK_RETURN) {
+        if (!orderNumber || typeof orderNumber !== "string") {
+            throw new BadRequestException("Order number is required for RETURN.");
         }
+        const order = await Order.findOne({ order_number: orderNumber });
+        if (!order) throw new BadRequestException(`❌ No order found with number: ${orderNumber}`);
+        returnReason = `RETURN Reason: Order #${order.order_number}`;
     }
 
-    const brand = sanitizeInput(dto.brand);
-    const model = sanitizeInput(dto.model);
-    const product_type = sanitizeInput(dto.product_type);
-    const product_name = sanitizeInput(dto.product_name);
+    const productionNote = productionRequired > 0 ? ` | Production Required: ${productionRequired}` : "";
+    const newNote = `${action} for ${orderNumber ? `Order:${orderNumber}` : ""}${productionNote} -- Employee:${employeeId}; Role:${role}; Action:${action}; ${returnReason}; Date:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
+    const combinedNotes = stockNotes ? `${stockNotes} || ${newNote}` : newNote;
 
-    const existingProduct = await Product.findOne({ brand, model, product_type });
-    if (existingProduct) {
-        throw new BadRequestException(
-            `A product with brand "${brand}", model "${model}", and type "${product_type}" already exists.`
-        );
+    const query = { product_id: product.product_id, stock_type: stockType || action };
+    if (orderNumber) query.order_number = orderNumber;
+
+    const existingStock = await Stock.findOne(query);
+
+    if (existingStock) {
+        existingStock.stock += quantity;
+        if (action === STOCK_ACTIONS.STOCK_ADD) existingStock.add_stock += quantity;
+        if (action === STOCK_ACTIONS.STOCK_RETURN) existingStock.return_stock += quantity;
+        if ([STOCK_ACTIONS.STOCK_SALE, STOCK_ACTIONS.STOCK_OTHER].includes(action)) {
+            existingStock.other_stock += quantity;
+        }
+        existingStock.stock_notes += ` || ${newNote}`;
+
+        await existingStock.save();
+        logger.info(`🔁 Updated ${action} Stock → Product:${product.product_id}, Qty:${existingStock.stock}`);
+        return existingStock;
     }
 
-    const productId = await generateUniqueProductId();
-    const cleanData = {
-        product_id: productId,
-        brand,
-        model,
-        product_type,
-        product_name,
-        created_by: employee_id,
-        available_stock: dto.available_stock ? Number(dto.available_stock) : 0
+    const stockData = {
+        stock_id: await generateUniqueStockId(),
+        product_id: product.product_id,
+        stock: quantity,
+        add_stock: action === STOCK_ACTIONS.STOCK_ADD ? quantity : 0,
+        return_stock: action === STOCK_ACTIONS.STOCK_RETURN ? quantity : 0,
+        other_stock: [STOCK_ACTIONS.STOCK_SALE, STOCK_ACTIONS.STOCK_OTHER].includes(action) ? quantity : 0,
+        stock_type: stockType || action,
+        stock_action: action,
+        created_by: employeeId,
+        order_number: orderNumber,
+        stock_notes: combinedNotes
     };
 
-    try {
-        const product = new Product(cleanData);
-        await product.save();
-        logger.info(`✅ Product created: ${productId}`, { productId });
-
-        if (dto.stocks && Array.isArray(dto.stocks) && dto.stocks.length > 0) {
-            const stockMap = {
-                [productId]: dto.stocks
-            };
-            await addProductStock(stockMap);
-        }
-
-        return product;
-    } catch (err) {
-        if (err.code === 11000) {
-            throw new BadRequestException(`Product with product ID ${productId} already exists.`);
-        }
-        throw err;
-    }
+    const newStock = await new Stock(stockData).save();
+    logger.info(`📦 Created ${action} Stock → Product:${product.product_id}, Qty:${quantity}`);
+    return newStock;
 }
 
-async function updateProduct(productId, dto) {
-    const employee_id = CurrentRequestContext.getEmployeeId();
-    if (!employee_id) {
-        throw new UnauthorizedException("Login required to update products.");
-    }
+const productService = {
+    createProduct: asyncHandler(async (dto) => {
+        const { employee_id } = validateMainRoleAccess();
+        validateProductRequiredFields(dto);
 
-    const cleanData = {};
-    ['brand', 'product_name', 'model', 'product_type', 'status'].forEach(key => {
-        if (dto[key] !== undefined) {
-            cleanData[key] = sanitizeInput(dto[key]);
-        }
-    });
-
-    if (dto.available_stock !== undefined) {
-        cleanData.available_stock = Number(dto.available_stock);
-    }
-
-    if (Object.keys(cleanData).length === 0) {
-        throw new BadRequestException("No valid fields provided for update.");
-    }
-
-    const needsCheck = ['brand', 'model', 'product_type'].every(key => dto[key] !== undefined);
-
-    if (needsCheck) {
-        const existingProduct = await Product.findOne({
-            brand: cleanData.brand,
-            model: cleanData.model,
-            product_type: cleanData.product_type,
-            product_id: { $ne: productId } // ✅ Correct way to exclude current product
+        const productBrands = await Brand.find({ status: "active" }).sort({ created_at: -1 });
+        const brandModelMap = new Map();
+        productBrands.forEach(({ brand_name, brand_models }) => {
+            brandModelMap.set(brand_name.toUpperCase(), brand_models.map(m => m.toUpperCase()));
         });
 
-        if (existingProduct) {
-            throw new BadRequestException(
-                `A product with brand "${cleanData.brand}", model "${cleanData.model}", and type "${cleanData.product_type}" already exists.`
-            );
+        const brandInput = sanitizeInput(dto.brand).toUpperCase();
+        const modelInput = sanitizeInput(dto.model).toUpperCase();
+
+        if (!brandModelMap.has(brandInput)) {
+            throw new Error(`Brand ${dto.brand} does not exist or is not active.`);
         }
-    }
 
-    const product = await Product.findOneAndUpdate({ product_id: productId },
-        cleanData, { new: true }
-    );
+        const validModels = brandModelMap.get(brandInput);
+        if (!validModels.includes(modelInput)) {
+            throw new Error(`Model ${dto.model} is not associated with brand ${dto.brand}.`);
+        }
 
-    if (!product) {
-        throw new BadRequestException(`No product found with this product ID ${productId}`);
-    }
+        const productId = await generateUniqueProductId();
+        const product = new Product({
+            product_id: productId,
+            brand: brandInput,
+            model: modelInput,
+            product_type: sanitizeInput(dto.product_type),
+            product_name: sanitizeInput(dto.product_name),
+            available_stock: Number(dto.available_stock || 0),
+            created_by: employee_id
+        });
 
-    logger.info(`🔄 Product updated: ${productId}`, { productId });
-    return product;
-}
+        await product.save();
+        logger.info(`Product created: ${productId}`);
 
-async function createOrUpdateProductStock(stockMap) {
-    const employee_id = CurrentRequestContext.getEmployeeId();
-    const role = CurrentRequestContext.getRole();
+        if (Array.isArray(dto.stocks) && dto.stocks.length > 0) {
+            await productService.createOrUpdateProductStock({ [productId]: dto.stocks });
+        }
 
-    if (!employee_id || !role) {
-        throw new UnauthorizedException("Login required to add stock.");
-    }
+        return fetchProductWithStocks(product);
+    }),
 
-    if (!stockMap || typeof stockMap !== "object" || Array.isArray(stockMap)) {
-        throw new BadRequestException("Invalid stock data format. Expected a product-wise stock object.");
-    }
+    updateProduct: asyncHandler(async (productId, dto) => {
+        const { employee_id } = validateMainRoleAccess();
+        const updates = {};
 
-    const updatedStocks = [];
+        for (const key of PRODUCT_UPDATABLE_FIELDS) {
+            if (dto[key] !== undefined) updates[key] = sanitizeInput(dto[key]);
+        }
 
-    for (const productId of Object.keys(stockMap)) {
+        if (dto.available_stock !== undefined) updates.available_stock = Number(dto.available_stock);
+        if (!Object.keys(updates).length) throw new BadRequestException("No valid fields provided for update.");
+
+        const updated = await Product.findOneAndUpdate({ product_id: productId }, updates, { new: true });
+        if (!updated) throw new BadRequestException(`No product found with ID ${productId}`);
+
+        logger.info(`🔄 Product updated: ${productId}`);
+        return fetchProductWithStocks(updated);
+    }),
+
+    createOrUpdateProductStock: asyncHandler(async (stockMap) => {
+        const { employee_id, role } = validateMainRoleAccess();
+
+        if (!stockMap || typeof stockMap !== "object" || Array.isArray(stockMap)) {
+            throw new BadRequestException("Expected a product-wise stock object.");
+        }
+
+        const result = [];
+
+        for (const productId of Object.keys(stockMap)) {
+            const product = await Product.findOne({ product_id: productId });
+            if (!product) throw new BadRequestException(`No product found with ID ${productId}`);
+
+            const entries = Array.isArray(stockMap[productId]) ? stockMap[productId] : [stockMap[productId]];
+            const stockResponses = [];
+
+            for (const entry of entries) {
+                const action = validateStockActionType(entry.type);
+                const stockType = validateStockType(entry.stock_type);
+
+                if (typeof entry.stock !== "number" || entry.stock <= 0) {
+                    throw new BadRequestException("Stock must be a positive number.");
+                }
+
+                const savedStock = await saveOrUpdateStockTransaction({
+                    product,
+                    quantity: entry.stock,
+                    action,
+                    stockType,
+                    employeeId: employee_id,
+                    role,
+                    orderNumber: entry.order_number || null,
+                    stockNotes: entry.stock_notes
+                });
+                stockResponses.push(mapStockEntityToResponse(savedStock));
+            }
+
+            product.available_stock = await calculateAvailableStock(product.product_id);
+            await product.save();
+
+            result.push(mapProductEntityToResponse(product, stockResponses));
+        }
+
+        return result;
+    }),
+
+    getByProductId: asyncHandler(async (productId) => {
         const product = await Product.findOne({ product_id: productId });
-        if (!product) {
-            throw new BadRequestException(`No product found with ID ${productId}`);
+        if (!product) throw new BadRequestException(`No product found with ID ${productId}`);
+        return fetchProductWithStocks(product);
+    }),
+
+    getAllProducts: asyncHandler(async (filter = {}) => {
+        const products = await Product.find(filter).sort({ created_at: -1 });
+        const result = [];
+
+        for (const product of products) {
+            const stocks = await Stock.find({ product_id: product.product_id });
+            result.push(mapProductEntityToResponse(product, stocks.map(mapStockEntityToResponse)));
         }
 
-        const stockEntries = Array.isArray(stockMap[productId]) ? stockMap[productId] : [stockMap[productId]];
-        const productStocks = [];
+        return result;
+    }),
 
-        for (const entry of stockEntries) {
-            const {
-                stock,
-                stock_type,
-                type,
-                stock_notes = "",
-                order_number = ""
-            } = entry;
+    getProductsByIds: asyncHandler(async (productIds) => {
+        if (!Array.isArray(productIds) || productIds.length === 0) {
+            throw new BadRequestException("Product IDs must be a non-empty array.");
+        }
 
-            const action = typeof type === "string" ? type.toUpperCase() : null;
+        const [products, stocks] = await Promise.all([
+            Product.find({ product_id: { $in: productIds } }),
+            Stock.find({ product_id: { $in: productIds } })
+        ]);
 
-            if (!action || !STOCK_ACTIONS.includes(action)) {
-                throw new BadRequestException(`Invalid stock action: ${type}. Allowed: ${STOCK_ACTIONS.join(", ")}`);
+        if (!products.length) {
+            throw new BadRequestException(`No products found for IDs: ${productIds.join(", ")}`);
+        }
+
+        const productMap = new Map();
+        const productStockMap = new Map();
+
+        products.forEach((p) => productMap.set(p.product_id, p));
+        stocks.forEach((s) => {
+            if (!productStockMap.has(s.product_id)) productStockMap.set(s.product_id, []);
+            const stockArray = productStockMap.get(s.product_id);
+            if (!stockArray.find((existing) => existing.stock_id === s.stock_id)) {
+                stockArray.push(s);
+            }
+        });
+
+        return { productMap, productStockMap };
+    }),
+
+    checkAndReserveStock: asyncHandler(async (product, stocks, requiredQty, employeeId, role, orderNumber) => {
+        if (requiredQty <= 0) throw new BadRequestException("❌ Ordered quantity must be greater than 0.");
+
+        let packedUsed = 0, unpackedUsed = 0, productionRequired = 0;
+        let remainingQty = requiredQty;
+
+        const packedStocks = stocks.filter((s) => s.stock_type === STOCK_TYPES.STOCK_PACKED).sort((a, b) => b.stock - a.stock);
+        const unpackedStocks = stocks.filter((s) => s.stock_type === STOCK_TYPES.STOCK_UNPACKED).sort((a, b) => b.stock - a.stock);
+
+        for (const stk of packedStocks) {
+            if (remainingQty <= 0) break;
+            const used = Math.min(stk.stock, remainingQty);
+            stk.stock -= used;
+            packedUsed += used;
+            remainingQty -= used;
+            await stk.save();
+        }
+
+        for (const stk of unpackedStocks) {
+            if (remainingQty <= 0) break;
+            const used = Math.min(stk.stock, remainingQty);
+            stk.stock -= used;
+            unpackedUsed += used;
+            remainingQty -= used;
+            await stk.save();
+        }
+
+        const availableStockUsed = packedUsed + unpackedUsed;
+        if (remainingQty > 0) productionRequired = remainingQty;
+
+        if (availableStockUsed > 0 || productionRequired > 0) {
+            await saveOrUpdateStockTransaction({
+                product,
+                quantity: availableStockUsed,
+                action: STOCK_ACTIONS.STOCK_SALE,
+                employeeId,
+                role,
+                orderNumber,
+                productionRequired
+            });
+        }
+
+        product.available_stock = await calculateAvailableStock(product.product_id);
+        await product.save();
+
+        logger.info(`✅ Stock updated → Product:${product.product_id}, Packed:${packedUsed}, Unpacked:${unpackedUsed}, ProductionRequired:${productionRequired}`);
+        return { availableStockUsed, productionRequired, packedUsed, unpackedUsed };
+    }),
+
+    getAllBrands: asyncHandler(async () => {
+        const productBrands = await Brand.find().sort({ created_at: -1 });
+
+        const result = productBrands.map((brand) =>
+            mapProductBrandEntityToResponse(brand)
+        );
+
+        return result;
+    }),
+
+    createProductBrands: asyncHandler(async (brandsData) => {
+        const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+        logger.info(`customer id i required : ${employeeId}`);
+
+        const brandDocs = [];
+
+        for (const brand of brandsData) {
+            const brand_name = brand.brand_name?.toUpperCase().trim();
+            if (!brand_name) {
+                throw new BadRequestException("Brand name is missing or invalid.");
             }
 
-            if (typeof stock !== "number" || stock <= 0) {
-                throw new BadRequestException("Stock must be a positive number.");
+            const existingBrand = await Brand.findOne({ brand_name: brand_name });
+            if (existingBrand) {
+                throw new BadRequestException(`Brand ${brand_name} already exists.`);
             }
 
-            const normalizedStockType = typeof stock_type === "string" ? stock_type.trim().toUpperCase() : null;
-            if (!normalizedStockType || !STOCK_TYPES.includes(normalizedStockType)) {
-                throw new BadRequestException(`Invalid stock_type: ${stock_type}. Allowed: ${STOCK_TYPES.join(", ")}`);
-            }
+            const brand_models = [...new Set(
+                brand.brand_models.map((model) => model.trim().toUpperCase())
+            )];
 
-            let orderNote = "";
-            if (action === "RETURN") {
-                if (!order_number || typeof order_number !== "string") {
-                    throw new BadRequestException("Order number is required for RETURN stock.");
-                }
-
-                const order = await Order.findOne({ order_number });
-                if (!order) {
-                    throw new BadRequestException(`No order found with order number : ${order_number}`);
-                }
-
-                orderNote = `RETURN Reason: Order #${order_number}`;
-            }
-
-            const stockData = {
-                stock_id: await generateUniqueStockId(),
-                product_id: product.product_id,
-                stock,
-                add_stock: action === "ADD" ? stock : 0,
-                return_stock: action === "RETURN" ? stock : 0,
-                stock_type: normalizedStockType,
-                stock_notes: `${stock_notes} -- Employee: ${employee_id}; Role: ${role}; Stock: ${stock}; Stock Type: ${normalizedStockType}; Action: ${action}; Return Reason: ${orderNote}; Date: ${new Date().toISOString()}`,
-                created_by: employee_id,
-            };
-
-            const existingStock = await Stock.findOne({
-                product_id: productId,
-                stock_type: normalizedStockType
+            const brandDoc = new Brand({
+                brand_id: await generateUniqueBrandId(),
+                brand_name,
+                brand_models,
+                description: brand.description?.trim() || "",
+                created_by: employeeId
             });
 
-            if (existingStock) {
-                const updatedStock = await updateExistStock(productId, stockData, action);
-                productStocks.push(mapStockEntityToResponse(updatedStock));
-            } else {
-                const stockDoc = new Stock(stockData);
-                await stockDoc.save();
-                logger.info(`📦 New stock added: ${stockDoc.stock_id} for product: ${productId}`);
-                productStocks.push(mapStockEntityToResponse(stockDoc));
-            }
+            brandDocs.push(brandDoc);
         }
 
-        const allStocks = await Stock.find({ product_id: productId });
-        const totalStock = allStocks.reduce((sum, s) => sum + s.stock, 0);
-        product.available_stock = totalStock;
-        await product.save();
+        await Brand.insertMany(brandDocs);
+        return brandDocs.map((brand) =>
+            mapProductBrandEntityToResponse(brand)
+        );
+    }),
 
-        updatedStocks.push({
-            product: mapEntityToResponse(product),
-            stocks: productStocks
-        });
-    }
+    statusChangeByBrandName: asyncHandler(async (brandName, bodyData) => {
+        const { status } = bodyData;
+        const normalizedStatus = status.trim().toLowerCase();
+        const normalizedBrandName = brandName.trim().toUpperCase();
+        
+        if (!normalizedBrandName || typeof normalizedBrandName !== 'string' || !normalizedBrandName.trim()) {
+            throw new BadRequestException("Brand name parameter is missing or invalid.");
+        }
 
-    return updatedStocks;
+        if (!normalizedStatus || !STATUS.includes(normalizedStatus)) {
+            throw new BadRequestException("Status must be either 'active' or 'inactive'.");
+        }
+        
+        const brand = await Brand.findOne({ brand_name: normalizedBrandName });
+
+        if (!brand) {
+            throw new BadRequestException(`Brand ${normalizedBrandName} not found.`);
+        }
+        
+        if (brand.status.toLowerCase() === normalizedStatus) {
+            return mapProductBrandEntityToResponse(brand);
+        }
+
+        brand.status = normalizedStatus;
+        brand.updated_at = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+
+        await brand.save();
+
+        return mapProductBrandEntityToResponse(brand);
+    }),
+
 }
 
-async function updateExistStock(productId, stockData, action) {
-    const existingStock = await Stock.findOne({
-        product_id: productId,
-        stock_type: stockData.stock_type
-    });
-
-    if (!existingStock) {
-        throw new BadRequestException(`No existing stock found for product ID ${productId} and type ${stockData.stock_type}`);
-    }
-
-    existingStock.stock += stockData.stock;
-
-    if (action === "ADD") {
-        existingStock.add_stock += stockData.add_stock;
-    } else if (action === "RETURN") {
-        existingStock.return_stock += stockData.return_stock;
-    }
-
-    existingStock.stock_notes += ` || ${stockData.stock_notes}`;
-    await existingStock.save();
-
-    logger.info(`🔁 Stock updated`, {
-        product_id: existingStock.product_id,
-        stock_id: existingStock.stock_id
-    });
-
-    return existingStock;
-}
-
-async function getByProductId(productId) {
-    const product = await Product.findOne({ product_id: productId });
-    if (!product) {
-        throw new BadRequestException(`No product found with this product ID ${productId}`);
-    }
-    return product;
-}
-
-async function getAllProducts(filter = {}) {
-    return await Product.find(filter).sort({ created_at: -1 });
-}
-
-function mapEntityToResponse(entity) {
-    return {
-        product_id: entity.product_id,
-        brand: entity.brand,
-        product_name: entity.product_name,
-        model: entity.model,
-        product_type: entity.product_type,
-        status: entity.status,
-        available_stock: entity.available_stock,
-        created_by: entity.created_by,
-        created_at: entity.created_at,
-        updated_at: entity.updated_at
-    };
-}
-
-function mapStockEntityToResponse(entity) {
-    return {
-        stock_id: entity.stock_id,
-        product_id: entity.product_id,
-        stock: entity.stock,
-        add_stock: entity.add_stock,
-        return_stock: entity.return_stock,
-        stock_type: entity.stock_type,
-        stock_notes: entity.stock_notes,
-        created_by: entity.created_by,
-        created_at: entity.created_at,
-        updated_at: entity.updated_at,
-    };
-}
-
-export const productService = {
-    createProduct: asyncHandler(createProduct),
-    updateProduct: asyncHandler(updateProduct),
-    getByProductId: asyncHandler(getByProductId),
-    getAllProducts: asyncHandler(getAllProducts),
-    createOrUpdateProductStock: asyncHandler(createOrUpdateProductStock)
-};
-
-export { mapEntityToResponse, mapStockEntityToResponse };
+export { productService };

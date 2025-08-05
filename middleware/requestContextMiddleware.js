@@ -1,51 +1,104 @@
 // middleware/requestContextMiddleware.js
+
 import jwt from 'jsonwebtoken';
-import { CurrentRequestContext, asyncLocalStorage } from '../utils/CurrentRequestContext.js';
-import { UnauthorizedException } from './CustomError.js';
+import Employee from '../models/employees.js';
+import { UnauthorizedException, BadRequestException } from './CustomError.js';
 import { tokenBlacklistService } from '../service/tokenBlacklistService.js';
-import { PATH_ROUTES } from '../utils/constants.js';
+import { employeeService } from '../service/employeeService.js';
+import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
+import logger from '../utils/logger.js';
+import {
+    PATH_ROUTES,
+    ROLES,
+    JWT_SECRET,
+    APPROVAL_GRANTED_ROLES,
+} from '../utils/constants.js';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const PUBLIC_PATHS = [PATH_ROUTES.AUTH_ROUTE + '/signin'];
+const PUBLIC_ROUTES = [
+    `${PATH_ROUTES.AUTH_ROUTE}/signin`
+];
 
-export const requestContextMiddleware = async(req, res, next) => {
+const SUPER_ADMIN_ONLY_ROUTES = [
+    `${PATH_ROUTES.EMPLOYEE_ROUTE}/get/employees-password`,
+    `${PATH_ROUTES.EMPLOYEE_ROUTE}/get/deleted-employees`
+];
+
+const ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES = [
+    `${PATH_ROUTES.EMPLOYEE_ROUTE}/update/delete-employee`
+];
+
+const isPublicRoute = (path) => PUBLIC_ROUTES.includes(path);
+const isSuperAdminOnlyRoute = (path) => SUPER_ADMIN_ONLY_ROUTES.includes(path);
+const isAdminOrSuperAdminRoute = (path) => ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES.includes(path);
+
+export const requestContextMiddleware = async (req, res, next) => {
+    const { path, headers } = req;
+
+    if (isPublicRoute(path)) {
+        return next();
+    }
+
+    const authHeader = headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return next(new UnauthorizedException('Authorization token missing or malformed'));
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    if (!token || token === 'undefined' || token === 'null') {
+        return next(new UnauthorizedException('Authentication failed: Token is missing or invalid.'));
+    }
+
+    if (!JWT_SECRET) {
+        logger.error('[Auth] JWT_SECRET is not defined in environment.');
+        return next(new BadRequestException('JWT_SECRET is missing in environment variables'));
+    }
+
+    let decoded;
     try {
-        // console.log(`[Auth Middleware] Checking if ${req.path} is in public paths: ${JSON.stringify(PUBLIC_PATHS)}`);
-        if (PUBLIC_PATHS.includes(req.path)) {
-            return next();
-        }
+        decoded = jwt.verify(token, JWT_SECRET);
+        logger.info('[Auth] Token verified successfully.');
+    } catch (err) {
+        logger.warn('[Auth] JWT verification failed:', err.message);
+        return next(new UnauthorizedException('Invalid or expired token'));
+    }
 
-        const authHeader = req.headers.authorization;
+    if (tokenBlacklistService.isBlacklisted(token)) {
+        return next(new UnauthorizedException('Token has been invalidated or session expired'));
+    }
 
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            throw new UnauthorizedException('Authorization token missing or malformed');
-        }
+    const { employee_id: employeeId, role, status } = decoded;
 
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, JWT_SECRET);
+    if (!employeeId || !role) {
+        return next(new UnauthorizedException('Invalid token payload'));
+    }
 
-        const isBlacklisted = tokenBlacklistService.isBlacklisted(token);
-        if (isBlacklisted) {
-            throw new UnauthorizedException('Your session has expired or the token was invalidated. Please log in again.');
-        }
+    const employee = await Employee.findOne({ employee_id: employeeId, status: 'active' });
+    if (!employee) {
+        await employeeService.logout(token);
+        return next(new UnauthorizedException('User does not exist or is inactive.'));
+    }
 
-        const { employee_id: employeeId, role, status } = decoded;
-        req.user = { employeeId, role, status };
+    if (isSuperAdminOnlyRoute(path) && role !== ROLES.SUPER_ADMIN) {
+        return next(new UnauthorizedException('Access restricted to Super Admins only'));
+    }
 
-        const context = {
-            tenant: req.headers['x-tenant-id'] || null,
+    if (isAdminOrSuperAdminRoute(path) && !Object.values(APPROVAL_GRANTED_ROLES).includes(role)) {
+        return next(new UnauthorizedException('Access restricted to Admins or Super Admins'));
+    }
+
+    CurrentRequestContext.run({}, () => {
+        CurrentRequestContext.setEmployeeId(employeeId);
+        CurrentRequestContext.setRole(role);
+        CurrentRequestContext.setCurrentToken(token);
+
+        req.user = {
             employeeId,
             role,
-            status,
-            token
+            status
         };
 
-        asyncLocalStorage.run(context, () => {
-            next();
-        });
-
-    } catch (err) {
-        console.error('JWT verification error:', err.message);
-        throw new UnauthorizedException('Invalid or expired token');
-    }
+        next();
+    });
 };

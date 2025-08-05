@@ -47,16 +47,38 @@ const employeeSchema = new mongoose.Schema({
         type: String,
         default: "active",
     },
+    log_note: {
+        type: String,
+    },
     created_by: {
         type: String,
         required: [true, "📝 Creator ID is required."],
     },
-    shop_name: String,
-    photo: String,
-    district: String,
-    town: String,
-    brand: String,
-    address: String,
+    shop_name: {
+        type: String,
+    },
+    photo: {
+        type: String,
+    },
+    district: {
+        type: String,
+    },
+    town: {
+        type: String,
+    },
+    brand: {
+        type: [String],
+    },
+    address: {
+        type: String,
+    },
+    assignedTarget: {
+        type: Number,
+        default: 0,
+    },
+    targetId: {
+        type: String,
+    },
 }, {
     timestamps: {
         createdAt: 'created_at',
@@ -74,10 +96,6 @@ employeeSchema.pre('save', function(next) {
 employeeSchema.pre('findOneAndUpdate', function(next) {
     this._update.updated_at = getISTDate();
     next();
-});
-
-employeeSchema.virtual('full_name').get(function() {
-    return `${this.first_name} ${this.last_name}`;
 });
 
 employeeSchema.set('toJSON', { virtuals: true });
