@@ -19,6 +19,14 @@ async function fetchProductWithStocks(product) {
     return mapProductEntityToResponse(product, stocks.map(mapStockEntityToResponse));
 }
 
+async function checkIfProductExists(brand, model) {
+    const existingProduct = await Product.findOne({ brand: brand.toUpperCase(), model: model.toUpperCase() });
+
+    if (existingProduct) {
+        throw new BadRequestException(`Product with brand "${brand}" and model "${model}" already exists.`);
+    }
+}
+
 async function calculateAvailableStock(productId) {
     const allStocks = await Stock.find({ product_id: productId });
 
@@ -115,6 +123,8 @@ const productService = {
 
         const brandInput = sanitizeInput(dto.brand).toUpperCase();
         const modelInput = sanitizeInput(dto.model).toUpperCase();
+
+        await checkIfProductExists(brandInput, modelInput);
 
         if (!brandModelMap.has(brandInput)) {
             throw new Error(`Brand ${dto.brand} does not exist or is not active.`);
