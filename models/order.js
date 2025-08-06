@@ -89,4 +89,13 @@ export default class Order extends OrderModel {
         return await this.findOne({ order_number: orderNumber });
     }
     
+    static async findByOrderStatus(status) {
+        const validStatuses = ["PENDING", "APPROVED", "CANCELLED", "IN_PROGRESS", "DELIVERED"];
+        if (!validStatuses.includes(status)) {
+            throw new Error(`Invalid order status: ${status}`);
+        }
+
+        return await this.find({ status });
+    }
+
 }

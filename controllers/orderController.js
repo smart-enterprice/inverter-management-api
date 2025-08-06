@@ -46,6 +46,19 @@ const orderController = {
         });
     }),
 
+    getByOrderStatus: asyncHandler(async(req, res) => {
+        const { orderStatus } = req.params;
+        const orderData = await orderService.getByOrderStatus(orderStatus);
+
+        res.status(200).json({
+            success: true,
+            status: 200,
+            message: "✅ Order fetched successfully!",
+            data: orderData,
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        });
+    }),
+
     fetchOrdersByDateFilter: asyncHandler(async(req, res) => {
         const { year, month, start_date, end_date } = req.query;
 

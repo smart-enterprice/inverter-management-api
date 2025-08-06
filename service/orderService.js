@@ -69,7 +69,6 @@ export const fetchDealerAndOrderDetails = async(orders) => {
         OrderDetails.find({ order_number: { $in: orderNumbers } }),
     ]);
 
-
     const dealerMap = Object.fromEntries(dealers.map((d) => [d.employee_id, d]));
     const detailsMap = orderDetails.reduce((acc, d) => {
         acc[d.order_number] = acc[d.order_number] || [];
@@ -122,6 +121,7 @@ const orderService = {
 
                 const { productionRequired } = await productService.checkAndReserveStock(product, stocks, Number(detail.qty_ordered), employeeId, employeeRole);
 
+                const notes = productionRequired > 0 ? ` | Production Required: ${productionRequired} stock`  : "";
                 return {
                     order_details_number: await generateUniqueOrderDetailsId(),
                     order_number: orderNumber,
@@ -132,6 +132,7 @@ const orderService = {
                     product_type: product.product_type,
                     qty_ordered: Number(detail.qty_ordered),
                     delivery_date: new Date(detail.delivery_date),
+                    notes: notes,
                     status: productionRequired > 0 ? "PENDING_PRODUCTION" : "PENDING"
                 };
             })
@@ -162,6 +163,14 @@ const orderService = {
         const orders = await Order.find().sort({ created_at: -1 });
         const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
 
+        return orders.map((order) =>
+            transformOrderToResponse(order, dealerMap[order.dealer_id], detailsMap[order.order_number])
+        );
+    }),
+
+    getByOrderStatus: asyncHandler(async (orderStatus) => {
+        const orders = await Order.findByOrderStatus(orderStatus);
+        const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
         return orders.map((order) =>
             transformOrderToResponse(order, dealerMap[order.dealer_id], detailsMap[order.order_number])
         );
