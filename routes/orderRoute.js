@@ -17,6 +17,8 @@ router.get('/', orderController.getAll);
 
 router.get('/:orderId', orderController.getByOrderId);
 
+router.get('/orders/:orderStatus', orderController.getByOrderStatus);
+
 router.get("/orders/date-filter", orderController.fetchOrdersByDateFilter);
 
 // @route   PUT

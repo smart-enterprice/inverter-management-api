@@ -50,6 +50,10 @@ const orderDetailsSchema = new mongoose.Schema({
         type: Date,
         required: [true, "📅 Delivery date is required."],
     },
+    notes: {
+        type: String,
+        default: "",
+    },
     status: {
         type: String,
         // enum: ["PENDING", "DISPATCHED", "DELIVERED", "CANCELLED"],
