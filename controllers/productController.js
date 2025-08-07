@@ -66,6 +66,17 @@ const productController = {
         });
     }),
 
+    getAllActiveProducts: asyncHandler(async(req, res) => {
+        const productList = await productService.getAllActiveProducts();
+        res.status(200).json({
+            success: true,
+            status: 200,
+            message: "📦 Product list fetched successfully!",
+            data: productList,
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        });
+    }),
+
     getAllBrands: asyncHandler(async(req, res) => {
         const brandListData = await productService.getAllBrands();
         res.status(200).json({

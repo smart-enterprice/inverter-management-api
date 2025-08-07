@@ -14,7 +14,8 @@ router.post('/create', productController.createProduct);
 router.post('/create/brands', productController.createProductBrands);
 
 // @route   GET
-router.get('/', productController.getAll);
+router.get('/', productController.getAllActiveProducts);
+router.get('/get/all', productController.getAll);
 router.get('/:productId', productController.getByProductId);
 router.get('/getAll/brands', productController.getAllBrands);
 

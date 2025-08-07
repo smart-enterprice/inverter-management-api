@@ -2,6 +2,7 @@
 
 import asyncHandler from "express-async-handler";
 
+import Employee from '../models/employees.js';
 import Product from "../models/product.js";
 import Stock from "../models/stock.js";
 import Order from "../models/order.js";
@@ -127,12 +128,21 @@ const productService = {
         await checkIfProductExists(brandInput, modelInput);
 
         if (!brandModelMap.has(brandInput)) {
-            throw new Error(`Brand ${dto.brand} does not exist or is not active.`);
+            throw new BadRequestException(`Brand ${dto.brand} does not exist or is not active.`);
         }
 
         const validModels = brandModelMap.get(brandInput);
         if (!validModels.includes(modelInput)) {
-            throw new Error(`Model ${dto.model} is not associated with brand ${dto.brand}.`);
+            throw new BadRequestException(`Model ${dto.model} is not associated with brand ${dto.brand}.`);
+        }
+
+        let price = null;
+        if (dto.product_price != null) {
+            const parsedPrice = Number(dto.product_price);
+            if (isNaN(parsedPrice) || parsedPrice < 0) {
+                throw new BadRequestException('Product price must be a positive number.');
+            }
+            price = Math.round(parsedPrice * 100) / 100;
         }
 
         const productId = await generateUniqueProductId();
@@ -143,6 +153,7 @@ const productService = {
             product_type: sanitizeInput(dto.product_type),
             product_name: sanitizeInput(dto.product_name),
             available_stock: Number(dto.available_stock || 0),
+            price,
             created_by: employee_id
         });
 
@@ -158,19 +169,79 @@ const productService = {
 
     updateProduct: asyncHandler(async (productId, dto) => {
         const { employee_id } = validateMainRoleAccess();
-        const updates = {};
 
-        for (const key of PRODUCT_UPDATABLE_FIELDS) {
-            if (dto[key] !== undefined) updates[key] = sanitizeInput(dto[key]);
+        const requestingEmployee = await Employee.findOne({ employee_id: employee_id, status: 'active' });
+        if (!requestingEmployee) {
+            throw new BadRequestException(`Requesting employee not found or inactive: ${employee_id}`);
         }
 
-        if (dto.available_stock !== undefined) updates.available_stock = Number(dto.available_stock);
-        if (!Object.keys(updates).length) throw new BadRequestException("No valid fields provided for update.");
+        const product = await Product.findOne({ product_id: productId });
+        if (!product) {
+            throw new BadRequestException(`No product found with ID "${productId}".`);
+        }
 
-        const updated = await Product.findOneAndUpdate({ product_id: productId }, updates, { new: true });
-        if (!updated) throw new BadRequestException(`No product found with ID ${productId}`);
+        logger.info(`📦 Product updates: ${JSON.stringify(product, null, 2)}`);
 
-        logger.info(`🔄 Product updated: ${productId}`);
+        const updates = {};
+        for (const key of PRODUCT_UPDATABLE_FIELDS) {
+            if (['brand', 'model'].includes(key)) {
+                continue;
+            }
+
+            if (dto[key] !== undefined) {
+                const sanitized = sanitizeInput(dto[key]);
+                if (product[key] !== sanitized) {
+                    updates[key] = sanitized;
+                }
+            }
+        }
+
+        if (dto.product_price !== undefined) {
+            const parsedPrice = Number(dto.product_price);
+            if (isNaN(parsedPrice) || parsedPrice < 0) {
+                throw new BadRequestException('Product price must be a positive number.');
+            }
+            const roundedPrice = Math.round(parsedPrice * 100) / 100;
+            if (product.price == null || product.price !== roundedPrice) {
+                updates.price = roundedPrice;
+            }
+        }
+
+        if (dto.status !== undefined) {
+            const normalizedStatus = sanitizeInput(dto.status).toLowerCase();
+            if (!STATUS.includes(normalizedStatus)) {
+                throw new BadRequestException("Status must be one of: " + STATUS.join(', '));
+            }
+
+            const previousStatus = product.status;
+            if (normalizedStatus !== previousStatus) {
+                updates.status = normalizedStatus;
+
+                if (['inactive', 'discontinued'].includes(normalizedStatus)) {
+                    const reason = sanitizeInput(dto.status_reason || 'No reason provided');
+                    const timestampIST = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', });
+
+                    const logEntry = `Product status changed by: ${requestingEmployee.employee_name} (Role: ${requestingEmployee.role}) | From: ${previousStatus} → ${normalizedStatus} | Reason: ${reason} | Date: ${timestampIST}`;
+                    updates.log_note = product.log_note
+                        ? `${product.log_note} \n${logEntry}`
+                        : logEntry;
+                } else if (['active'].includes(normalizedStatus)) {
+                    const brand = await Brand.findOne({ brand_name: product.brand });
+                    if (!brand || brand.status !== 'active') {
+                        throw new BadRequestException(`Cannot activate product because the associated brand "${product.brand}" is inactive or does not exist.`);
+                    }
+                }
+            }
+        }
+
+        if (!Object.keys(updates).length) return fetchProductWithStocks(product);
+
+        updates.available_stock = await calculateAvailableStock(productId);
+
+        const updated = await Product.findOneAndUpdate({ product_id: productId }, { $set: updates }, { new: true });
+        if (!updated) throw new BadRequestException(`Failed to update product with ID "${productId}".`);
+
+        logger.info(`🔄 Product updated: ${productId} by employee ${employee_id}`);
         return fetchProductWithStocks(updated);
     }),
 
@@ -184,7 +255,7 @@ const productService = {
         const result = [];
 
         for (const productId of Object.keys(stockMap)) {
-            const product = await Product.findOne({ product_id: productId });
+            const product = await Product.getActiveProductById(productId);
             if (!product) throw new BadRequestException(`No product found with ID ${productId}`);
 
             const entries = Array.isArray(stockMap[productId]) ? stockMap[productId] : [stockMap[productId]];
@@ -221,13 +292,25 @@ const productService = {
     }),
 
     getByProductId: asyncHandler(async (productId) => {
-        const product = await Product.findOne({ product_id: productId });
+        const product = await Product.getActiveProductById(productId);
         if (!product) throw new BadRequestException(`No product found with ID ${productId}`);
         return fetchProductWithStocks(product);
     }),
 
+    getAllActiveProducts: asyncHandler(async (filter = {}) => {
+        const products = await Product.getActiveProducts(filter);
+        const result = [];
+
+        for (const product of products) {
+            const stocks = await Stock.find({ product_id: product.product_id });
+            result.push(mapProductEntityToResponse(product, stocks.map(mapStockEntityToResponse)));
+        }
+
+        return result;
+    }),
+
     getAllProducts: asyncHandler(async (filter = {}) => {
-        const products = await Product.find(filter).sort({ created_at: -1 });
+        const products = await Product.getAllProducts(filter);
         const result = [];
 
         for (const product of products) {
@@ -254,8 +337,10 @@ const productService = {
 
         const productMap = new Map();
         const productStockMap = new Map();
+        const productAvailableStockMap = new Map();
 
         products.forEach((p) => productMap.set(p.product_id, p));
+
         stocks.forEach((s) => {
             if (!productStockMap.has(s.product_id)) productStockMap.set(s.product_id, []);
             const stockArray = productStockMap.get(s.product_id);
@@ -264,7 +349,12 @@ const productService = {
             }
         });
 
-        return { productMap, productStockMap };
+        for (const p of products) {
+            const availableStock = await calculateAvailableStock(p.product_id);
+            productAvailableStockMap.set(p.product_id, availableStock);
+        }
+
+        return { productMap, productStockMap, productAvailableStockMap };
     }),
 
     checkAndReserveStock: asyncHandler(async (product, stocks, requiredQty, employeeId, role, orderNumber) => {
@@ -364,34 +454,99 @@ const productService = {
     }),
 
     statusChangeByBrandName: asyncHandler(async (brandName, bodyData) => {
-        const { status } = bodyData;
+        const { status, brand_models } = bodyData;
+
         const normalizedStatus = status.trim().toLowerCase();
         const normalizedBrandName = brandName.trim().toUpperCase();
-        
+
         if (!normalizedBrandName || typeof normalizedBrandName !== 'string' || !normalizedBrandName.trim()) {
             throw new BadRequestException("Brand name parameter is missing or invalid.");
         }
 
         if (!normalizedStatus || !STATUS.includes(normalizedStatus)) {
-            throw new BadRequestException("Status must be either 'active' or 'inactive'.");
+            throw new BadRequestException("Status must be one of: " + STATUS.join(', '));
         }
-        
-        const brand = await Brand.findOne({ brand_name: normalizedBrandName });
 
+        const brand = await Brand.findOne({ brand_name: normalizedBrandName });
         if (!brand) {
             throw new BadRequestException(`Brand ${normalizedBrandName} not found.`);
         }
-        
+
         if (brand.status.toLowerCase() === normalizedStatus) {
             return mapProductBrandEntityToResponse(brand);
         }
 
-        brand.status = normalizedStatus;
-        brand.updated_at = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+        if (Array.isArray(brand_models) && brand_models.length > 0) {
+            const existingModels = new Set(brand.brand_models.map(m => m.toUpperCase()));
+            brand_models.forEach(model => existingModels.add(model.toUpperCase()));
+            brand.brand_models = Array.from(existingModels);
+        }
 
-        await brand.save();
+        const products = await Product.find({ brand: brand.brand_name });
+        const productIds = products.map(product => product.product_id);
+        const { productAvailableStockMap } = await productService.getProductsByIds(productIds);
 
-        return mapProductBrandEntityToResponse(brand);
+        let updateQuery = {};
+        let updateBrand = false;
+
+        const updateTimestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+        if (normalizedStatus === 'active') {
+            await Product.updateMany(
+                { brand: brand.brand_name },
+                { $set: { status: 'active', updated_at: updateTimestamp } }
+            );
+
+            updateQuery = { status: 'active', updated_at: updateTimestamp };
+            updateBrand = true;
+        }
+
+        else if (normalizedStatus === 'inactive') {
+            await Product.updateMany(
+                { brand: brand.brand_name },
+                { $set: { status: 'inactive', updated_at: updateTimestamp } }
+            );
+
+            updateQuery = { status: 'inactive', updated_at: updateTimestamp };
+            updateBrand = true;
+        }
+
+        else if (normalizedStatus === 'discontinued') {
+            const discontinuedProductIds = [];
+
+            for (const p of products) {
+                const availableStock = await productAvailableStockMap.get(p.product_id);
+                if (availableStock <= 0) {
+                    discontinuedProductIds.push(p.product_id);
+                }
+            }
+
+            if (discontinuedProductIds.length === 0) {
+                throw new BadRequestException("Cannot discontinue brand. Products still have stock available.");
+            }
+
+            await Product.updateMany(
+                { product_id: { $in: discontinuedProductIds } },
+                { $set: { status: 'discontinued', updated_at: updateTimestamp } }
+            );
+
+            const allDiscontinued = discontinuedProductIds.length === productIds.length;
+            if (allDiscontinued) {
+                updateQuery = { status: 'discontinued', updated_at: updateTimestamp };
+                updateBrand = true;
+            }
+        }
+
+        if (updateBrand) {
+            await Brand.findOneAndUpdate(
+                { brand_name: normalizedBrandName },
+                { $set: { ...updateQuery, brand_models: brand.brand_models } }
+            );
+        }
+
+        const updatedBrand = await Brand.findOne({ brand_name: normalizedBrandName });
+
+        return mapProductBrandEntityToResponse(updatedBrand);
     }),
 
 }
