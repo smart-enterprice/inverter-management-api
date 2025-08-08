@@ -24,7 +24,7 @@ async function checkIfProductExists(brand, model) {
     const existingProduct = await Product.findOne({ brand: brand.toUpperCase(), model: model.toUpperCase() });
 
     if (existingProduct) {
-        throw new BadRequestException(`Product with brand "${brand}" and model "${model}" already exists.`);
+        throw new BadRequestException(`Product with brand ${brand} and model ${model} already exists.`);
     }
 }
 
@@ -116,25 +116,28 @@ const productService = {
         const { employee_id } = validateMainRoleAccess();
         validateProductRequiredFields(dto);
 
-        const productBrands = await Brand.find({ status: "active" }).sort({ created_at: -1 });
-        const brandModelMap = new Map();
-        productBrands.forEach(({ brand_name, brand_models }) => {
-            brandModelMap.set(brand_name.toUpperCase(), brand_models.map(m => m.toUpperCase()));
-        });
-
         const brandInput = sanitizeInput(dto.brand).toUpperCase();
         const modelInput = sanitizeInput(dto.model).toUpperCase();
 
-        await checkIfProductExists(brandInput, modelInput);
-
-        if (!brandModelMap.has(brandInput)) {
-            throw new BadRequestException(`Brand ${dto.brand} does not exist or is not active.`);
+        const brandRecord = await Brand.findOne({ brand_name: brandInput });
+        if (!brandRecord) {
+            throw new BadRequestException(`Brand ${dto.brand} does not exist.`);
         }
 
-        const validModels = brandModelMap.get(brandInput);
-        if (!validModels.includes(modelInput)) {
+        const brandModels = brandRecord.brand_models.map(m => m.toUpperCase());
+        const brandStatus = brandRecord.status.toLowerCase();
+
+        if (brandStatus === 'inactive') {
+            throw new BadRequestException(`Brand ${dto.brand} is inactive. Please activate the brand to create a product.`);
+        } else if (brandStatus === 'discontinued') {
+            throw new BadRequestException(`Cannot create product. Brand ${dto.brand} is discontinued.`);
+        }
+
+        if (!brandModels.includes(modelInput)) {
             throw new BadRequestException(`Model ${dto.model} is not associated with brand ${dto.brand}.`);
         }
+
+        await checkIfProductExists(brandInput, modelInput);
 
         let price = null;
         if (dto.product_price != null) {
@@ -177,7 +180,7 @@ const productService = {
 
         const product = await Product.findOne({ product_id: productId });
         if (!product) {
-            throw new BadRequestException(`No product found with ID "${productId}".`);
+            throw new BadRequestException(`No product found with ID ${productId}.`);
         }
 
         logger.info(`📦 Product updates: ${JSON.stringify(product, null, 2)}`);
@@ -228,7 +231,7 @@ const productService = {
                 } else if (['active'].includes(normalizedStatus)) {
                     const brand = await Brand.findOne({ brand_name: product.brand });
                     if (!brand || brand.status !== 'active') {
-                        throw new BadRequestException(`Cannot activate product because the associated brand "${product.brand}" is inactive or does not exist.`);
+                        throw new BadRequestException(`Cannot activate product because the associated brand ${product.brand} is inactive or does not exist.`);
                     }
                 }
             }
@@ -239,7 +242,7 @@ const productService = {
         updates.available_stock = await calculateAvailableStock(productId);
 
         const updated = await Product.findOneAndUpdate({ product_id: productId }, { $set: updates }, { new: true });
-        if (!updated) throw new BadRequestException(`Failed to update product with ID "${productId}".`);
+        if (!updated) throw new BadRequestException(`Failed to update product with ID ${productId}.`);
 
         logger.info(`🔄 Product updated: ${productId} by employee ${employee_id}`);
         return fetchProductWithStocks(updated);
@@ -467,86 +470,100 @@ const productService = {
             throw new BadRequestException("Status must be one of: " + STATUS.join(', '));
         }
 
-        const brand = await Brand.findOne({ brand_name: normalizedBrandName });
+        const brand = await Brand.findOne(
+            { brand_name: normalizedBrandName }, { brand_models: 1, status: 1 }
+        );
         if (!brand) {
             throw new BadRequestException(`Brand ${normalizedBrandName} not found.`);
         }
 
-        if (brand.status.toLowerCase() === normalizedStatus) {
-            return mapProductBrandEntityToResponse(brand);
-        }
-
+        const existingModels = new Set(brand.brand_models.map(m => m.toUpperCase()));
         if (Array.isArray(brand_models) && brand_models.length > 0) {
-            const existingModels = new Set(brand.brand_models.map(m => m.toUpperCase()));
-            brand_models.forEach(model => existingModels.add(model.toUpperCase()));
-            brand.brand_models = Array.from(existingModels);
+            brand_models.forEach(model => existingModels.add(model.trim().toUpperCase()));
         }
-
-        const products = await Product.find({ brand: brand.brand_name });
-        const productIds = products.map(product => product.product_id);
-        const { productAvailableStockMap } = await productService.getProductsByIds(productIds);
-
-        let updateQuery = {};
-        let updateBrand = false;
+        const mergedBrandModels = Array.from(existingModels);
 
         const updateTimestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+        const isBrandStatusChanged = brand.status.toLowerCase() !== normalizedStatus;
+        const isModelsChanged = mergedBrandModels.length !== brand.brand_models.length;
 
-        if (normalizedStatus === 'active') {
-            await Product.updateMany(
-                { brand: brand.brand_name },
-                { $set: { status: 'active', updated_at: updateTimestamp } }
-            );
+        logger.info(`🔄 Brand Update Request:
+            ➤ Brand: ${normalizedBrandName}
+            ➤ Previous Status: ${brand.status}
+            ➤ New Status: ${normalizedStatus}
+            ➤ Brand Status Changed: ${isBrandStatusChanged}
+            ➤ Previous Models: [${brand.brand_models.join(', ')}]
+            ➤ Updated Models: [${mergedBrandModels.join(', ')}]
+            ➤ Timestamp: ${updateTimestamp}
+        `);
 
-            updateQuery = { status: 'active', updated_at: updateTimestamp };
-            updateBrand = true;
-        }
-
-        else if (normalizedStatus === 'inactive') {
-            await Product.updateMany(
-                { brand: brand.brand_name },
-                { $set: { status: 'inactive', updated_at: updateTimestamp } }
-            );
-
-            updateQuery = { status: 'inactive', updated_at: updateTimestamp };
-            updateBrand = true;
-        }
-
-        else if (normalizedStatus === 'discontinued') {
-            const discontinuedProductIds = [];
-
-            for (const p of products) {
-                const availableStock = await productAvailableStockMap.get(p.product_id);
-                if (availableStock <= 0) {
-                    discontinuedProductIds.push(p.product_id);
-                }
+        if (!isBrandStatusChanged) {
+            if (isModelsChanged) {
+                await Brand.updateOne(
+                    { brand_name: normalizedBrandName },
+                    { $set: { brand_models: mergedBrandModels } }
+                );
             }
 
-            if (discontinuedProductIds.length === 0) {
-                throw new BadRequestException("Cannot discontinue brand. Products still have stock available.");
+            return mapProductBrandEntityToResponse({
+                ...brand.toObject(),
+                brand_models: mergedBrandModels,
+            });
+        }
+
+        const products = await Product.find(
+            { brand: brand.brand_name }, { product_id: 1 }
+        ).lean();
+        const productIds = products.map(p => p.product_id);
+
+        let updateQuery = { status: normalizedStatus, updated_at: updateTimestamp };
+        let updateBrandFields = {};
+        let updateProducts = false;
+
+        if (!productIds.length) {
+            updateBrandFields = { ...updateQuery };
+        } else if (['active', 'inactive'].includes(normalizedStatus)) {
+            await Product.updateMany(
+                { product_id: { $in: productIds } },
+                { $set: updateQuery }
+            );
+            updateBrandFields = { ...updateQuery };
+            updateProducts = true;
+        } else if (normalizedStatus === 'discontinued') {
+            const { productAvailableStockMap } = await productService.getProductsByIds(productIds);
+
+            const discontinuedProductIds = productIds.filter(id => {
+                const stock = productAvailableStockMap.get(id);
+                return stock !== undefined && stock <= 0;
+            });
+
+            if (!discontinuedProductIds.length) {
+                throw new BadRequestException("Cannot discontinue brand. Products still have stock.");
             }
 
             await Product.updateMany(
                 { product_id: { $in: discontinuedProductIds } },
-                { $set: { status: 'discontinued', updated_at: updateTimestamp } }
+                { $set: updateQuery }
             );
 
-            const allDiscontinued = discontinuedProductIds.length === productIds.length;
-            if (allDiscontinued) {
-                updateQuery = { status: 'discontinued', updated_at: updateTimestamp };
-                updateBrand = true;
+            if (discontinuedProductIds.length === productIds.length) {
+                updateBrandFields = { ...updateQuery };
+                updateProducts = true;
             }
         }
 
-        if (updateBrand) {
-            await Brand.findOneAndUpdate(
+        if (updateProducts || isModelsChanged) {
+            await Brand.updateOne(
                 { brand_name: normalizedBrandName },
-                { $set: { ...updateQuery, brand_models: brand.brand_models } }
+                { $set: { ...updateBrandFields, brand_models: mergedBrandModels } }
             );
         }
 
-        const updatedBrand = await Brand.findOne({ brand_name: normalizedBrandName });
-
-        return mapProductBrandEntityToResponse(updatedBrand);
+        return mapProductBrandEntityToResponse({
+            ...brand.toObject(),
+            ...updateBrandFields,
+            brand_models: mergedBrandModels,
+        });
     }),
 
 }
