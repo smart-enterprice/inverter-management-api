@@ -91,4 +91,4 @@ export const PRODUCT_UPDATABLE_FIELDS = [...PRODUCT_REQUIRED_FIELDS, "status"];
 export const ORDER_REQUIRED_FIELDS = ["dealer_id", "priority", "order_details"];
 export const ORDER_DETAILS_REQUIRED_FIELDS = ["product_id", "product_brand", "product_name", "product_model", "product_type", "qty_ordered", "delivery_date"];
 
-export const STATUS = ["active", "inactive"];
+export const STATUS = ["active", "inactive", "discontinued"];

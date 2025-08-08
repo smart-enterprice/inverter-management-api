@@ -15,8 +15,8 @@ const EMPLOYEE_RESPONSE_FIELDS = [
 
 const PRODUCT_RESPONSE_FIELDS = [
     'product_id', 'product_name', 'model', 'product_type',
-    'available_stock', 'status', 'created_by', 'brand',
-    'created_at', 'updated_at'
+    'available_stock', 'price', 'status', 'created_by', 'brand',
+    'created_at', 'updated_at', 'log_note'
 ];
 
 const PRODUCT_BRAND_RESPONSE_FIELDS = [
