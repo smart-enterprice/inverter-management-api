@@ -3,10 +3,9 @@
 import validator from 'validator';
 
 import { BadRequestException, ValidationException, UnauthorizedException } from '../middleware/CustomError.js';
-import { APPROVAL_GRANTED_ROLES, ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, ROLES, PRODUCT_REQUIRED_FIELDS, } from './constants.js';
+import { ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, ROLES, PRODUCT_REQUIRED_FIELDS, DEALER_DISCOUNT_REQUIRED_FIELDS, } from './constants.js';
 import { validatePassword } from './employeeAuth.js';
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
-import logger from './logger.js';
 
 export const sanitizeInput = (input) =>
     typeof input === 'string' ? validator.escape(input.trim()) : input;
@@ -109,5 +108,11 @@ export const validateStockType = (stockType) => {
 export const validateProductRequiredFields = (dto) => {
     for (const field of PRODUCT_REQUIRED_FIELDS) {
         if (!dto[field]) throw new BadRequestException(`${field} is required`);
+    }
+};
+
+export const validateDealerDiscountRequiredFields = (dto) => {
+    for (const field of DEALER_DISCOUNT_REQUIRED_FIELDS) {
+        if (dto[field] === null || dto[field] === undefined) throw new BadRequestException(`${field} is required`);
     }
 };

@@ -6,7 +6,7 @@ import validator from 'validator';
 import jwt from 'jsonwebtoken';
 
 import employeeSchema from '../models/employees.js';
-import { generateUniqueEmployeeId } from '../utils/generatorIds.js';
+import { generateUniqueDealerDiscountId, generateUniqueEmployeeId } from '../utils/generatorIds.js';
 import logger from '../utils/logger.js';
 import { CurrentRequestContext } from "../utils/CurrentRequestContext.js";
 import {
@@ -16,8 +16,8 @@ import {
     UnauthorizedException
 } from '../middleware/CustomError.js';
 
-import { validateEmployeeData } from '../utils/validationUtils.js';
-import { mapEmployeeRequestToEntity, mapEmployeeEntityToResponse } from '../utils/modelMapper.js';
+import { getAuthenticatedEmployeeContext, validateDealerDiscountRequiredFields, validateEmployeeData } from '../utils/validationUtils.js';
+import { mapEmployeeRequestToEntity, mapEmployeeEntityToResponse, mapDealerDiscountEntityToResponse } from '../utils/modelMapper.js';
 import { hashPassword, generateToken, revealPassword, validatePassword } from '../utils/employeeAuth.js';
 import {
     APPROVAL_GRANTED_ROLES,
@@ -29,13 +29,15 @@ import {
     ROLES
 } from '../utils/constants.js';
 import { tokenBlacklistService } from "./tokenBlacklistService.js";
+import Brand from "../models/brand.js";
+import DealerDiscount from "../models/dealorDiscount.js";
 
-const checkExistingEmployee = async(email, phone, excludeId = null) => {
+const checkExistingEmployee = async (email, phone, excludeId = null) => {
     const query = excludeId ? { _id: { $ne: excludeId } } : {};
 
     const [existingEmail, existingPhone] = await Promise.all([
-        employeeSchema.findOne({...query, employee_email: email }),
-        employeeSchema.findOne({...query, employee_phone: phone })
+        employeeSchema.findOne({ ...query, employee_email: email }),
+        employeeSchema.findOne({ ...query, employee_phone: phone })
     ]);
 
     const errors = [];
@@ -47,7 +49,7 @@ const checkExistingEmployee = async(email, phone, excludeId = null) => {
     }
 };
 
-const findActiveEmployee = async(employeeId, includePassword = false) => {
+const findActiveEmployee = async (employeeId, includePassword = false) => {
     const query = employeeSchema.findOne({ employee_id: employeeId, status: 'active' });
     if (includePassword) query.select('+password');
 
@@ -83,8 +85,20 @@ async function updateEmployeePassword(employee, newPassword, updatedBy, role, re
     await employee.save();
 }
 
+async function checkIfDiscountExists(brand, model, dealerId) {
+    const existingDiscount = await DealerDiscount.findOne({
+        brand_name: brand.toUpperCase(),
+        model_name: model.toUpperCase(),
+        dealer_id: dealerId
+    });
+
+    if (existingDiscount) {
+        throw new BadRequestException(`A discount for brand ${brand} and model ${model} already exists for this dealer.`);
+    }
+};
+
 const employeeService = {
-    defaultSuperAdminSetup: asyncHandler(async() => {
+    defaultSuperAdminSetup: asyncHandler(async () => {
         if (!SUPER_ADMIN || !SUPER_ADMIN_PHONE || !SUPER_ADMIN_EMAIL || !SUPER_ADMIN_PASSWORD) {
             throw new Error("❌ Missing required SUPER_ADMIN environment variables.");
         }
@@ -123,7 +137,7 @@ const employeeService = {
         logger.info("✅ Default Super Admin created successfully.");
     }),
 
-    createEmployee: asyncHandler(async(employeeRequest, createdByEmployeeId) => {
+    createEmployee: asyncHandler(async (employeeRequest, createdByEmployeeId) => {
         if (!createdByEmployeeId) {
             throw new UnauthorizedException('You are not authorized to create an employee.');
         }
@@ -149,7 +163,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(newEmployee);
     }),
 
-    loginEmployee: asyncHandler(async(loginRequest) => {
+    loginEmployee: asyncHandler(async (loginRequest) => {
         const { employee_email, password } = loginRequest;
 
         if (!employee_email || !password) {
@@ -193,7 +207,7 @@ const employeeService = {
         };
     }),
 
-    getEmployeeById: asyncHandler(async(employeeId) => {
+    getEmployeeById: asyncHandler(async (employeeId) => {
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
         }
@@ -211,9 +225,8 @@ const employeeService = {
         return mapEmployeeEntityToResponse(employee);
     }),
 
-    getProfile: asyncHandler(async() => {
+    getProfile: asyncHandler(async () => {
         const employeeId = CurrentRequestContext.getEmployeeId();
-        const role = CurrentRequestContext.getRole();
 
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
@@ -231,7 +244,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(employee);
     }),
 
-    updateEmployee: asyncHandler(async(employeeId, updateData) => {
+    updateEmployee: asyncHandler(async (employeeId, updateData) => {
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
         }
@@ -266,7 +279,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(updatedEmployee);
     }),
 
-    resetPassword: asyncHandler(async(updateData) => {
+    resetPassword: asyncHandler(async (updateData) => {
         const employeeId = CurrentRequestContext.getEmployeeId();
 
         if (!employeeId) {
@@ -285,7 +298,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(employee);
     }),
 
-    resetPasswordById: asyncHandler(async(employeeId, updateData) => {
+    resetPasswordById: asyncHandler(async (employeeId, updateData) => {
         const requesterId = CurrentRequestContext.getEmployeeId();
 
         if (!requesterId || !employeeId) {
@@ -304,7 +317,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(targetEmployee);
     }),
 
-    deleteEmployee: asyncHandler(async(updateData) => {
+    deleteEmployee: asyncHandler(async (updateData) => {
         const { employeeId, reason } = updateData;
 
         if (!employeeId) {
@@ -338,13 +351,132 @@ const employeeService = {
             throw new NotFoundException('Target employee not found or already deleted');
         }
 
-        const deletionLog = `${ employeeToDelete.log_note || '' } | Deletion by: ${ requestingEmployee.employee_name }, Role: ${ requestingEmployee.role }, Reason: ${ reason }, Date: ${ new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) }`;
+        const deletionLog = `${employeeToDelete.log_note || ''} | Deletion by: ${requestingEmployee.employee_name}, Role: ${requestingEmployee.role}, Reason: ${reason}, Date: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
         employeeToDelete.status = 'deleted';
         employeeToDelete.log_note = deletionLog;
 
         await employeeToDelete.save();
 
         return mapEmployeeEntityToResponse(employeeToDelete);
+    }),
+
+    createDealerDiscount: asyncHandler(async (discountData) => {
+        const { employeeId } = getAuthenticatedEmployeeContext();
+        validateDealerDiscountRequiredFields(discountData);
+
+        const brand_name = discountData.brand_name.toUpperCase();
+        const model_name = discountData.model_name.toUpperCase();
+
+        const [dealer, brandRecord] = await Promise.all([
+            employeeSchema.findOne({ employee_id: discountData.dealer_id, role: ROLES.DEALER }).lean(),
+            Brand.findOne({ brand_name: brand_name }).lean()
+        ]);
+
+        if (!dealer) {
+            throw new BadRequestException(`Invalid dealer ID: ${discountData.dealer_id}. Dealer not found or role mismatch.`);
+        }
+
+        if (!brandRecord) {
+            throw new BadRequestException(`Brand ${brand_name} not found.`);
+        }
+
+        const brandModels = brandRecord.brand_models.map(m => m.toUpperCase());
+        const brandStatus = brandRecord.status.toLowerCase();
+
+        if (brandStatus === "discontinued") {
+            throw new BadRequestException(`Cannot create discount. Brand ${brand_name} is discontinued.`);
+        }
+
+        if (!brandModels.includes(model_name.toUpperCase())) {
+            throw new BadRequestException(`Model ${model_name} is not associated with brand ${brand_name}.`);
+        }
+
+        await checkIfDiscountExists(brand_name, model_name, discountData.dealer_id);
+
+        let discountPrice = null;
+        if (discountData.discount_value != null) {
+            const parsedPrice = Number(discountData.discount_value);
+            if (isNaN(parsedPrice) || parsedPrice < 0) {
+                throw new BadRequestException("Discount value must be a positive number.");
+            }
+            discountPrice = Math.round(parsedPrice * 100) / 100;
+        }
+
+        const dealerDiscountId = await generateUniqueDealerDiscountId();
+        const dealerDiscount = await DealerDiscount.create({
+            dealer_discount_id: dealerDiscountId,
+            brand_name,
+            model_name,
+            dealer_id: dealer.employee_id,
+            discount_value: discountPrice,
+            is_percentage: discountData.is_percentage,
+            description: discountData.description,
+            created_by: employeeId
+        });
+
+        return mapDealerDiscountEntityToResponse(dealerDiscount);
+    }),
+
+    getDealerDiscount: asyncHandler(async (filtersData = {}, pagination) => {
+        getAuthenticatedEmployeeContext();
+
+        const page = parseInt(pagination.page, 10) || 1;
+        const limit = parseInt(pagination.limit, 10) || 10;
+        const skip = (page - 1) * limit;
+
+        const filters = {};
+
+        if (filtersData.brand_name) {
+            const brandName = filtersData.brand_name.toUpperCase();
+            const brandRecord = await Brand.findOne({ brand_name: brandName });
+
+            if (!brandRecord) {
+                throw new BadRequestException(`Brand ${brandName} not found.`);
+            }
+
+            if (filtersData.model_name) {
+                const modelName = filtersData.model_name.toUpperCase();
+                const brandModels = brandRecord.brand_models.map(m => m.toUpperCase());
+
+                if (!brandModels.includes(modelName)) {
+                    throw new BadRequestException(`Model ${modelName} is not associated with brand ${brandName}.`);
+                }
+
+                filters.model_name = modelName;
+            }
+
+            filters.brand_name = brandName;
+        }
+
+        if (filtersData.dealer_id) {
+            const dealer = await employeeSchema.findOne({
+                employee_id: filtersData.dealer_id,
+                role: ROLES.DEALER
+            });
+
+            if (!dealer) {
+                throw new BadRequestException(`Dealer with ID ${filtersData.dealer_id} not found or role mismatch.`);
+            }
+
+            filters.dealer_id = dealer.employee_id;
+        }
+
+        const [dealerDiscounts, total] = await Promise.all([
+            DealerDiscount.find(filters)
+                .skip(skip)
+                .limit(limit)
+                .sort({ created_at: -1 }),
+            DealerDiscount.countDocuments(filters)
+        ]);
+
+        return {
+            data: dealerDiscounts.map(discount => mapDealerDiscountEntityToResponse(discount)),
+            pagination: {
+                page,
+                limit,
+                total
+            }
+        };
     }),
 
     logout: asyncHandler(async (token) => {
