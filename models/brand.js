@@ -27,6 +27,14 @@ const brandSchema = new mongoose.Schema({
             message: "brand_models must be an array of strings."
         },
     },
+    deleted_brand_models: {
+        type: [String],
+        default: [],
+        validate: {
+            validator: arr => Array.isArray(arr),
+            message: "deleted_brand_models must be an array of strings."
+        },
+    },
     description: {
         type: String,
         default: ""

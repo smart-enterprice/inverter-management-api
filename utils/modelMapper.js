@@ -20,7 +20,7 @@ const PRODUCT_RESPONSE_FIELDS = [
 ];
 
 const PRODUCT_BRAND_RESPONSE_FIELDS = [
-    'brand_id', 'brand_name', 'brand_models', 'description',
+    'brand_id', 'brand_name', 'brand_models', 'deleted_brand_models', 'description',
     'status', 'created_by', 'created_at', 'updated_at'
 ];
 

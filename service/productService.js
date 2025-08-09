@@ -457,10 +457,18 @@ const productService = {
     }),
 
     statusChangeByBrandName: asyncHandler(async (brandName, bodyData) => {
-        const { status, brand_models } = bodyData;
+        const {
+            status,
+            brand_models = [],
+            brand_name = brandName,
+            brand_models_update = {},
+            delete_models = [],
+            description = ""
+        } = bodyData;
 
         const normalizedStatus = status.trim().toLowerCase();
         const normalizedBrandName = brandName.trim().toUpperCase();
+        const newBrandName = brand_name?.trim().toUpperCase();
 
         if (!normalizedBrandName || typeof normalizedBrandName !== 'string' || !normalizedBrandName.trim()) {
             throw new BadRequestException("Brand name parameter is missing or invalid.");
@@ -470,100 +478,116 @@ const productService = {
             throw new BadRequestException("Status must be one of: " + STATUS.join(', '));
         }
 
-        const brand = await Brand.findOne(
-            { brand_name: normalizedBrandName }, { brand_models: 1, status: 1 }
-        );
+        const brand = await Brand.findOne({ brand_name: normalizedBrandName });
         if (!brand) {
             throw new BadRequestException(`Brand ${normalizedBrandName} not found.`);
         }
 
-        const existingModels = new Set(brand.brand_models.map(m => m.toUpperCase()));
+        let updatedModelsSet = new Set(brand.brand_models.map(m => m.toUpperCase()));
         if (Array.isArray(brand_models) && brand_models.length > 0) {
-            brand_models.forEach(model => existingModels.add(model.trim().toUpperCase()));
+            brand_models.forEach(model => updatedModelsSet.add(model.trim().toUpperCase()));
         }
-        const mergedBrandModels = Array.from(existingModels);
+
+        if (brand_models_update && typeof brand_models_update === 'object') {
+            for (const [oldModel, newModel] of Object.entries(brand_models_update)) {
+                const oldM = oldModel.trim().toUpperCase();
+                const newM = newModel.trim().toUpperCase();
+                if (updatedModelsSet.has(oldM)) {
+                    updatedModelsSet.delete(oldM);
+                    updatedModelsSet.add(newM);
+
+                    await Product.updateMany(
+                        { brand: normalizedBrandName, model: oldM },
+                        { $set: { model: newM } }
+                    );
+                }
+            }
+        }
+
+        let deletedModelsList = brand.deleted_brand_models || [];
+        if (Array.isArray(delete_models) && delete_models.length > 0) {
+            for (const model of delete_models) {
+                const mUpper = model.trim().toUpperCase();
+                if (updatedModelsSet.has(mUpper)) {
+                    updatedModelsSet.delete(mUpper);
+                    deletedModelsList.push(mUpper);
+                }
+            }
+        }
+
+        let descriptionNote = brand.description || "";
+        if (description) {
+            descriptionNote = descriptionNote
+                ? `${descriptionNote},${description}`
+                : `${description}`;
+        }
+
+        const mergedBrandModels = Array.from(updatedModelsSet);
 
         const updateTimestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-        const isBrandStatusChanged = brand.status.toLowerCase() !== normalizedStatus;
-        const isModelsChanged = mergedBrandModels.length !== brand.brand_models.length;
+        const brandStatusChanged = brand.status.toLowerCase() !== normalizedStatus;
 
-        logger.info(`🔄 Brand Update Request:
-            ➤ Brand: ${normalizedBrandName}
-            ➤ Previous Status: ${brand.status}
-            ➤ New Status: ${normalizedStatus}
-            ➤ Brand Status Changed: ${isBrandStatusChanged}
-            ➤ Previous Models: [${brand.brand_models.join(', ')}]
-            ➤ Updated Models: [${mergedBrandModels.join(', ')}]
+        let updateBrandFields = {
+            brand_models: mergedBrandModels,
+            deleted_brand_models: deletedModelsList,
+            description: descriptionNote,
+            updated_at: updateTimestamp
+        };
+
+        if (brandStatusChanged) {
+            const products = await Product.find({ brand: normalizedBrandName }, { product_id: 1 }).lean();
+            const productIds = products.map(p => p.product_id);
+
+            if (['active', 'inactive'].includes(normalizedStatus)) {
+                updateBrandFields.status = normalizedStatus;
+
+                await Product.updateMany(
+                    { product_id: { $in: productIds } },
+                    { $set: { status: normalizedStatus, updated_at: updateTimestamp } }
+                );
+            } else if (normalizedStatus === 'discontinued') {
+                const { productAvailableStockMap } = await productService.getProductsByIds(productIds);
+                const discontinuedIds = productIds.filter(id => productAvailableStockMap.get(id) <= 0);
+                if (!discontinuedIds.length) {
+                    throw new BadRequestException("Cannot discontinue brand. Products still have stock.");
+                }
+
+                await Product.updateMany(
+                    { product_id: { $in: discontinuedIds } },
+                    { $set: { status: 'discontinued', updated_at: updateTimestamp } }
+                );
+
+                if (productIds.length === discontinuedIds.length) {
+                    updateBrandFields.status = normalizedStatus;
+                }
+            }
+        }
+
+        if (newBrandName && newBrandName !== normalizedBrandName) {
+            updateBrandFields.brand_name = newBrandName;
+
+            await Product.updateMany(
+                { brand: normalizedBrandName },
+                { $set: { brand: newBrandName } }
+            );
+        }
+
+        await Brand.updateOne(
+            { brand_name: normalizedBrandName },
+            { $set: updateBrandFields }
+        );
+
+        logger.info(`✅ Brand Updated:
+            ➤ Old Brand Name: ${normalizedBrandName}
+            ➤ New Brand Name: ${newBrandName || normalizedBrandName}
+            ➤ Status Change: ${brand.status} → ${normalizedStatus}
+            ➤ Models: [${mergedBrandModels.join(', ')}]
+            ➤ Deleted Models: [${deletedModelsList.join(', ')}]
             ➤ Timestamp: ${updateTimestamp}
         `);
 
-        if (!isBrandStatusChanged) {
-            if (isModelsChanged) {
-                await Brand.updateOne(
-                    { brand_name: normalizedBrandName },
-                    { $set: { brand_models: mergedBrandModels } }
-                );
-            }
-
-            return mapProductBrandEntityToResponse({
-                ...brand.toObject(),
-                brand_models: mergedBrandModels,
-            });
-        }
-
-        const products = await Product.find(
-            { brand: brand.brand_name }, { product_id: 1 }
-        ).lean();
-        const productIds = products.map(p => p.product_id);
-
-        let updateQuery = { status: normalizedStatus, updated_at: updateTimestamp };
-        let updateBrandFields = {};
-        let updateProducts = false;
-
-        if (!productIds.length) {
-            updateBrandFields = { ...updateQuery };
-        } else if (['active', 'inactive'].includes(normalizedStatus)) {
-            await Product.updateMany(
-                { product_id: { $in: productIds } },
-                { $set: updateQuery }
-            );
-            updateBrandFields = { ...updateQuery };
-            updateProducts = true;
-        } else if (normalizedStatus === 'discontinued') {
-            const { productAvailableStockMap } = await productService.getProductsByIds(productIds);
-
-            const discontinuedProductIds = productIds.filter(id => {
-                const stock = productAvailableStockMap.get(id);
-                return stock !== undefined && stock <= 0;
-            });
-
-            if (!discontinuedProductIds.length) {
-                throw new BadRequestException("Cannot discontinue brand. Products still have stock.");
-            }
-
-            await Product.updateMany(
-                { product_id: { $in: discontinuedProductIds } },
-                { $set: updateQuery }
-            );
-
-            if (discontinuedProductIds.length === productIds.length) {
-                updateBrandFields = { ...updateQuery };
-                updateProducts = true;
-            }
-        }
-
-        if (updateProducts || isModelsChanged) {
-            await Brand.updateOne(
-                { brand_name: normalizedBrandName },
-                { $set: { ...updateBrandFields, brand_models: mergedBrandModels } }
-            );
-        }
-
-        return mapProductBrandEntityToResponse({
-            ...brand.toObject(),
-            ...updateBrandFields,
-            brand_models: mergedBrandModels,
-        });
+        const updatedBrand = await Brand.findOne({ brand_name: newBrandName || normalizedBrandName });
+        return mapProductBrandEntityToResponse(updatedBrand);
     }),
 
 }
