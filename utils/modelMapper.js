@@ -41,6 +41,12 @@ const ORDER_DETAILS_RESPONSE_FIELDS = [
     'qty_delivered', 'delivery_date', 'status', 'created_at', 'updated_at'
 ];
 
+const DEALER_DISCOUNT_RESPONSE_FIELDS = [
+    'dealer_discount_id', 'brand_name', 'model_name', 'dealer_id',
+    'discount_value', 'is_percentage', 'description', 'status',
+    'created_by', 'created_at', 'updated_at'
+];
+
 export const mapEmployeeRequestToEntity = (data, employeeId = null, isUpdate = false) => {
     const entity = {};
 
@@ -139,6 +145,18 @@ export const mapProductBrandEntityToResponse = (brand) => {
     PRODUCT_BRAND_RESPONSE_FIELDS.forEach(field => {
         if (brand[field] !== undefined) {
             response[field] = brand[field];
+        }
+    });
+
+    return response;
+};
+
+export const mapDealerDiscountEntityToResponse = (discount) => {
+    const response = {};
+
+    DEALER_DISCOUNT_RESPONSE_FIELDS.forEach(field => {
+        if (discount[field] !== undefined) {
+            response[field] = discount[field];
         }
     });
 

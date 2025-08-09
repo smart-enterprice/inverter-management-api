@@ -516,10 +516,8 @@ const productService = {
         }
 
         let descriptionNote = brand.description || "";
-        if (description) {
-            descriptionNote = descriptionNote
-                ? `${descriptionNote},${description}`
-                : `${description}`;
+        if (typeof description === "string" && description.trim() !== "") {
+            descriptionNote = description;
         }
 
         const mergedBrandModels = Array.from(updatedModelsSet);

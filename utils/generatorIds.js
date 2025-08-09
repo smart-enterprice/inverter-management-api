@@ -1,5 +1,6 @@
 // generatorIds.js
 import Brand from '../models/brand.js';
+import DealerDiscount from '../models/dealorDiscount.js';
 import Employee from '../models/employees.js';
 import Order from '../models/order.js';
 import OrderDetails from '../models/orderDetails.js';
@@ -21,7 +22,7 @@ const generateSegmentedOrderId = () => {
     return `${segment()}-${segment()}-${segment()}`;
 };
 
-export const generateUniqueEmployeeId = async() => {
+export const generateUniqueEmployeeId = async () => {
     let id;
     let exists;
 
@@ -33,7 +34,7 @@ export const generateUniqueEmployeeId = async() => {
     return id;
 };
 
-export const generateUniqueProductId = async() => {
+export const generateUniqueProductId = async () => {
     let id;
     let exists;
 
@@ -45,7 +46,7 @@ export const generateUniqueProductId = async() => {
     return id;
 };
 
-export const generateUniqueStockId = async() => {
+export const generateUniqueStockId = async () => {
     let id;
     let exists;
 
@@ -57,7 +58,7 @@ export const generateUniqueStockId = async() => {
     return id;
 };
 
-export const generateUniqueOrderId = async() => {
+export const generateUniqueOrderId = async () => {
     let order_number;
     let exists;
 
@@ -69,7 +70,7 @@ export const generateUniqueOrderId = async() => {
     return order_number;
 };
 
-export const generateUniqueOrderDetailsId = async() => {
+export const generateUniqueOrderDetailsId = async () => {
     let order__details_number;
     let exists;
 
@@ -81,14 +82,26 @@ export const generateUniqueOrderDetailsId = async() => {
     return order__details_number;
 };
 
-export const generateUniqueBrandId = async() => {
+export const generateUniqueBrandId = async () => {
     let brand_id;
     let exists;
 
     do {
-        brand_id = 'BRAND_' + uuidv4().split('-')[0].toUpperCase();
+        brand_id = `BRAND_${uuidv4().split("-")[0].toUpperCase()}`;
         exists = await Brand.findOne({ brand_id: brand_id });
     } while (exists);
 
     return brand_id;
-}
+};
+
+export const generateUniqueDealerDiscountId = async () => {
+    let discount_id;
+    let exists;
+
+    do {
+        discount_id = `DISCOUNT_${uuidv4().split("-")[0].toUpperCase()}`;
+        exists = await DealerDiscount.findOne({ dealer_discount_id: discount_id });
+    } while (exists);
+
+    return discount_id;
+};
