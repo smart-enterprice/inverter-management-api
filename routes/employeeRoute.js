@@ -12,7 +12,7 @@ router.use(verifyToken);
 // @route   POST /api/employees/signup
 router.post('/signup', employeeController.signup);
 router.post('/create/dealer-discount', employeeController.createDealerDiscount);
-router.post('/create/dealer-discounts', employeeController.createDealerDiscount);
+router.post('/create/dealer-discounts', employeeController.createDealerDiscountList);
 router.post('/get/dealer-discounts', employeeController.getDealerDiscount);
 
 // @route   PUT /api/employees/:employeeId
