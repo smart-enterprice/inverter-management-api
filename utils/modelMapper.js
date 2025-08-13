@@ -31,7 +31,7 @@ const STOCK_RESPONSE_FIELDS = [
 ];
 
 const ORDER_RESPONSE_FIELDS = [
-    'order_number', 'dealer_id', 'priority', 'order_note', 'status',
+    'order_number', 'dealer_id', 'priority', 'order_note', 'status', 'salesman_id',
     'delivery_date', 'created_by', 'created_at', 'updated_at'
 ];
 
