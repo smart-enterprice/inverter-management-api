@@ -21,7 +21,7 @@ import { productService } from "./productService.js";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-const validateOrderDTO = async(dto) => {
+const validateOrderDTO = async (dto) => {
     for (const field of ORDER_REQUIRED_FIELDS) {
         if (!dto[field]) {
             throw new BadRequestException(`'${field}' is required.`);
@@ -60,7 +60,7 @@ const validateOrderDTO = async(dto) => {
     return dealer;
 };
 
-export const fetchDealerAndOrderDetails = async(orders) => {
+export const fetchDealerAndOrderDetails = async (orders) => {
     const dealerIds = [...new Set(orders.map((o) => o.dealer_id))];
     const orderNumbers = orders.map((o) => o.order_number);
 
@@ -80,7 +80,7 @@ export const fetchDealerAndOrderDetails = async(orders) => {
 };
 
 const orderService = {
-    createOrder: asyncHandler(async(dto) => {
+    createOrder: asyncHandler(async (dto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!employeeId || !employeeRole || !Object.values(ORDER_CREATOR_ROLES).includes(employeeRole.toUpperCase())) {
@@ -96,20 +96,20 @@ const orderService = {
         const dealer = await validateOrderDTO(dto);
 
         const orderNumber = await generateUniqueOrderId();
-        const order = await new Order({
+        const order = new Order({
             order_number: orderNumber,
             dealer_id: sanitizeInput(dealer.employee_id),
             created_by: employeeId,
             salesman_id: salesmanId,
             priority: sanitizeInput(dto.priority || "LOW"),
             order_note: sanitizeInput(dto.order_note || ""),
-        }).save();
+        });
 
         const productIds = dto.order_details.map(detail => detail.product_id);
         const { productMap, productStockMap } = await productService.getProductsByIds(productIds);
 
         const orderDetailsPayload = await Promise.all(
-            dto.order_details.map(async(detail) => {
+            dto.order_details.map(async (detail) => {
                 const product = productMap.get(detail.product_id);
                 const stocks = productStockMap.get(detail.product_id) || [];
 
@@ -121,7 +121,7 @@ const orderService = {
 
                 const { productionRequired } = await productService.checkAndReserveStock(product, stocks, Number(detail.qty_ordered), employeeId, employeeRole);
 
-                const notes = productionRequired > 0 ? ` | Production Required: ${productionRequired} stock`  : "";
+                const notes = productionRequired > 0 ? ` | Production Required: ${productionRequired} stock` : "";
                 return {
                     order_details_number: await generateUniqueOrderDetailsId(),
                     order_number: orderNumber,
@@ -142,15 +142,15 @@ const orderService = {
 
         order.sales_target_updated = false;
         await order.save();
-        logger.info(`✅Order created: ${ orderNumber }`, { orderNumber });
+        logger.info(`✅Order created: ${orderNumber}`, { orderNumber });
 
         return transformOrderToResponse(order, dealer, orderDetailsList);
     }),
 
-    getByOrderId: asyncHandler(async(orderNumber) => {
+    getByOrderId: asyncHandler(async (orderNumber) => {
         const order = await Order.findByOrderNumber(orderNumber);
         if (!order) {
-            throw new BadRequestException(`No order found for: ${ orderNumber }`);
+            throw new BadRequestException(`No order found for: ${orderNumber}`);
         }
 
         const dealer = await Employee.findOne({ employee_id: order.dealer_id, role: ROLES.DEALER });
@@ -159,7 +159,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetails);
     }),
 
-    getAllOrders: asyncHandler(async() => {
+    getAllOrders: asyncHandler(async () => {
         const orders = await Order.find().sort({ created_at: -1 });
         const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
 
@@ -176,7 +176,7 @@ const orderService = {
         );
     }),
 
-    getOrdersByDateFilter: asyncHandler(async({ year, month, start_date, end_date }) => {
+    getOrdersByDateFilter: asyncHandler(async ({ year, month, start_date, end_date }) => {
         let startDate, endDate;
 
         if (year && month) {
