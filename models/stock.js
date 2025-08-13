@@ -37,7 +37,7 @@ const stockSchema = new mongoose.Schema({
         type: String,
         required: [true, "⚠️ Stock action is required!"],
         enum: {
-            values: ["ADD", "RETURN", "ORDERED", "OTHER"],
+            values: ["ADD", "RETURN", "ORDERED", "OTHER", "SALE"],
             message: "Invalid stock type"
         },
         trim: true
