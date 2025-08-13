@@ -75,6 +75,7 @@ export const STOCK_ACTIONS = {
     STOCK_ADD: 'ADD',
     STOCK_RETURN: 'RETURN',
     STOCK_ORDERED: 'ORDERED',
+    STOCK_SALE: 'SALE',
     STOCK_OTHER: 'OTHER'
 };
 

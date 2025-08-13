@@ -411,12 +411,13 @@ const productService = {
 
     getAllBrands: asyncHandler(async () => {
         const productBrands = await Brand.find().sort({ created_at: -1 });
+        return productBrands.map(mapProductBrandEntityToResponse);
+    }),
 
-        const result = productBrands.map((brand) =>
-            mapProductBrandEntityToResponse(brand)
-        );
-
-        return result;
+    getActiveBrands: asyncHandler(async () => {
+        const productBrands = await Brand.find({ status: "active" })
+            .sort({ created_at: -1 });
+        return productBrands.map(mapProductBrandEntityToResponse);
     }),
 
     createProductBrands: asyncHandler(async (brandsData) => {
