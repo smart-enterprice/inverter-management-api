@@ -108,6 +108,10 @@ const orderService = {
         const productIds = dto.order_details.map(detail => detail.product_id);
         const { productMap, productStockMap } = await productService.getProductsByIds(productIds);
 
+        const order_total_price = 0;
+        const dealer_discount_price = 0;
+        const order_discount_price = 0;
+
         const orderDetailsPayload = await Promise.all(
             dto.order_details.map(async (detail) => {
                 const product = productMap.get(detail.product_id);
