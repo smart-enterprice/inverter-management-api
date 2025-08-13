@@ -18,6 +18,7 @@ router.get('/', productController.getAllActiveProducts);
 router.get('/get/all', productController.getAll);
 router.get('/:productId', productController.getByProductId);
 router.get('/getAll/brands', productController.getAllBrands);
+router.get('/getActive/brands', productController.getActiveBrands);
 
 // @route   PUT
 router.put('/:productId', productController.updateProduct);

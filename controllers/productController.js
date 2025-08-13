@@ -88,6 +88,17 @@ const productController = {
         });
     }),
 
+    getActiveBrands: asyncHandler(async(req, res) => {
+        const brandListData = await productService.getActiveBrands();
+        res.status(200).json({
+            success: true,
+            status: 200,
+            message: "📦 Active Product Brand list fetched successfully!",
+            data: brandListData,
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        });
+    }),
+
     createProductBrands: asyncHandler(async(req, res) => {
         if (!Array.isArray(req.body) || req.body.length === 0) {
             throw new BadRequestException("Invalid brand list.Provide a non - empty array ");
