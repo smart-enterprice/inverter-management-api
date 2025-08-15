@@ -54,9 +54,9 @@ const orderDetailsSchema = new mongoose.Schema({
         type: String,
         default: "",
     },
-    product_price: {
+    unit_product_price: {
         type: Number,
-        required: [true, "💰 Product price is required."],
+        required: [true, "💰 Product unit price is required."],
         min: [0, "Price must be a positive number."],
     },
     total_product_price: {
@@ -78,6 +78,11 @@ const orderDetailsSchema = new mongoose.Schema({
         required: [true, "💰 Total dealer discount is required."],
         min: [0, "Price must be a positive number."],
     },
+    total_price: {
+        type: Number,
+        required: [true, "💰 Total price is required."],
+        min: [0, "Price must be a positive number."],
+    },
     status: {
         type: String,
         // enum: ["PENDING", "DISPATCHED", "DELIVERED", "CANCELLED"],
@@ -90,14 +95,14 @@ const orderDetailsSchema = new mongoose.Schema({
     },
 });
 
-orderDetailsSchema.pre("save", function (next) {
+orderDetailsSchema.pre("save", function(next) {
     const istNow = getISTDate();
     if (this.isNew) this.created_at = istNow;
     this.updated_at = istNow;
     next();
 });
 
-orderDetailsSchema.pre("findOneAndUpdate", function (next) {
+orderDetailsSchema.pre("findOneAndUpdate", function(next) {
     this._update.updated_at = getISTDate();
     next();
 });
