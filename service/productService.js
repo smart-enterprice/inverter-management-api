@@ -40,7 +40,7 @@ async function calculateAvailableStock(productId) {
     const sale = sumByType(STOCK_TYPES.STOCK_SALE);
     const other = sumByType(STOCK_TYPES.STOCK_OTHER);
 
-    const available = (packed + unpacked) - (sale + other);
+    const available = packed + unpacked;
     logger.info(`📊 Stock Calculation → Product:${productId}, PACKED=${packed}, UNPACKED=${unpacked}, SALE=${sale}, OTHER=${other}, AVAILABLE=${available}`);
     return available;
 }

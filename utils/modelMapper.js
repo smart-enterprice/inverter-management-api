@@ -26,19 +26,22 @@ const PRODUCT_BRAND_RESPONSE_FIELDS = [
 
 const STOCK_RESPONSE_FIELDS = [
     'stock_id', 'product_id', 'stock', 'add_stock', 'return_stock',
-    'stock_type', 'stock_notes', 'created_by',
+    'stock_action', 'stock_type', 'stock_notes', 'created_by', 'order_number',
     'created_at', 'updated_at'
 ];
 
 const ORDER_RESPONSE_FIELDS = [
     'order_number', 'dealer_id', 'priority', 'order_note', 'status', 'salesman_id',
-    'delivery_date', 'created_by', 'created_at', 'updated_at'
+    'delivery_date', 'promised_delivery_date', 'created_by', 'order_total_price',
+    'order_total_discount', 'payment_status', 'payment_type', 'amount_paid',
+    'amount_due', 'last_payment_date', 'sales_target_updated', 'created_at', 'updated_at'
 ];
 
 const ORDER_DETAILS_RESPONSE_FIELDS = [
-    'order_number', 'order_details_number', 'product_id', 'product_brand',
-    'product_name', 'product_model', 'product_type', 'qty_ordered',
-    'qty_delivered', 'delivery_date', 'status', 'created_at', 'updated_at'
+    'order_number', 'order_details_number', 'product_id', 'product_brand', 'product_name',
+    'product_model', 'product_type', 'qty_ordered', 'qty_delivered', 'delivery_date', 'notes',
+    'unit_product_price', 'total_product_price', 'is_free', 'dealer_discount',
+    'total_dealer_discount', 'total_price', 'status', 'created_at', 'updated_at'
 ];
 
 const DEALER_DISCOUNT_RESPONSE_FIELDS = [

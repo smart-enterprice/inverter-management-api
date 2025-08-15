@@ -34,11 +34,26 @@ const validateOrderDTO = async(dto) => {
         throw new BadRequestException(`Invalid dealer ID: ${dto.dealer_id}. Dealer not found or not a dealer role.`);
     }
 
-    if (!Array.isArray(dto.order_details) || dto.order_details.length === 0) {
-        throw new BadRequestException("'order_details' must be a non-empty array.");
+    if (!Array.isArray(dto.order_details) ||
+        !dto.order_details.filter(detail =>
+            detail &&
+            Object.keys(detail).length > 0 &&
+            typeof detail.product_id === "string" &&
+            detail.product_id.trim() !== ""
+        ).length
+    ) {
+        throw new BadRequestException("At least one valid order detail is required.");
     }
 
     dto.order_details.forEach((detail, index) => {
+        if (!detail ||
+            Object.keys(detail).length === 0 ||
+            typeof detail.product_id !== "string" ||
+            detail.product_id.trim() === ""
+        ) {
+            return;
+        }
+
         for (const field of ORDER_DETAILS_REQUIRED_FIELDS) {
             if (!detail[field]) {
                 throw new BadRequestException(`order_details[${index}]: '${field}' is required.`);
@@ -96,17 +111,6 @@ const orderService = {
 
         const dealer = await validateOrderDTO(dto);
 
-        const cleanedList = (dto.order_details || []).filter(detail =>
-            detail &&
-            Object.keys(detail).length > 0 &&
-            typeof detail.product_id === "string" &&
-            detail.product_id.trim() !== ""
-        );
-
-        if (!cleanedList.length) {
-            throw new BadRequestException("At least one valid order detail is required.");
-        }
-
         const orderNumber = await generateUniqueOrderId();
         const order = new Order({
             order_number: orderNumber,
@@ -119,14 +123,14 @@ const orderService = {
             payment_type: (Number(dto.amount_paid) > 0) ? sanitizeInput(dto.payment_method || "CASH") : null
         });
 
-        const productIds = cleanedList.map(detail => detail.product_id);
+        const productIds = dto.order_details.map((detail) => detail.product_id);
         const { productMap, productStockMap } = await productService.getProductsByIds(productIds);
 
         let totalOrderAmount = 0;
         let totalOrderDiscount = 0;
         let hasPendingProduction = false;
 
-        const orderDetailsPayload = await Promise.all(cleanedList.map(async(detail) => {
+        const orderDetailsPayload = await Promise.all(dto.order_details.map(async(detail) => {
             const product = productMap.get(detail.product_id);
             if (!product) {
                 throw new BadRequestException(`Product not found: ${detail.product_id}`);
@@ -135,15 +139,18 @@ const orderService = {
             const stocks = productStockMap.get(detail.product_id) || [];
             const qtyOrdered = Number(detail.qty_ordered);
 
-            logger.info("📦 Stocks for", detail.product_id, stocks);
+            logger.info("📦 Stocks for %s: %o", detail.product_id, stocks);
 
             const isProductScheme = Boolean(detail.is_product_scheme);
-            logger.info(`is_product_scheme for ${product.product_id}:`, isProductScheme);
+            logger.info("is_product_scheme for %s: %s", product.product_id, isProductScheme);
 
-            const { productionRequired } = await productService.checkAndReserveStock(
-                product, stocks, qtyOrdered, employeeId, employeeRole
+            const { productionRequired, unpackedUsed } = await productService.checkAndReserveStock(
+                product, stocks, qtyOrdered, employeeId, employeeRole, orderNumber
             );
-            if (productionRequired > 0) hasPendingProduction = true;
+
+            if (productionRequired > 0 || unpackedUsed > 0) {
+                hasPendingProduction = true;
+            }
 
             let unitPrice = product.price;
             let unitDiscount = 0;
@@ -173,7 +180,13 @@ const orderService = {
                 totalOrderDiscount += totalDiscount;
             }
 
-            const notes = productionRequired > 0 ? ` | Production Required: ${productionRequired} units` : "";
+            let notes = "";
+            if (productionRequired > 0) {
+                notes += `Production Required: ${productionRequired} units`;
+            }
+            if (unpackedUsed > 0) {
+                notes += (notes ? " | " : "") + `Unpacked Required for Packing: ${unpackedUsed} units`;
+            }
 
             return {
                 order_details_number: await generateUniqueOrderDetailsId(),
@@ -185,8 +198,9 @@ const orderService = {
                 product_type: product.product_type,
                 qty_ordered: qtyOrdered,
                 delivery_date: new Date(detail.delivery_date),
-                notes: productionRequired > 0 ? `Production Required: ${productionRequired} units` : "",
-                status: productionRequired > 0 ? "PENDING_PRODUCTION" : "PENDING",
+                notes,
+                status: productionRequired > 0 || unpackedUsed > 0 ?
+                    "PENDING_PRODUCTION" : "PENDING",
                 unit_product_price: product.price,
                 total_product_price: totalProductPrice,
                 dealer_discount: unitDiscount,
