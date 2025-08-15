@@ -95,3 +95,6 @@ export const ORDER_DETAILS_REQUIRED_FIELDS = ["product_id", "product_brand", "pr
 export const DEALER_DISCOUNT_REQUIRED_FIELDS = ["brand_name", "model_name", "dealer_id", "discount_value", "is_percentage"];
 
 export const STATUS = ["active", "inactive", "discontinued"];
+
+const VALID_ORDER_STATUSES = ["PENDING", "APPROVED", "CANCELLED", "IN_PROGRESS", "DELIVERED", "PENDING_PRODUCTION"];
+const VALID_PAYMENT_STATUSES = ["PENDING", "PARTIALLY_PAID", "PAID", "FAILED", "REFUNDED"];

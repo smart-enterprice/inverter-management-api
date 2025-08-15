@@ -55,19 +55,16 @@ const dealerDiscountSchema = new mongoose.Schema({
     },
 });
 
-dealerDiscountSchema.index(
-    { dealerDiscountId: 1, model_name: 1, dealer_id: 1 },
-    { unique: true, name: "unique_dealerDiscount_model_dealer" }
-);
+dealerDiscountSchema.index({ dealerDiscountId: 1, model_name: 1, dealer_id: 1 }, { unique: true, name: "unique_dealerDiscount_model_dealer" });
 
-dealerDiscountSchema.pre('save', function (next) {
+dealerDiscountSchema.pre('save', function(next) {
     const istNow = getISTDate();
     if (this.isNew) this.created_at = istNow;
     this.updated_at = istNow;
     next();
 });
 
-dealerDiscountSchema.pre('findOneAndUpdate', function (next) {
+dealerDiscountSchema.pre('findOneAndUpdate', function(next) {
     this._update.updated_at = getISTDate();
     next();
 });

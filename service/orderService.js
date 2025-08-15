@@ -9,6 +9,7 @@ import logger from "../utils/logger.js";
 import Employee from "../models/employees.js";
 import Order from "../models/order.js";
 import OrderDetails from "../models/orderDetails.js";
+import DealerDiscount from "../models/dealorDiscount.js";
 
 import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../utils/generatorIds.js";
 import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";
@@ -21,7 +22,7 @@ import { productService } from "./productService.js";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-const validateOrderDTO = async (dto) => {
+const validateOrderDTO = async(dto) => {
     for (const field of ORDER_REQUIRED_FIELDS) {
         if (!dto[field]) {
             throw new BadRequestException(`'${field}' is required.`);
@@ -60,7 +61,7 @@ const validateOrderDTO = async (dto) => {
     return dealer;
 };
 
-export const fetchDealerAndOrderDetails = async (orders) => {
+export const fetchDealerAndOrderDetails = async(orders) => {
     const dealerIds = [...new Set(orders.map((o) => o.dealer_id))];
     const orderNumbers = orders.map((o) => o.order_number);
 
@@ -80,7 +81,7 @@ export const fetchDealerAndOrderDetails = async (orders) => {
 };
 
 const orderService = {
-    createOrder: asyncHandler(async (dto) => {
+    createOrder: asyncHandler(async(dto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!employeeId || !employeeRole || !Object.values(ORDER_CREATOR_ROLES).includes(employeeRole.toUpperCase())) {
@@ -103,55 +104,109 @@ const orderService = {
             salesman_id: salesmanId,
             priority: sanitizeInput(dto.priority || "LOW"),
             order_note: sanitizeInput(dto.order_note || ""),
+            amount_paid: Number(dto.amount_paid) || 0
         });
 
         const productIds = dto.order_details.map(detail => detail.product_id);
         const { productMap, productStockMap } = await productService.getProductsByIds(productIds);
 
-        const order_total_price = 0;
-        const dealer_discount_price = 0;
-        const order_discount_price = 0;
+        let totalOrderAmount = 0;
+        let totalOrderDiscount = 0;
+        let hasPendingProduction = false;
 
-        const orderDetailsPayload = await Promise.all(
-            dto.order_details.map(async (detail) => {
-                const product = productMap.get(detail.product_id);
-                const stocks = productStockMap.get(detail.product_id) || [];
+        const orderDetailsPayload = await Promise.all(dto.order_details.map(async(detail) => {
+            const product = productMap.get(detail.product_id);
+            if (!product) {
+                throw new BadRequestException(`Product not found: ${detail.product_id}`);
+            }
 
-                if (!product) {
-                    throw new BadRequestException(`Product not found: ${detail.product_id}`);
+            const stocks = productStockMap.get(detail.product_id) || [];
+            const qtyOrdered = Number(detail.qty_ordered);
+
+            logger.info("📦 Stocks for", detail.product_id, stocks);
+
+            const isProductScheme = Boolean(detail.is_product_scheme);
+            logger.info(`is_product_scheme for ${product.product_id}:`, isProductScheme);
+
+            const { productionRequired } = await productService.checkAndReserveStock(
+                product, stocks, qtyOrdered, employeeId, employeeRole
+            );
+            if (productionRequired > 0) hasPendingProduction = true;
+
+            let unitPrice = product.price;
+            let unitDiscount = 0;
+
+            if (detail.dealer_discount_id) {
+                const dealerDiscount = await DealerDiscount.findOne({
+                    dealer_discount_id: sanitizeInput(detail.dealer_discount_id),
+                    dealer_id: dealer.employee_id,
+                    brand_name: product.brand,
+                    model_name: product.model
+                });
+
+                if (dealerDiscount) {
+                    unitDiscount = dealerDiscount.isPercentage() ?
+                        (unitPrice * dealerDiscount.discount_value) / 100 :
+                        dealerDiscount.discount_value;
+                    unitPrice -= unitDiscount;
                 }
+            }
 
-                logger.info("📦 Stocks for", detail.product_id, stocks);
+            const totalProductPrice = product.price * qtyOrdered;
+            const totalDiscount = unitDiscount * qtyOrdered;
+            const totalPrice = totalProductPrice - totalDiscount;
 
-                const { productionRequired } = await productService.checkAndReserveStock(product, stocks, Number(detail.qty_ordered), employeeId, employeeRole);
+            if (!isProductScheme) {
+                totalOrderAmount += totalProductPrice;
+                totalOrderDiscount += totalDiscount;
+            }
 
-                const notes = productionRequired > 0 ? ` | Production Required: ${productionRequired} stock` : "";
-                return {
-                    order_details_number: await generateUniqueOrderDetailsId(),
-                    order_number: orderNumber,
-                    product_id: product.product_id,
-                    product_brand: product.brand,
-                    product_name: product.product_name,
-                    product_model: product.model,
-                    product_type: product.product_type,
-                    qty_ordered: Number(detail.qty_ordered),
-                    delivery_date: new Date(detail.delivery_date),
-                    notes: notes,
-                    status: productionRequired > 0 ? "PENDING_PRODUCTION" : "PENDING"
-                };
-            })
-        );
+            const notes = productionRequired > 0 ? ` | Production Required: ${productionRequired} units` : "";
+
+            return {
+                order_details_number: await generateUniqueOrderDetailsId(),
+                order_number: orderNumber,
+                product_id: product.product_id,
+                product_brand: product.brand,
+                product_name: product.product_name,
+                product_model: product.model,
+                product_type: product.product_type,
+                qty_ordered: qtyOrdered,
+                delivery_date: new Date(detail.delivery_date),
+                notes: productionRequired > 0 ? `Production Required: ${productionRequired} units` : "",
+                status: productionRequired > 0 ? "PENDING_PRODUCTION" : "PENDING",
+                unit_product_price: product.price,
+                total_product_price: totalProductPrice,
+                dealer_discount: unitDiscount,
+                total_dealer_discount: totalDiscount,
+                total_price: totalPrice,
+                is_free: isProductScheme
+            };
+        }));
+
+        if (hasPendingProduction) {
+            orderStatus = "PENDING_PRODUCTION";
+        }
+
+        order.status = hasPendingProduction ? "PENDING_PRODUCTION" : "PENDING";
+        order.sales_target_updated = false;
+        order.order_total_price = totalOrderAmount;
+        order.order_total_discount = totalOrderDiscount;
+
+        if (order.amount_paid > order.order_total_price) {
+            throw new BadRequestException("Amount paid cannot exceed total order price.");
+        }
+
+        await order.save();
+        logger.info(`💾 Order Saved — order_number: ${orderNumber} || total_price: ${order.order_total_price} || discount: ${order.order_total_discount} || amount_paid: ${order.amount_paid}`);
 
         const orderDetailsList = await OrderDetails.insertMany(orderDetailsPayload);
 
-        order.sales_target_updated = false;
-        await order.save();
-        logger.info(`✅Order created: ${orderNumber}`, { orderNumber });
-
+        logger.info(`✅ Order Created Successfully — order_number: ${orderNumber} || total_items: ${orderDetailsList.length}`);
         return transformOrderToResponse(order, dealer, orderDetailsList);
     }),
 
-    getByOrderId: asyncHandler(async (orderNumber) => {
+    getByOrderId: asyncHandler(async(orderNumber) => {
         const order = await Order.findByOrderNumber(orderNumber);
         if (!order) {
             throw new BadRequestException(`No order found for: ${orderNumber}`);
@@ -163,7 +218,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetails);
     }),
 
-    getAllOrders: asyncHandler(async () => {
+    getAllOrders: asyncHandler(async() => {
         const orders = await Order.find().sort({ created_at: -1 });
         const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
 
@@ -172,7 +227,7 @@ const orderService = {
         );
     }),
 
-    getByOrderStatus: asyncHandler(async (orderStatus) => {
+    getByOrderStatus: asyncHandler(async(orderStatus) => {
         const orders = await Order.findByOrderStatus(orderStatus);
         const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
         return orders.map((order) =>
@@ -180,7 +235,7 @@ const orderService = {
         );
     }),
 
-    getOrdersByDateFilter: asyncHandler(async ({ year, month, start_date, end_date }) => {
+    getOrdersByDateFilter: asyncHandler(async({ year, month, start_date, end_date }) => {
         let startDate, endDate;
 
         if (year && month) {
