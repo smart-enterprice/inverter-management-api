@@ -33,7 +33,7 @@ async function calculateAvailableStock(productId) {
 
     const sumByType = (type) =>
         allStocks.filter((s) => s.stock_type === type)
-            .reduce((total, s) => total + s.stock, 0);
+        .reduce((total, s) => total + s.stock, 0);
 
     const packed = sumByType(STOCK_TYPES.STOCK_PACKED);
     const unpacked = sumByType(STOCK_TYPES.STOCK_UNPACKED);
@@ -295,7 +295,7 @@ const productService = {
     }),
 
     getByProductId: asyncHandler(async (productId) => {
-        const product = await Product.getActiveProductById(productId);
+        const product = await Product.findOne({ product_id: productId });
         if (!product) throw new BadRequestException(`No product found with ID ${productId}`);
         return fetchProductWithStocks(product);
     }),
