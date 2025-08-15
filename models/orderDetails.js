@@ -54,6 +54,30 @@ const orderDetailsSchema = new mongoose.Schema({
         type: String,
         default: "",
     },
+    product_price: {
+        type: Number,
+        required: [true, "💰 Product price is required."],
+        min: [0, "Price must be a positive number."],
+    },
+    total_product_price: {
+        type: Number,
+        required: [true, "💰 Total product price is required."],
+        min: [0, "Price must be a positive number."],
+    },
+    is_free: {
+        type: Boolean,
+        default: false,
+    },
+    dealer_discount: {
+        type: Number,
+        required: [true, "💰 Dealer discount is required."],
+        min: [0, "Price must be a positive number."],
+    },
+    total_dealer_discount: {
+        type: Number,
+        required: [true, "💰 Total dealer discount is required."],
+        min: [0, "Price must be a positive number."],
+    },
     status: {
         type: String,
         // enum: ["PENDING", "DISPATCHED", "DELIVERED", "CANCELLED"],
@@ -66,14 +90,14 @@ const orderDetailsSchema = new mongoose.Schema({
     },
 });
 
-orderDetailsSchema.pre("save", function(next) {
+orderDetailsSchema.pre("save", function (next) {
     const istNow = getISTDate();
     if (this.isNew) this.created_at = istNow;
     this.updated_at = istNow;
     next();
 });
 
-orderDetailsSchema.pre("findOneAndUpdate", function(next) {
+orderDetailsSchema.pre("findOneAndUpdate", function (next) {
     this._update.updated_at = getISTDate();
     next();
 });
@@ -114,10 +138,6 @@ export default class OrderDetails extends OrderDetailsModel {
 
     static async findByOrderDetailsNumber(orderDetailsNumber) {
         return await this.findOne({ order_details_number: orderDetailsNumber });
-    }
-
-    static async findByOrderNumber(orderNumber) {
-        return await this.find({ order_number: orderNumber });
     }
 
 }
