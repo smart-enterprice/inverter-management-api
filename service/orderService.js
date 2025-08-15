@@ -96,6 +96,17 @@ const orderService = {
 
         const dealer = await validateOrderDTO(dto);
 
+        const cleanedList = (dto.order_details || []).filter(detail =>
+            detail &&
+            Object.keys(detail).length > 0 &&
+            typeof detail.product_id === "string" &&
+            detail.product_id.trim() !== ""
+        );
+
+        if (!cleanedList.length) {
+            throw new BadRequestException("At least one valid order detail is required.");
+        }
+
         const orderNumber = await generateUniqueOrderId();
         const order = new Order({
             order_number: orderNumber,
@@ -104,17 +115,18 @@ const orderService = {
             salesman_id: salesmanId,
             priority: sanitizeInput(dto.priority || "LOW"),
             order_note: sanitizeInput(dto.order_note || ""),
-            amount_paid: Number(dto.amount_paid) || 0
+            amount_paid: Number(dto.amount_paid) || 0,
+            payment_type: (Number(dto.amount_paid) > 0) ? sanitizeInput(dto.payment_method || "CASH") : null
         });
 
-        const productIds = dto.order_details.map(detail => detail.product_id);
+        const productIds = cleanedList.map(detail => detail.product_id);
         const { productMap, productStockMap } = await productService.getProductsByIds(productIds);
 
         let totalOrderAmount = 0;
         let totalOrderDiscount = 0;
         let hasPendingProduction = false;
 
-        const orderDetailsPayload = await Promise.all(dto.order_details.map(async(detail) => {
+        const orderDetailsPayload = await Promise.all(cleanedList.map(async(detail) => {
             const product = productMap.get(detail.product_id);
             if (!product) {
                 throw new BadRequestException(`Product not found: ${detail.product_id}`);
@@ -183,10 +195,6 @@ const orderService = {
                 is_free: isProductScheme
             };
         }));
-
-        if (hasPendingProduction) {
-            orderStatus = "PENDING_PRODUCTION";
-        }
 
         order.status = hasPendingProduction ? "PENDING_PRODUCTION" : "PENDING";
         order.sales_target_updated = false;
@@ -270,6 +278,16 @@ const orderService = {
             transformOrderToResponse(order, dealerMap[order.dealer_id], detailsMap[order.order_number])
         );
     }),
+
+    // updateOrder: ({
+
+    // });
+
+
+    // updateOrderDetails: ({
+
+    // });
+
 }
 
 export { orderService };

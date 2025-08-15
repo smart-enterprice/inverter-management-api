@@ -57,6 +57,10 @@ const orderSchema = new mongoose.Schema({
         type: String,
         default: "PENDING",
     },
+    payment_type: {
+        type: String,
+        default: "CASH", // CASH, ONLINE, CHEQUE, etc.
+    },
     amount_paid: {
         type: Number,
         default: 0,
