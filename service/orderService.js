@@ -9,7 +9,7 @@ import logger from "../utils/logger.js";
 import Employee from "../models/employees.js";
 import Order from "../models/order.js";
 import OrderDetails from "../models/orderDetails.js";
-import DealerDiscount from "../models/dealorDiscount.js";
+import DealerDiscount from "../models/dealerDiscount.js";
 
 import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../utils/generatorIds.js";
 import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";

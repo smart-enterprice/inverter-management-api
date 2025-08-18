@@ -1,4 +1,4 @@
-// employeeservice.js
+// employeeService.js
 
 import asyncHandler from "express-async-handler";
 import rateLimit from 'express-rate-limit';
@@ -30,7 +30,7 @@ import {
 } from '../utils/constants.js';
 import { tokenBlacklistService } from "./tokenBlacklistService.js";
 import Brand from "../models/brand.js";
-import DealerDiscount from "../models/dealorDiscount.js";
+import DealerDiscount from "../models/dealerDiscount.js";
 
 const checkExistingEmployee = async (email, phone, excludeId = null) => {
     const query = excludeId ? { _id: { $ne: excludeId } } : {};
