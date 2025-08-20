@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { BadRequestException } from "../middleware/CustomError";
+import { BadRequestException } from "../middleware/CustomError.js";
 
 function getISTDate() {
     const date = new Date();
