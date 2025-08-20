@@ -1,6 +1,7 @@
 // encryption.util.js
 import crypto from 'crypto';
 import { ENCRYPTION_SECRET_KEY } from './constants.js';
+import { BadRequestException } from '../middleware/CustomError.js';
 
 const algorithm = 'aes-256-cbc';
 const secretKey = crypto
@@ -22,7 +23,7 @@ export const decryptText = (encryptedString) => {
     const [ivHex, encryptedData] = encryptedString.split(':');
 
     if (!ivHex || !encryptedData) {
-        throw new Error('Invalid encrypted string format. Expected format iv:encryptedData');
+        throw new BadRequestException('Invalid encrypted string format. Expected format iv:encryptedData');
     }
 
     const iv = Buffer.from(ivHex, 'hex');

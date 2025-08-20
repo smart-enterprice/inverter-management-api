@@ -100,7 +100,7 @@ async function checkIfDiscountExists(brand, model, dealerId) {
 const employeeService = {
     defaultSuperAdminSetup: asyncHandler(async () => {
         if (!SUPER_ADMIN || !SUPER_ADMIN_PHONE || !SUPER_ADMIN_EMAIL || !SUPER_ADMIN_PASSWORD) {
-            throw new Error("❌ Missing required SUPER_ADMIN environment variables.");
+            throw new BadRequestException("❌ Missing required SUPER_ADMIN environment variables.");
         }
 
         const existingAdmin = await employeeSchema.findOne({ employee_email: SUPER_ADMIN_EMAIL });

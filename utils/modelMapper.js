@@ -41,7 +41,8 @@ const ORDER_DETAILS_RESPONSE_FIELDS = [
     'order_number', 'order_details_number', 'product_id', 'product_brand', 'product_name',
     'product_model', 'product_type', 'qty_ordered', 'qty_delivered', 'delivery_date', 'notes',
     'unit_product_price', 'total_product_price', 'is_free', 'dealer_discount',
-    'total_dealer_discount', 'total_price', 'status', 'created_at', 'updated_at'
+    'stock_usage', 'stock_flags', 'total_dealer_discount', 'total_price', 'status',
+    'created_at', 'updated_at'
 ];
 
 const DEALER_DISCOUNT_RESPONSE_FIELDS = [

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { BadRequestException } from "../middleware/CustomError";
 
 function getISTDate() {
     const date = new Date();
@@ -83,9 +84,20 @@ const orderDetailsSchema = new mongoose.Schema({
         required: [true, "💰 Total price is required."],
         min: [0, "Price must be a positive number."],
     },
+    stock_usage: {
+        PACKED: { type: Number, default: 0 },
+        UNPACKED: { type: Number, default: 0 },
+        PRODUCTION: { type: Number, default: 0 }
+    },
+    stock_flags: {
+        PACKED: { type: Number, default: 0 },
+        UNPACKED: { type: Number, default: 0 },
+        PRODUCTION: { type: Number, default: 0 },
+        hasUnpacked: { type: Boolean, default: false },
+        hasProduction: { type: Boolean, default: false }
+    },
     status: {
         type: String,
-        // enum: ["PENDING", "DISPATCHED", "DELIVERED", "CANCELLED"],
         default: "PENDING",
     },
 }, {
@@ -116,10 +128,10 @@ export default class OrderDetails extends OrderDetailsModel {
 
     async markDelivered(deliveredQty) {
         if (deliveredQty <= 0) {
-            throw new Error("❌ Delivered quantity must be greater than 0.");
+            throw new BadRequestException("❌ Delivered quantity must be greater than 0.");
         }
         if (deliveredQty > this.qty_ordered) {
-            throw new Error("❌ Delivered quantity cannot exceed ordered quantity.");
+            throw new BadRequestException("❌ Delivered quantity cannot exceed ordered quantity.");
         }
 
         this.qty_delivered = deliveredQty;
@@ -130,7 +142,7 @@ export default class OrderDetails extends OrderDetailsModel {
 
     async cancel() {
         if (this.status === "DELIVERED") {
-            throw new Error("❌ Cannot cancel an already delivered product.");
+            throw new BadRequestException("❌ Cannot cancel an already delivered product.");
         }
         this.status = "CANCELLED";
         await this.save();
