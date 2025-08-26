@@ -81,11 +81,11 @@ const orderController = {
         const { orderDetailsId } = req.params;
         const updateDto = req.body;
 
-        const updatedOrderDetail = await orderDetailsService.updateOrderDetailStatus(orderDetailsId, updateDto);
+        const updatedOrderDetail = await orderService.updateOrderDetailStatus(orderDetailsId, updateDto);
+
         res.status(200).json({
             success: true,
-            count: updatedOrderDetail.length,
-            message: `Order detail ${orderDetailsId} updated successfully.`,
+            message: `✅ Order detail ${orderDetailsId} updated successfully.`,
             data: updatedOrderDetail,
             timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
@@ -93,17 +93,19 @@ const orderController = {
 
     updateMultipleOrderDetailsStatus: asyncHandler(async (req, res) => {
         const { orderNumber } = req.params;
-        const orderDetailsUpdates = req.body;
+        const updates = req.body;
 
-        const result = await orderDetailsService.updateMultipleOrderDetailsStatus(orderNumber, orderDetailsUpdates);
+        const result = await orderService.updateMultipleOrderDetailsStatus(orderNumber, updates);
+
         res.status(200).json({
             success: true,
-            count: result.length,
-            data: result,
+            message: `Order ${orderNumber} details updated successfully.`,
+            count: updatedOrderDetails.length,
+            data: updatedOrderDetails,
             timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),
-    
+
     // You can uncomment and implement updateOrder if needed in the future
     /*
     updateOrder: asyncHandler(async (req, res) => {

@@ -59,7 +59,7 @@ async function saveOrUpdateStockTransaction({
     productionRequired = 0
 }) {
     if (!product || !product.product_id)
-        throw new BadRequestException("❌ Product information is required for stock transaction.");
+        throw new BadRequestException("Product information is required for stock transaction.");
 
     let returnReason = "";
     if (action === STOCK_ACTIONS.STOCK_RETURN) {
@@ -69,22 +69,21 @@ async function saveOrUpdateStockTransaction({
 
         const order = await Order.findOne({ order_number: orderNumber });
         if (!order) {
-            throw new BadRequestException(`❌ No order found with number: ${orderNumber}`);
+            throw new BadRequestException(`No order found with number: ${orderNumber}`);
         }
 
-        // Fetch order details for this product
         const orderDetailsQuery = { order_number: orderNumber, product_id: product.product_id };
-        if (orderDetailsNumber) orderDetailsQuery.detail_number = orderDetailsNumber;
+        if (orderDetailsNumber) orderDetailsQuery.order_details_number  = orderDetailsNumber;
 
         const orderDetails = await OrderDetails.find(orderDetailsQuery);
         if (!orderDetails || orderDetails.length === 0) {
             throw new BadRequestException(
-                `❌ No order details found for product ${product.product_id} in order ${orderNumber}`
+                `No order details found for product ${product.product_id} in order ${orderNumber}`
             );
         }
 
-        const detailNumbers = orderDetails.map(od => od._id || od.detail_number).join(", ");
-        returnReason = `RETURN Reason: Order #${order.order_number}; Order Details #${detailNumbers}`;
+        const detailNumbers = orderDetails.map(od => od.order_details_number).join(", ");
+        returnReason = `RETURN: Order #${order.order_number}; Order Details [${detailNumbers}]; Returned Qty: ${quantity}`;
     }
 
     const productionNote = productionRequired > 0 ? ` | Production Required: ${productionRequired}` : "";
@@ -381,7 +380,7 @@ const productService = {
     }),
 
     checkAndReserveStock: asyncHandler(async (product, stocks, requiredQty, employeeId, role, orderNumber) => {
-        if (requiredQty <= 0) throw new BadRequestException("❌ Ordered quantity must be greater than 0.");
+        if (requiredQty <= 0) throw new BadRequestException("Ordered quantity must be greater than 0.");
 
         let packedUsed = 0, unpackedUsed = 0, productionRequired = 0;
         let remainingQty = requiredQty;
@@ -611,12 +610,12 @@ const productService = {
 
     returnStock: asyncHandler(async(product_id, quantity, employeeId, employeeRole, orderNumber) => {
         if (!product_id || !quantity || quantity <= 0) {
-            throw new BadRequestException("❌ Invalid product ID or quantity to return.");
+            throw new BadRequestException("Invalid product ID or quantity to return.");
         }
 
         const product = await Product.findOne({ product_id });
         if (!product) {
-            throw new BadRequestException(`❌ Product not found: ${product_id}`);
+            throw new BadRequestException(`Product not found: ${product_id}`);
         }
 
         await saveOrUpdateStockTransaction({

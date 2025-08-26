@@ -40,12 +40,12 @@ const orderDetailsSchema = new mongoose.Schema({
     qty_ordered: {
         type: Number,
         required: [true, "🔢 Quantity Ordered is required."],
-        min: [1, "❌ Quantity must be at least 1."],
+        min: [1, "Quantity must be at least 1."],
     },
     qty_delivered: {
         type: Number,
         default: 0,
-        min: [0, "❌ Quantity Delivered cannot be negative."],
+        min: [0, "Quantity Delivered cannot be negative."],
     },
     delivery_date: {
         type: Date,
@@ -128,10 +128,10 @@ export default class OrderDetails extends OrderDetailsModel {
 
     async markDelivered(deliveredQty) {
         if (deliveredQty <= 0) {
-            throw new BadRequestException("❌ Delivered quantity must be greater than 0.");
+            throw new BadRequestException("Delivered quantity must be greater than 0.");
         }
         if (deliveredQty > this.qty_ordered) {
-            throw new BadRequestException("❌ Delivered quantity cannot exceed ordered quantity.");
+            throw new BadRequestException("Delivered quantity cannot exceed ordered quantity.");
         }
 
         this.qty_delivered = deliveredQty;
@@ -142,7 +142,7 @@ export default class OrderDetails extends OrderDetailsModel {
 
     async cancel() {
         if (this.status === "DELIVERED") {
-            throw new BadRequestException("❌ Cannot cancel an already delivered product.");
+            throw new BadRequestException("Cannot cancel an already delivered product.");
         }
         this.status = "CANCELLED";
         await this.save();
