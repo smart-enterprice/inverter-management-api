@@ -11,6 +11,8 @@ router.use(verifyToken);
 
 // @route   POST /api/employees/signup
 router.post('/signup', employeeController.signup);
+
+// dealer
 router.post('/create/dealer-discount', employeeController.createDealerDiscount);
 router.post('/create/dealer-discounts', employeeController.createDealerDiscountList);
 router.post('/get/dealer-discounts', employeeController.getDealerDiscount);
@@ -27,5 +29,9 @@ router.get('/get/profile', employeeController.getProfile);
 router.get('/', employeeController.getAllEmployees);
 router.get('/get/employees-password', employeeController.getAllEmployeesWithPassword);
 router.get('/get/deleted-employees', employeeController.getAllDeletedEmployees);
+
+// dealer
+router.get('/dealers/get', employeeController.getAllDealerEmployees);
+router.get('/dealers/deleted-dealers', employeeController.getAllDeletedDealerEmployees);
 
 export default router;
