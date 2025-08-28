@@ -1,6 +1,6 @@
 // generatorIds.js
 import Brand from '../models/brand.js';
-import DealerDiscount from '../models/dealorDiscount.js';
+import DealerDiscount from '../models/dealerDiscount.js';
 import Employee from '../models/employees.js';
 import Order from '../models/order.js';
 import OrderDetails from '../models/orderDetails.js';

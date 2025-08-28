@@ -130,7 +130,7 @@ startServer();
 app.get("/", (req, res) => {
     res.json({
         success: true,
-        message: "👋 Welcome to Smart Enterprice",
+        message: "👋 Welcome to Smart Enterprise",
         version: "1.0.0",
         status: "operational",
         timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
@@ -157,7 +157,7 @@ app.get("/health", async(req, res) => {
     res.status(200).json({
         success: true,
         message: "🩺 Health check OK",
-        service: "Smart Enterprice",
+        service: "Smart Enterprise",
         environment: process.env.NODE_ENV || "development",
         version: "1.0.0",
         timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),

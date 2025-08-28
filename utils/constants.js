@@ -81,9 +81,7 @@ export const STOCK_ACTIONS = {
 
 export const STOCK_TYPES = {
     STOCK_PACKED: 'PACKED',
-    STOCK_UNPACKED: 'UNPACKED',
-    STOCK_SALE: 'SALE',
-    STOCK_OTHER: 'OTHER'
+    STOCK_UNPACKED: 'UNPACKED'
 };
 
 export const PRODUCT_REQUIRED_FIELDS = ["brand", "model", "product_type", "product_name"];
@@ -96,5 +94,5 @@ export const DEALER_DISCOUNT_REQUIRED_FIELDS = ["brand_name", "model_name", "dea
 
 export const STATUS = ["active", "inactive", "discontinued"];
 
-const VALID_ORDER_STATUSES = ["PENDING", "APPROVED", "CANCELLED", "IN_PROGRESS", "DELIVERED", "PENDING_PRODUCTION"];
-const VALID_PAYMENT_STATUSES = ["PENDING", "PARTIALLY_PAID", "PAID", "FAILED", "REFUNDED"];
+export const VALID_ORDER_STATUSES = ["PENDING", "APPROVED", "CANCELLED", "IN_PROGRESS", "DELIVERED", "PENDING_PRODUCTION"];
+export const VALID_PAYMENT_STATUSES = ["PENDING", "PARTIALLY_PAID", "PAID", "FAILED", "REFUNDED"];

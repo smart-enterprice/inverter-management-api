@@ -9,7 +9,7 @@ import { sanitizeInputBody } from "../utils/validationUtils.js";
 
 const orderController = {
     sanitizeInputBody,
-    createOrder: asyncHandler(async(req, res) => {
+    createOrder: asyncHandler(async (req, res) => {
         const orderData = await orderService.createOrder(req.body);
 
         res.status(201).json({
@@ -21,7 +21,7 @@ const orderController = {
         });
     }),
 
-    getByOrderId: asyncHandler(async(req, res) => {
+    getByOrderId: asyncHandler(async (req, res) => {
         const { orderId } = req.params;
         const orderData = await orderService.getByOrderId(orderId);
 
@@ -34,7 +34,7 @@ const orderController = {
         });
     }),
 
-    getAll: asyncHandler(async(req, res) => {
+    getAll: asyncHandler(async (req, res) => {
         const orders = await orderService.getAllOrders();
 
         res.status(200).json({
@@ -46,7 +46,7 @@ const orderController = {
         });
     }),
 
-    getByOrderStatus: asyncHandler(async(req, res) => {
+    getByOrderStatus: asyncHandler(async (req, res) => {
         const { orderStatus } = req.params;
         const orderData = await orderService.getByOrderStatus(orderStatus);
 
@@ -59,7 +59,7 @@ const orderController = {
         });
     }),
 
-    fetchOrdersByDateFilter: asyncHandler(async(req, res) => {
+    fetchOrdersByDateFilter: asyncHandler(async (req, res) => {
         const { year, month, start_date, end_date } = req.query;
 
         const orders = await orderService.getOrdersByDateFilter({
@@ -73,6 +73,35 @@ const orderController = {
             success: true,
             count: orders.length,
             data: orders,
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        });
+    }),
+
+    updateOrderDetailStatus: asyncHandler(async (req, res) => {
+        const { orderDetailsId } = req.params;
+        const updateDto = req.body;
+
+        const updatedOrderDetail = await orderService.updateOrderDetailStatus(orderDetailsId, updateDto);
+
+        res.status(200).json({
+            success: true,
+            message: `✅ Order detail ${orderDetailsId} updated successfully.`,
+            data: updatedOrderDetail,
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        });
+    }),
+
+    updateMultipleOrderDetailsStatus: asyncHandler(async (req, res) => {
+        const { orderNumber } = req.params;
+        const updates = req.body;
+
+        const result = await orderService.updateMultipleOrderDetailsStatus(orderNumber, updates);
+
+        res.status(200).json({
+            success: true,
+            message: `Order ${orderNumber} details updated successfully.`,
+            count: updatedOrderDetails.length,
+            data: updatedOrderDetails,
             timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),

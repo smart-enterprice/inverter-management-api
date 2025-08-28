@@ -1,4 +1,4 @@
-// employeeservice.js
+// employeeService.js
 
 import asyncHandler from "express-async-handler";
 import rateLimit from 'express-rate-limit';
@@ -30,7 +30,7 @@ import {
 } from '../utils/constants.js';
 import { tokenBlacklistService } from "./tokenBlacklistService.js";
 import Brand from "../models/brand.js";
-import DealerDiscount from "../models/dealorDiscount.js";
+import DealerDiscount from "../models/dealerDiscount.js";
 
 const checkExistingEmployee = async (email, phone, excludeId = null) => {
     const query = excludeId ? { _id: { $ne: excludeId } } : {};
@@ -100,7 +100,7 @@ async function checkIfDiscountExists(brand, model, dealerId) {
 const employeeService = {
     defaultSuperAdminSetup: asyncHandler(async () => {
         if (!SUPER_ADMIN || !SUPER_ADMIN_PHONE || !SUPER_ADMIN_EMAIL || !SUPER_ADMIN_PASSWORD) {
-            throw new Error("❌ Missing required SUPER_ADMIN environment variables.");
+            throw new BadRequestException("Missing required SUPER_ADMIN environment variables.");
         }
 
         const existingAdmin = await employeeSchema.findOne({ employee_email: SUPER_ADMIN_EMAIL });

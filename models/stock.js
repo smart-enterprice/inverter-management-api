@@ -35,20 +35,10 @@ const stockSchema = new mongoose.Schema({
     },
     stock_action: {
         type: String,
-        required: [true, "⚠️ Stock action is required!"],
-        enum: {
-            values: ["ADD", "RETURN", "ORDERED", "OTHER", "SALE"],
-            message: "Invalid stock type"
-        },
         trim: true
     },
     stock_type: {
         type: String,
-        required: [true, "⚠️ Stock type is required!"],
-        enum: {
-            values: ["PACKED", "UNPACKED", "SALE", "OTHER"],
-            message: "Invalid stock type"
-        },
         trim: true
     },
     stock_notes: {

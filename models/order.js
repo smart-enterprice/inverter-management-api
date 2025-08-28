@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { BadRequestException } from "../middleware/CustomError.js";
 
 function getISTDate() {
     const date = new Date();
@@ -120,7 +121,7 @@ export default class Order extends OrderModel {
 
     async updateStatus(newStatus) {
         if (!VALID_ORDER_STATUSES.includes(newStatus)) {
-            throw new Error(`Invalid status: ${newStatus}`);
+            throw new BadRequestException(`Invalid status: ${newStatus}`);
         }
         this.status = newStatus;
         await this.save();
@@ -129,7 +130,7 @@ export default class Order extends OrderModel {
 
     async updatePayment(amount) {
         if (amount <= 0) {
-            throw new Error("Payment amount must be greater than zero.");
+            throw new BadRequestException("Payment amount must be greater than zero.");
         }
         this.amount_paid += amount;
         this.last_payment_date = getISTDate();
@@ -149,7 +150,7 @@ export default class Order extends OrderModel {
 
     static async findByOrderStatus(status) {
         if (!VALID_ORDER_STATUSES.includes(status)) {
-            throw new Error(`Invalid order status: ${status}`);
+            throw new BadRequestException(`Invalid order status: ${status}`);
         }
         return await this.find({ status });
     }

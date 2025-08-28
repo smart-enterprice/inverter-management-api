@@ -11,6 +11,7 @@ import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 import { mapEmployeeEntityToResponse } from "../utils/modelMapper.js";
 import { revealPassword } from "../utils/employeeAuth.js";
 import { sanitizeInputBody } from "../utils/validationUtils.js";
+import { ROLES } from "../utils/constants.js";
 
 const getPaginationParams = (query) => {
     const page = parseInt(query.page || "1", 10);
@@ -133,20 +134,60 @@ const employeeController = {
         asyncHandler(async (req, res) => {
             const { page, limit, skip } = getPaginationParams(req.query);
 
+            const filter = {
+                status: "active",
+                role: { $ne: ROLES.DEALER }
+            };
+
             const [employees, total] = await Promise.all([
-                employeeSchema.find({ status: "active" })
+                employeeSchema.find(filter)
                     .select("-password")
                     .skip(skip)
                     .limit(limit)
                     .sort({ created_at: -1 }),
 
-                employeeSchema.countDocuments({ status: "active" })
+                employeeSchema.countDocuments(filter)
             ]);
 
             res.status(200).json({
                 success: true,
                 status: 200,
                 message: "Employees retrieved successfully",
+                data: {
+                    employees: employees.map(mapEmployeeEntityToResponse),
+                    pagination: page,
+                    limit,
+                    total,
+                    pages: Math.ceil(total / limit)
+                },
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+            });
+        })
+    ],
+
+    getAllDealerEmployees: [
+        asyncHandler(async (req, res) => {
+            const { page, limit, skip } = getPaginationParams(req.query);
+
+            const filter = {
+                status: "active",
+                role: ROLES.DEALER,
+            };
+
+            const [employees, total] = await Promise.all([
+                employeeSchema.find(filter)
+                    .select("-password")
+                    .skip(skip)
+                    .limit(limit)
+                    .sort({ created_at: -1 }),
+
+                employeeSchema.countDocuments(filter)
+            ]);
+
+            res.status(200).json({
+                success: true,
+                status: 200,
+                message: "Dealer employees retrieved successfully",
                 data: {
                     employees: employees.map(mapEmployeeEntityToResponse),
                     pagination: page,
@@ -267,14 +308,16 @@ const employeeController = {
             const limit = parseInt(req.query.limit || "10", 10);
             const skip = (page - 1) * limit;
 
+            const filter = { status: "deleted", role: { $ne: ROLES.DEALER } };
+
             const [deletedEmployees, totalDeleted] = await Promise.all([
-                employeeSchema
-                    .find({ status: "deleted" })
+                employeeSchema.find(filter)
                     .select("-password")
                     .skip(skip)
                     .limit(limit)
                     .sort({ created_at: -1 }),
-                employeeSchema.countDocuments({ status: "deleted" })
+
+                employeeSchema.countDocuments(filter)
             ]);
 
             return res.status(200).json({
@@ -289,6 +332,47 @@ const employeeController = {
                         total: totalDeleted,
                         pages: Math.ceil(totalDeleted / limit)
                     }
+                },
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+            });
+        })
+    ],
+
+    getAllDeletedDealerEmployees: [
+        asyncHandler(async (req, res) => {
+            if (!req.user || !signUpRoles.includes(req.user.role)) {
+                throw new UnauthorizedException(`Access denied: This action requires one of the following roles: ${signUpRoles.join(', ')}.`);
+            }
+
+            const page = parseInt(req.query.page || "1", 10);
+            const limit = parseInt(req.query.limit || "10", 10);
+            const skip = (page - 1) * limit;
+
+            const filter = { status: "deleted", role: ROLES.DEALER };
+
+            const [deletedEmployees, totalDeleted] = await Promise.all([
+                employeeSchema
+                    .find(filter)
+                    .select("-password")
+                    .skip(skip)
+                    .limit(limit)
+                    .sort({ created_at: -1 }),
+
+                employeeSchema.countDocuments(filter)
+            ]);
+
+            return res.status(200).json({
+                success: true,
+                status: 200,
+                message: "Deleted dealer employees retrieved successfully",
+                data: {
+                    employees: deletedEmployees.map(mapEmployeeEntityToResponse),
+                    pagination: {
+                        page,
+                        limit,
+                        total: totalDeleted,
+                        pages: Math.ceil(totalDeleted / limit),
+                    },
                 },
                 timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });

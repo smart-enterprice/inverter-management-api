@@ -6,6 +6,7 @@ import Employee from '../models/employees.js';
 import Product from "../models/product.js";
 import Stock from "../models/stock.js";
 import Order from "../models/order.js";
+import OrderDetails from "../models/orderDetails.js";
 
 import logger from "../utils/logger.js";
 import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId } from "../utils/generatorIds.js";
@@ -53,28 +54,46 @@ async function saveOrUpdateStockTransaction({
     employeeId,
     role,
     orderNumber = null,
+    orderDetailsNumber = null,
     stockNotes = "",
     productionRequired = 0
 }) {
     if (!product || !product.product_id)
-        throw new BadRequestException("❌ Product information is required for stock transaction.");
+        throw new BadRequestException("Product information is required for stock transaction.");
 
     let returnReason = "";
     if (action === STOCK_ACTIONS.STOCK_RETURN) {
         if (!orderNumber || typeof orderNumber !== "string") {
             throw new BadRequestException("Order number is required for RETURN.");
         }
+
         const order = await Order.findOne({ order_number: orderNumber });
-        if (!order) throw new BadRequestException(`❌ No order found with number: ${orderNumber}`);
-        returnReason = `RETURN Reason: Order #${order.order_number}`;
+        if (!order) {
+            throw new BadRequestException(`No order found with number: ${orderNumber}`);
+        }
+
+        const orderDetailsQuery = { order_number: orderNumber, product_id: product.product_id };
+        if (orderDetailsNumber) orderDetailsQuery.order_details_number  = orderDetailsNumber;
+
+        const orderDetails = await OrderDetails.find(orderDetailsQuery);
+        if (!orderDetails || orderDetails.length === 0) {
+            throw new BadRequestException(
+                `No order details found for product ${product.product_id} in order ${orderNumber}`
+            );
+        }
+
+        const detailNumbers = orderDetails.map(od => od.order_details_number).join(", ");
+        returnReason = `RETURN: Order #${order.order_number}; Order Details [${detailNumbers}]; Returned Qty: ${quantity}`;
     }
 
     const productionNote = productionRequired > 0 ? ` | Production Required: ${productionRequired}` : "";
-    const newNote = `${action} for ${orderNumber ? `Order:${orderNumber}` : ""}${productionNote} -- Employee:${employeeId}; Role:${role}; Action:${action}; ${returnReason}; Date:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
+    const newNote = `${action} for ${orderNumber ? `Order:${orderNumber} ` : ""}${productionNote} -- Employee:${employeeId}; Role:${role}; Action:${action}; ${returnReason}; Date:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
     const combinedNotes = stockNotes ? `${stockNotes} || ${newNote}` : newNote;
 
-    const query = { product_id: product.product_id, stock_type: stockType || action };
-    if (orderNumber) query.order_number = orderNumber;
+    const query = { product_id: product.product_id, stock_type: stockType || action, stock_action: action };
+    if (orderNumber && ![STOCK_TYPES.STOCK_UNPACKED, STOCK_TYPES.STOCK_PACKED].includes(stockType)) {
+        query.order_number = orderNumber;
+    }
 
     const existingStock = await Stock.findOne(query);
 
@@ -361,7 +380,7 @@ const productService = {
     }),
 
     checkAndReserveStock: asyncHandler(async (product, stocks, requiredQty, employeeId, role, orderNumber) => {
-        if (requiredQty <= 0) throw new BadRequestException("❌ Ordered quantity must be greater than 0.");
+        if (requiredQty <= 0) throw new BadRequestException("Ordered quantity must be greater than 0.");
 
         let packedUsed = 0, unpackedUsed = 0, productionRequired = 0;
         let remainingQty = requiredQty;
@@ -589,6 +608,28 @@ const productService = {
         return mapProductBrandEntityToResponse(updatedBrand);
     }),
 
+    returnStock: asyncHandler(async(product_id, quantity, employeeId, employeeRole, orderNumber) => {
+        if (!product_id || !quantity || quantity <= 0) {
+            throw new BadRequestException("Invalid product ID or quantity to return.");
+        }
+
+        const product = await Product.findOne({ product_id });
+        if (!product) {
+            throw new BadRequestException(`Product not found: ${product_id}`);
+        }
+
+        await saveOrUpdateStockTransaction({
+            product,
+            quantity: quantity,
+            action: STOCK_ACTIONS.STOCK_RETURN,
+            employeeId,
+            role,
+            orderNumber
+        });
+
+        return product;
+    }),
+
 }
 
-export { productService };
+export { productService, saveOrUpdateStockTransaction, calculateAvailableStock };
