@@ -62,6 +62,10 @@ const orderSchema = new mongoose.Schema({
         type: String,
         default: "CASH", // CASH, ONLINE, CHEQUE, etc.
     },
+    payment_notes: {
+        type: [String],
+        default: [],
+    },
     amount_paid: {
         type: Number,
         default: 0,
@@ -112,30 +116,27 @@ orderSchema.pre('findOneAndUpdate', function(next) {
     next();
 });
 
+orderSchema.methods.addPayment = async function (amount, method = "CASH") {
+    if (amount <= 0) {
+        throw new BadRequestException("Payment amount must be greater than zero.");
+    }
+
+    this.amount_paid += amount;
+    this.payment_type = method;
+    this.last_payment_date = getISTDate();
+
+    this.payment_notes.push(
+        `💰 ${amount} received via ${method} on ${this.last_payment_date.toLocaleString()}`
+    );
+
+    return this;
+};
+
 const OrderModel = mongoose.model("Order", orderSchema);
 
 export default class Order extends OrderModel {
     constructor(orderData) {
         super(orderData);
-    }
-
-    async updateStatus(newStatus) {
-        if (!VALID_ORDER_STATUSES.includes(newStatus)) {
-            throw new BadRequestException(`Invalid status: ${newStatus}`);
-        }
-        this.status = newStatus;
-        await this.save();
-        return this;
-    }
-
-    async updatePayment(amount) {
-        if (amount <= 0) {
-            throw new BadRequestException("Payment amount must be greater than zero.");
-        }
-        this.amount_paid += amount;
-        this.last_payment_date = getISTDate();
-        await this.save();
-        return this;
     }
 
     async markSalesTargetUpdated() {

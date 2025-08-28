@@ -88,7 +88,7 @@ export const PRODUCT_REQUIRED_FIELDS = ["brand", "model", "product_type", "produ
 export const PRODUCT_UPDATABLE_FIELDS = [...PRODUCT_REQUIRED_FIELDS, "status"];
 
 export const ORDER_REQUIRED_FIELDS = ["dealer_id", "priority", "order_details"];
-export const ORDER_DETAILS_REQUIRED_FIELDS = ["product_id", "product_brand", "product_name", "product_model", "product_type", "qty_ordered", "delivery_date", ];
+export const ORDER_DETAILS_REQUIRED_FIELDS = ["product_id", "product_brand", "product_name", "product_model", "product_type", "qty_ordered", "delivery_date",];
 
 export const DEALER_DISCOUNT_REQUIRED_FIELDS = ["brand_name", "model_name", "dealer_id", "discount_value", "is_percentage"];
 
@@ -96,3 +96,9 @@ export const STATUS = ["active", "inactive", "discontinued"];
 
 export const VALID_ORDER_STATUSES = ["PENDING", "APPROVED", "CANCELLED", "IN_PROGRESS", "DELIVERED", "PENDING_PRODUCTION"];
 export const VALID_PAYMENT_STATUSES = ["PENDING", "PARTIALLY_PAID", "PAID", "FAILED", "REFUNDED"];
+
+export const getISTDate = () => {
+    const now = new Date();
+    const istOffset = 330;
+    return new Date(now.getTime() + istOffset * 60 * 1000);
+};
