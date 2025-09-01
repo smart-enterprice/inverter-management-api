@@ -20,33 +20,21 @@ const stockSchema = new mongoose.Schema({
     },
     stock: {
         type: Number,
-        required: [true, "🚨 Stock amount is required!"],
-        min: [0, "Stock cannot be negative"]
+        required: true,
+        min: [0, "Stock cannot be negative"],
+        default: 0
     },
-    add_stock: {
+    packed_stock: {
         type: Number,
-        default: 0,
-        min: [0, "Add stock cannot be negative"]
+        required: [true, "🚨 Packed stock is required!"],
+        min: [0, "Packed stock cannot be negative"],
+        default: 0
     },
-    return_stock: {
+    unpacked_stock: {
         type: Number,
-        default: 0,
-        min: [0, "Return stock cannot be negative"]
-    },
-    stock_action: {
-        type: String,
-        trim: true
-    },
-    stock_type: {
-        type: String,
-        trim: true
-    },
-    stock_notes: {
-        type: String,
-        trim: true
-    },
-    order_number: {
-        type: String,
+        required: [true, "🚨 Unpacked stock is required!"],
+        min: [0, "Unpacked stock cannot be negative"],
+        default: 0
     },
     created_by: {
         type: String,
@@ -60,8 +48,11 @@ const stockSchema = new mongoose.Schema({
     }
 });
 
-stockSchema.pre('save', function(next) {
+stockSchema.pre("save", function (next) {
     const istNow = getISTDate();
+
+    this.stock = (this.packed_stock || 0) + (this.unpacked_stock || 0);
+
     if (this.isNew) {
         this.created_at = istNow;
     }
@@ -69,10 +60,33 @@ stockSchema.pre('save', function(next) {
     next();
 });
 
-stockSchema.pre('findOneAndUpdate', function(next) {
-    this._update.updated_at = getISTDate();
+stockSchema.pre("findOneAndUpdate", function (next) {
+    const update = this._update;
+
+    if (update.packed_stock !== undefined || update.unpacked_stock !== undefined) {
+        const packed = update.packed_stock ?? this._update.$set?.packed_stock ?? 0;
+        const unpacked = update.unpacked_stock ?? this._update.$set?.unpacked_stock ?? 0;
+
+        update.stock = packed + unpacked;
+    }
+
+    update.updated_at = getISTDate();
     next();
 });
+
+stockSchema.statics.findByProductId = async function (productId) {
+    return this.findOne({ product_id: productId });
+};
+
+stockSchema.statics.getAvailableStockByProductId = async function (productId) {
+    const stock = await this.findOne({ product_id: productId });
+
+    if (!stock) {
+        return 0;
+    }
+
+    return stock.stock;
+};
 
 const Stock = mongoose.model("Stock", stockSchema);
 export default Stock;

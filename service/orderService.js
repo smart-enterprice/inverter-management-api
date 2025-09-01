@@ -149,6 +149,10 @@ const orderService = {
                 product, stocks, qtyOrdered, employeeId, employeeRole, orderNumber
             );
 
+            if (productionRequired > 0 || unpackedUsed > 0) {
+                hasPendingProduction = true;
+            }
+
             const stockUsageMap = {
                 PACKED: packedUsed || 0,
                 UNPACKED: unpackedUsed || 0,
@@ -161,10 +165,6 @@ const orderService = {
                 PRODUCTION: productionRequired || 0,
                 hasUnpacked: (unpackedUsed || 0) > 0,
                 hasProduction: (productionRequired || 0) > 0,
-            }
-
-            if (productionRequired > 0 || unpackedUsed > 0) {
-                hasPendingProduction = true;
             }
 
             let unitPrice = product.price;
@@ -244,7 +244,7 @@ const orderService = {
             // exceeds the order total, the extra amount should be adjusted against that balance.
             // This ensures the order can still be completed, and the remaining excess is carried forward
             // as the dealer’s updated balance for future transactions.
-            throw new BadRequestException("Amount paid cannot exceed total order price.");
+            // throw new BadRequestException("Amount paid cannot exceed total order price.");
         }
 
         await order.save();
@@ -424,30 +424,26 @@ const orderService = {
             orderDetail.notes += ` | Cancelled ${cancelQty} units`;
         }
 
-        if (STOCK_RETURN_UNPACKED > 0) {
-            await saveOrUpdateStockTransaction({
-                product,
-                quantity: STOCK_RETURN_UNPACKED,
-                action: STOCK_ACTIONS.STOCK_RETURN,
-                stockType: STOCK_TYPES.STOCK_UNPACKED,
-                employeeId,
-                role: employeeRole,
-                orderNumber: order.order_number,
-                orderDetailsNumber: orderDetail.order_details_number
-            });
-        }
+        if (STOCK_RETURN_UNPACKED > 0 || STOCK_RETURN_PACKED > 0) {
+            const stockReturns = [
+                { qty: STOCK_RETURN_UNPACKED, type: STOCK_TYPES.STOCK_UNPACKED },
+                { qty: STOCK_RETURN_PACKED, type: STOCK_TYPES.STOCK_PACKED }
+            ];
 
-        if (STOCK_RETURN_PACKED > 0) {
-            await saveOrUpdateStockTransaction({
-                product,
-                quantity: STOCK_RETURN_PACKED,
-                action: STOCK_ACTIONS.STOCK_RETURN,
-                stockType: STOCK_TYPES.STOCK_PACKED,
-                employeeId,
-                role: employeeRole,
-                orderNumber: order.order_number,
-                orderDetailsNumber: orderDetail.order_details_number
-            });
+            for (const { qty, type } of stockReturns) {
+                if (qty > 0) {
+                    await saveOrUpdateStockTransaction({
+                        product,
+                        quantity: qty,
+                        action: STOCK_ACTIONS.STOCK_RETURN,
+                        stockType: type,
+                        employeeId,
+                        role: employeeRole,
+                        orderNumber: order.order_number,
+                        orderDetailsNumber: orderDetail.order_details_number
+                    });
+                }
+            }
         }
 
         if (updateDto.delivered_qty !== undefined) {

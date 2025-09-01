@@ -25,8 +25,13 @@ const PRODUCT_BRAND_RESPONSE_FIELDS = [
 ];
 
 const STOCK_RESPONSE_FIELDS = [
-    'stock_id', 'product_id', 'stock', 'add_stock', 'return_stock',
-    'stock_action', 'stock_type', 'stock_notes', 'created_by', 'order_number',
+    'stock_id', 'product_id', 'stock', 'packed_stock', 'unpacked_stock',
+    'created_by', 'created_at', 'updated_at'
+];
+
+const STOCK_HISTORY_RESPONSE_FIELDS = [
+    'stock_history_id', 'product_id', 'order_number', 'action', 'stock_type',
+    'quantity', 'previous_stock', 'new_stock', 'notes', 'created_by',
     'created_at', 'updated_at'
 ];
 

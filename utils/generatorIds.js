@@ -7,6 +7,7 @@ import OrderDetails from '../models/orderDetails.js';
 import Product from '../models/product.js';
 import Stock from '../models/stock.js';
 import { v4 as uuidv4 } from 'uuid';
+import StockHistory from '../models/stockHistory.js';
 
 const generateRandomString = (length) => {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -53,6 +54,18 @@ export const generateUniqueStockId = async () => {
     do {
         id = generateRandomString(20);
         exists = await Stock.findOne({ stock_id: id });
+    } while (exists);
+
+    return id;
+};
+
+export const generateUniqueStockHistoryId = async () => {
+    let id;
+    let exists;
+
+    do {
+        id = generateRandomString(20);
+        exists = await StockHistory.findOne({ stock_history_id: id });
     } while (exists);
 
     return id;
