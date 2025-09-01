@@ -59,6 +59,10 @@ export async function saveOrUpdateStockTransaction({
         throw new BadRequestException("Product information is required for stock transaction.");
     }
 
+    if (quantity <= 0) {
+        throw new BadRequestException("Quantity must be greater than 0 for stock transaction.");
+    }
+
     let returnReason = "";
     if (action === STOCK_ACTIONS.STOCK_RETURN) {
         if (!orderNumber || typeof orderNumber !== "string") {
@@ -85,7 +89,7 @@ export async function saveOrUpdateStockTransaction({
     }
 
     const productionNote = productionRequired > 0 ? ` | Production Required: ${productionRequired}` : "";
-    const newNote = `${action} for ${orderNumber ? `Order:${orderNumber} ` : ""}${productionNote} -- Employee:${employeeId}; Role:${role}; Action:${action}; ${returnReason}; Date:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
+    const newNote = `${action} ${orderNumber ? `(Order:${orderNumber})` : ""}${productionNote} -- Employee:${employeeId}; Role:${role}; ${returnReason}; Date:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
     const combinedNotes = stockNotes ? `${stockNotes} || ${newNote}` : newNote;
 
     const stock = await Stock.findOne({ product_id: product.product_id });
@@ -127,14 +131,17 @@ export async function saveOrUpdateStockTransaction({
         logger.info(`📦 Created Stock → Product:${product.product_id}, Total:${newTotal}`);
     }
 
+    const previousStock = stockType === STOCK_TYPES.STOCK_PACKED ? previousPacked : previousUnpacked;
+    const newStock = stockType === STOCK_TYPES.STOCK_PACKED ? newPacked : newUnpacked;
+
     await logStockHistory({
         productId: product.product_id,
         orderNumber,
         action,
         stockType,
         quantity,
-        previousStock: previousTotal,
-        newStock: newTotal,
+        previousStock,
+        newStock,
         notes: combinedNotes,
         employeeId
     });
@@ -185,15 +192,15 @@ const productService = {
             throw new BadRequestException(`Brand ${dto.brand} does not exist.`);
         }
 
-        const brandModels = brandRecord.brand_models.map(m => m.toUpperCase());
-        const brandStatus = brandRecord.status.toLowerCase();
-
-        if (brandStatus === 'inactive') {
-            throw new BadRequestException(`Brand ${dto.brand} is inactive. Please activate the brand to create a product.`);
-        } else if (brandStatus === 'discontinued') {
-            throw new BadRequestException(`Cannot create product. Brand ${dto.brand} is discontinued.`);
+        const brandStatus = brandRecord.status?.toLowerCase();
+        switch (brandStatus) {
+            case "inactive":
+                throw new BadRequestException(`Brand "${dto.brand}" is inactive. Please activate the brand before creating a product.`);
+            case "discontinued":
+                throw new BadRequestException(`Cannot create product. Brand "${dto.brand}" is discontinued.`);
         }
 
+        const brandModels = brandRecord.brand_models.map(m => m.toUpperCase());
         if (!brandModels.includes(modelInput)) {
             throw new BadRequestException(`Model ${dto.model} is not associated with brand ${dto.brand}.`);
         }
@@ -204,9 +211,9 @@ const productService = {
         if (dto.product_price != null) {
             const parsedPrice = Number(dto.product_price);
             if (isNaN(parsedPrice) || parsedPrice < 0) {
-                throw new BadRequestException('Product price must be a positive number.');
+                throw new BadRequestException("Product price must be a valid non-negative number.");
             }
-            price = Math.round(parsedPrice * 100) / 100;
+            price = Number(parsedPrice.toFixed(2)); // round to 2 decimals
         }
 
         const productId = await generateUniqueProductId();
@@ -222,10 +229,13 @@ const productService = {
         });
 
         await product.save();
-        logger.info(`Product created: ${productId}`);
+        logger.info(`✅ Product created → ID: ${productId}, Brand: ${brandInput}, Model: ${modelInput}`);
 
         if (Array.isArray(dto.stocks) && dto.stocks.length > 0) {
             await productService.createOrUpdateProductStock({ [productId]: dto.stocks });
+
+            product.available_stock = await calculateAvailableStock(product.product_id);
+            await product.save();
         }
 
         return fetchProductWithStocks(product);
@@ -308,7 +318,7 @@ const productService = {
         logger.info(`🔄 Product updated: ${productId} by employee ${employee_id}`);
         return fetchProductWithStocks(updated);
     }),
-    
+
     createOrUpdateProductStock: asyncHandler(async (stockMap) => {
         const { employee_id, role } = validateMainRoleAccess();
 
