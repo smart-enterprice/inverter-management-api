@@ -29,6 +29,7 @@ router.get('/get/profile', employeeController.getProfile);
 router.get('/', employeeController.getAllEmployees);
 router.get('/get/employees-password', employeeController.getAllEmployeesWithPassword);
 router.get('/get/deleted-employees', employeeController.getAllDeletedEmployees);
+router.get('/getByRole/:employeeRole', employeeController.getAllProfileByEmployeeRole);
 
 // dealer
 router.get('/dealers/get', employeeController.getAllDealerEmployees);

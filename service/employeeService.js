@@ -225,6 +225,25 @@ const employeeService = {
         return mapEmployeeEntityToResponse(employee);
     }),
 
+    getAllEmployeeByRole: asyncHandler(async (employeeRole) => {
+        if (!employeeRole) {
+            throw new BadRequestException("Employee role is required");
+        }
+
+        logger.info(`Fetching employees with role: ${employeeRole}`);
+
+        const employees = await employeeSchema.find({
+            role: employeeRole,
+            status: "active",
+        });
+
+        if (!employees || employees.length === 0) {
+            throw new NotFoundException("No employees found for this role");
+        }
+
+        return employees.map(mapEmployeeEntityToResponse);
+    }),
+
     getProfile: asyncHandler(async () => {
         const employeeId = CurrentRequestContext.getEmployeeId();
 

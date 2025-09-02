@@ -89,6 +89,27 @@ const employeeController = {
         })
     ],
 
+    getAllProfileByEmployeeRole: [
+        asyncHandler(async (req, res) => {
+            const { employeeRole } = req.params;
+
+            if (!employeeRole) {
+                throw new BadRequestException("Employee role is required");
+            }
+
+            const employees = await employeeService.getAllEmployeeByRole(employeeRole);
+
+            return res.status(200).json({
+                success: true,
+                status: 200,
+                message: "Employee profiles retrieved successfully",
+                count: employees.length,
+                data: employees,
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+            });
+        }),
+    ],
+
     updateProfile: [
         sanitizeInputBody,
         asyncHandler(async (req, res) => {
