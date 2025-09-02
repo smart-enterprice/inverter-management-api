@@ -95,11 +95,11 @@ const orderController = {
         const { orderNumber } = req.params;
         const updates = req.body;
 
-        const result = await orderService.updateMultipleOrderDetailsStatus(orderNumber, updates);
+        const updatedOrderDetails = await orderService.updateMultipleOrderDetailsStatus(orderNumber, updates);
 
         res.status(200).json({
             success: true,
-            message: `Order ${orderNumber} details updated successfully.`,
+            message: `✅ Order ${orderNumber} details updated successfully.`,
             count: updatedOrderDetails.length,
             data: updatedOrderDetails,
             timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })

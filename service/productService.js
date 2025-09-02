@@ -2,19 +2,20 @@
 
 import asyncHandler from "express-async-handler";
 
-import Employee from '../models/employees.js';
+import Employee from "../models/employees.js";
 import Product from "../models/product.js";
 import Stock from "../models/stock.js";
+import StockHistory from "../models/stockHistory.js";
 import Order from "../models/order.js";
 import OrderDetails from "../models/orderDetails.js";
+import Brand from "../models/brand.js";
 
 import logger from "../utils/logger.js";
-import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId } from "../utils/generatorIds.js";
+import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId, generateUniqueStockHistoryId } from "../utils/generatorIds.js";
 import { BadRequestException } from "../middleware/CustomError.js";
 import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext } from "../utils/validationUtils.js";
 import { mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse } from "../utils/modelMapper.js";
 import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS } from "../utils/constants.js";
-import Brand from "../models/brand.js";
 
 async function fetchProductWithStocks(product) {
     const stocks = await Stock.find({ product_id: product.product_id });
@@ -29,24 +30,20 @@ async function checkIfProductExists(brand, model) {
     }
 }
 
-async function calculateAvailableStock(productId) {
-    const allStocks = await Stock.find({ product_id: productId });
+export async function calculateAvailableStock(productId) {
+    try {
+        const available = await Stock.getAvailableStockByProductId(productId, logger);
 
-    const sumByType = (type) =>
-        allStocks.filter((s) => s.stock_type === type)
-        .reduce((total, s) => total + s.stock, 0);
+        logger.info(`📊 Stock Calculation → Product = ${productId}, AVAILABLE STOCK = ${available}`);
 
-    const packed = sumByType(STOCK_TYPES.STOCK_PACKED);
-    const unpacked = sumByType(STOCK_TYPES.STOCK_UNPACKED);
-    const sale = sumByType(STOCK_TYPES.STOCK_SALE);
-    const other = sumByType(STOCK_TYPES.STOCK_OTHER);
-
-    const available = packed + unpacked;
-    logger.info(`📊 Stock Calculation → Product:${productId}, PACKED=${packed}, UNPACKED=${unpacked}, SALE=${sale}, OTHER=${other}, AVAILABLE=${available}`);
-    return available;
+        return available;
+    } catch (error) {
+        logger.error(`❌ Failed to calculate stock for product ${productId}: ${error.message}`);
+        throw new BadRequestException(error.message);
+    }
 }
 
-async function saveOrUpdateStockTransaction({
+export async function saveOrUpdateStockTransaction({
     product,
     quantity,
     action,
@@ -58,8 +55,13 @@ async function saveOrUpdateStockTransaction({
     stockNotes = "",
     productionRequired = 0
 }) {
-    if (!product || !product.product_id)
+    if (!product || !product.product_id) {
         throw new BadRequestException("Product information is required for stock transaction.");
+    }
+
+    if (quantity <= 0) {
+        throw new BadRequestException("Quantity must be greater than 0 for stock transaction.");
+    }
 
     let returnReason = "";
     if (action === STOCK_ACTIONS.STOCK_RETURN) {
@@ -73,7 +75,7 @@ async function saveOrUpdateStockTransaction({
         }
 
         const orderDetailsQuery = { order_number: orderNumber, product_id: product.product_id };
-        if (orderDetailsNumber) orderDetailsQuery.order_details_number  = orderDetailsNumber;
+        if (orderDetailsNumber) orderDetailsQuery.order_details_number = orderDetailsNumber;
 
         const orderDetails = await OrderDetails.find(orderDetailsQuery);
         if (!orderDetails || orderDetails.length === 0) {
@@ -87,47 +89,94 @@ async function saveOrUpdateStockTransaction({
     }
 
     const productionNote = productionRequired > 0 ? ` | Production Required: ${productionRequired}` : "";
-    const newNote = `${action} for ${orderNumber ? `Order:${orderNumber} ` : ""}${productionNote} -- Employee:${employeeId}; Role:${role}; Action:${action}; ${returnReason}; Date:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
+    const newNote = `${action} ${orderNumber ? `(Order:${orderNumber})` : ""}${productionNote} -- Employee:${employeeId}; Role:${role}; ${returnReason}; Date:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
     const combinedNotes = stockNotes ? `${stockNotes} || ${newNote}` : newNote;
 
-    const query = { product_id: product.product_id, stock_type: stockType || action, stock_action: action };
-    if (orderNumber && ![STOCK_TYPES.STOCK_UNPACKED, STOCK_TYPES.STOCK_PACKED].includes(stockType)) {
-        query.order_number = orderNumber;
+    const stock = await Stock.findOne({ product_id: product.product_id });
+
+    let previousPacked = stock?.packed_stock || 0;
+    let previousUnpacked = stock?.unpacked_stock || 0;
+    let newPacked = previousPacked;
+    let newUnpacked = previousUnpacked;
+
+    if ([STOCK_ACTIONS.STOCK_RETURN, STOCK_ACTIONS.STOCK_ADD].includes(action)) {
+        if (stockType === STOCK_TYPES.STOCK_PACKED) newPacked += quantity;
+        if (stockType === STOCK_TYPES.STOCK_UNPACKED) newUnpacked += quantity;
     }
 
-    const existingStock = await Stock.findOne(query);
+    const previousTotal = previousPacked + previousUnpacked;
+    const newTotal = newPacked + newUnpacked;
 
-    if (existingStock) {
-        existingStock.stock += quantity;
-        if (action === STOCK_ACTIONS.STOCK_ADD) existingStock.add_stock += quantity;
-        if (action === STOCK_ACTIONS.STOCK_RETURN) existingStock.return_stock += quantity;
-        if ([STOCK_ACTIONS.STOCK_SALE, STOCK_ACTIONS.STOCK_OTHER].includes(action)) {
-            existingStock.other_stock += quantity;
-        }
-        existingStock.stock_notes += ` || ${newNote}`;
+    let stockRecord;
+    if (stock) {
+        stock.packed_stock = newPacked;
+        stock.unpacked_stock = newUnpacked;
+        stock.stock = newTotal;
+        stock.updated_at = new Date();
+        await stock.save();
 
-        await existingStock.save();
-        logger.info(`🔁 Updated ${action} Stock → Product:${product.product_id}, Qty:${existingStock.stock}`);
-        return existingStock;
+        stockRecord = stock;
+        logger.info(`🔁 Updated Stock → Product:${product.product_id}, Total:${newTotal}`);
+    } else {
+        const stockData = {
+            stock_id: await generateUniqueStockId(),
+            product_id: product.product_id,
+            packed_stock: newPacked,
+            unpacked_stock: newUnpacked,
+            stock: newTotal,
+            created_by: employeeId
+        };
+
+        stockRecord = await new Stock(stockData).save();
+        logger.info(`📦 Created Stock → Product:${product.product_id}, Total:${newTotal}`);
     }
 
-    const stockData = {
-        stock_id: await generateUniqueStockId(),
-        product_id: product.product_id,
-        stock: quantity,
-        add_stock: action === STOCK_ACTIONS.STOCK_ADD ? quantity : 0,
-        return_stock: action === STOCK_ACTIONS.STOCK_RETURN ? quantity : 0,
-        other_stock: [STOCK_ACTIONS.STOCK_SALE, STOCK_ACTIONS.STOCK_OTHER].includes(action) ? quantity : 0,
-        stock_type: stockType || action,
-        stock_action: action,
-        created_by: employeeId,
+    const previousStock = stockType === STOCK_TYPES.STOCK_PACKED ? previousPacked : previousUnpacked;
+    const newStock = stockType === STOCK_TYPES.STOCK_PACKED ? newPacked : newUnpacked;
+
+    await logStockHistory({
+        productId: product.product_id,
+        orderNumber,
+        action,
+        stockType,
+        quantity,
+        previousStock,
+        newStock,
+        notes: combinedNotes,
+        employeeId
+    });
+
+    return stockRecord;
+}
+
+async function logStockHistory({
+    productId,
+    orderNumber,
+    action,
+    stockType,
+    quantity,
+    previousStock,
+    newStock,
+    notes,
+    employeeId
+}) {
+    if (quantity <= 0) return;
+
+    const historyId = await generateUniqueStockHistoryId();
+
+    await StockHistory.create({
+        stock_history_id: historyId,
+        product_id: productId,
         order_number: orderNumber,
-        stock_notes: combinedNotes
-    };
-
-    const newStock = await new Stock(stockData).save();
-    logger.info(`📦 Created ${action} Stock → Product:${product.product_id}, Qty:${quantity}`);
-    return newStock;
+        action,
+        stock_type: stockType,
+        quantity,
+        previous_stock: previousStock,
+        new_stock: newStock,
+        notes,
+        created_by: employeeId
+    });
+    logger.info(`📝 StockHistory Logged → Product:${productId}, Action:${action}, Type:${stockType}, Qty:${quantity}`);
 }
 
 const productService = {
@@ -143,15 +192,15 @@ const productService = {
             throw new BadRequestException(`Brand ${dto.brand} does not exist.`);
         }
 
-        const brandModels = brandRecord.brand_models.map(m => m.toUpperCase());
-        const brandStatus = brandRecord.status.toLowerCase();
-
-        if (brandStatus === 'inactive') {
-            throw new BadRequestException(`Brand ${dto.brand} is inactive. Please activate the brand to create a product.`);
-        } else if (brandStatus === 'discontinued') {
-            throw new BadRequestException(`Cannot create product. Brand ${dto.brand} is discontinued.`);
+        const brandStatus = brandRecord.status?.toLowerCase();
+        switch (brandStatus) {
+            case "inactive":
+                throw new BadRequestException(`Brand "${dto.brand}" is inactive. Please activate the brand before creating a product.`);
+            case "discontinued":
+                throw new BadRequestException(`Cannot create product. Brand "${dto.brand}" is discontinued.`);
         }
 
+        const brandModels = brandRecord.brand_models.map(m => m.toUpperCase());
         if (!brandModels.includes(modelInput)) {
             throw new BadRequestException(`Model ${dto.model} is not associated with brand ${dto.brand}.`);
         }
@@ -162,9 +211,9 @@ const productService = {
         if (dto.product_price != null) {
             const parsedPrice = Number(dto.product_price);
             if (isNaN(parsedPrice) || parsedPrice < 0) {
-                throw new BadRequestException('Product price must be a positive number.');
+                throw new BadRequestException("Product price must be a valid non-negative number.");
             }
-            price = Math.round(parsedPrice * 100) / 100;
+            price = Number(parsedPrice.toFixed(2)); // round to 2 decimals
         }
 
         const productId = await generateUniqueProductId();
@@ -180,10 +229,13 @@ const productService = {
         });
 
         await product.save();
-        logger.info(`Product created: ${productId}`);
+        logger.info(`✅ Product created → ID: ${productId}, Brand: ${brandInput}, Model: ${modelInput}`);
 
         if (Array.isArray(dto.stocks) && dto.stocks.length > 0) {
             await productService.createOrUpdateProductStock({ [productId]: dto.stocks });
+
+            product.available_stock = await calculateAvailableStock(product.product_id);
+            await product.save();
         }
 
         return fetchProductWithStocks(product);
@@ -281,7 +333,7 @@ const productService = {
             if (!product) throw new BadRequestException(`No product found with ID ${productId}`);
 
             const entries = Array.isArray(stockMap[productId]) ? stockMap[productId] : [stockMap[productId]];
-            const stockResponses = [];
+            let latestStock = null;
 
             for (const entry of entries) {
                 const action = validateStockActionType(entry.type);
@@ -291,7 +343,7 @@ const productService = {
                     throw new BadRequestException("Stock must be a positive number.");
                 }
 
-                const savedStock = await saveOrUpdateStockTransaction({
+                latestStock = await saveOrUpdateStockTransaction({
                     product,
                     quantity: entry.stock,
                     action,
@@ -301,13 +353,12 @@ const productService = {
                     orderNumber: entry.order_number || null,
                     stockNotes: entry.stock_notes
                 });
-                stockResponses.push(mapStockEntityToResponse(savedStock));
             }
 
             product.available_stock = await calculateAvailableStock(product.product_id);
             await product.save();
 
-            result.push(mapProductEntityToResponse(product, stockResponses));
+            result.push(mapProductEntityToResponse(product, latestStock));
         }
 
         return result;
@@ -364,67 +415,83 @@ const productService = {
         products.forEach((p) => productMap.set(p.product_id, p));
 
         stocks.forEach((s) => {
-            if (!productStockMap.has(s.product_id)) productStockMap.set(s.product_id, []);
-            const stockArray = productStockMap.get(s.product_id);
-            if (!stockArray.find((existing) => existing.stock_id === s.stock_id)) {
-                stockArray.push(s);
-            }
+            productStockMap.set(s.product_id, {
+                stock_id: s.stock_id,
+                packed_stock: s.packed_stock,
+                unpacked_stock: s.unpacked_stock,
+                total_stock: s.stock
+            });
+            productAvailableStockMap.set(s.product_id, s.stock);
         });
-
-        for (const p of products) {
-            const availableStock = await calculateAvailableStock(p.product_id);
-            productAvailableStockMap.set(p.product_id, availableStock);
-        }
 
         return { productMap, productStockMap, productAvailableStockMap };
     }),
 
-    checkAndReserveStock: asyncHandler(async (product, stocks, requiredQty, employeeId, role, orderNumber) => {
-        if (requiredQty <= 0) throw new BadRequestException("Ordered quantity must be greater than 0.");
+    checkAndReserveStock: asyncHandler(async (product, stock, requiredQty, employeeId, role, orderNumber) => {
+        if (requiredQty <= 0) {
+            throw new BadRequestException("Ordered quantity must be greater than 0.");
+        }
 
         let packedUsed = 0, unpackedUsed = 0, productionRequired = 0;
         let remainingQty = requiredQty;
 
-        const packedStocks = stocks.filter((s) => s.stock_type === STOCK_TYPES.STOCK_PACKED).sort((a, b) => b.stock - a.stock);
-        const unpackedStocks = stocks.filter((s) => s.stock_type === STOCK_TYPES.STOCK_UNPACKED).sort((a, b) => b.stock - a.stock);
+        const previousPacked = stock.packed_stock;
+        const previousUnPacked = stock.unpacked_stock;
 
-        for (const stk of packedStocks) {
-            if (remainingQty <= 0) break;
-            const used = Math.min(stk.stock, remainingQty);
-            stk.stock -= used;
-            packedUsed += used;
+        if (stock.packed_stock > 0) {
+            const used = Math.min(stock.packed_stock, remainingQty);
+            stock.packed_stock -= used;
+            packedUsed = used;
             remainingQty -= used;
-            await stk.save();
         }
 
-        for (const stk of unpackedStocks) {
-            if (remainingQty <= 0) break;
-            const used = Math.min(stk.stock, remainingQty);
-            stk.stock -= used;
-            unpackedUsed += used;
+        if (remainingQty > 0 && stock.unpacked_stock > 0) {
+            const used = Math.min(stock.unpacked_stock, remainingQty);
+            stock.unpacked_stock -= used;
+            unpackedUsed = used;
             remainingQty -= used;
-            await stk.save();
         }
 
-        const availableStockUsed = packedUsed + unpackedUsed;
-        if (remainingQty > 0) productionRequired = remainingQty;
-
-        if (availableStockUsed > 0 || productionRequired > 0) {
-            await saveOrUpdateStockTransaction({
-                product,
-                quantity: availableStockUsed,
-                action: STOCK_ACTIONS.STOCK_SALE,
-                employeeId,
-                role,
-                orderNumber,
-                productionRequired
-            });
+        if (remainingQty > 0) {
+            productionRequired = remainingQty;
         }
+
+        stock.stock = stock.packed_stock + stock.unpacked_stock;
+        await stock.save();
+
+        const dateNow = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+
+        await logStockHistory({
+            productId: product.product_id,
+            orderNumber,
+            action: STOCK_ACTIONS.STOCK_SALE,
+            stockType: STOCK_TYPES.STOCK_PACKED,
+            quantity: packedUsed,
+            previousStock: previousPacked,
+            newStock: stock.packed_stock,
+            notes: `Sale of PACKED stock for Order #${orderNumber}, Product #${product.product_id}, Qty:${packedUsed}, Date:${dateNow}`,
+            employeeId
+        });
+
+        await logStockHistory({
+            productId: product.product_id,
+            orderNumber,
+            action: STOCK_ACTIONS.STOCK_SALE,
+            stockType: STOCK_TYPES.STOCK_UNPACKED,
+            quantity: unpackedUsed,
+            previousStock: previousUnPacked,
+            newStock: stock.unpacked_stock,
+            notes: `Sale of UNPACKED stock for Order #${orderNumber}, Product #${product.product_id}, Qty:${unpackedUsed}, Date:${dateNow}`,
+            employeeId
+        });
 
         product.available_stock = await calculateAvailableStock(product.product_id);
         await product.save();
 
+        const availableStockUsed = packedUsed + unpackedUsed;
+
         logger.info(`✅ Stock updated → Product:${product.product_id}, Packed:${packedUsed}, Unpacked:${unpackedUsed}, ProductionRequired:${productionRequired}`);
+
         return { availableStockUsed, productionRequired, packedUsed, unpackedUsed };
     }),
 
@@ -608,7 +675,7 @@ const productService = {
         return mapProductBrandEntityToResponse(updatedBrand);
     }),
 
-    returnStock: asyncHandler(async(product_id, quantity, employeeId, employeeRole, orderNumber) => {
+    returnStock: asyncHandler(async (product_id, quantity, employeeId, employeeRole, orderNumber) => {
         if (!product_id || !quantity || quantity <= 0) {
             throw new BadRequestException("Invalid product ID or quantity to return.");
         }
@@ -632,4 +699,4 @@ const productService = {
 
 }
 
-export { productService, saveOrUpdateStockTransaction, calculateAvailableStock };
+export { productService };

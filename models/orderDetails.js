@@ -40,7 +40,7 @@ const orderDetailsSchema = new mongoose.Schema({
     qty_ordered: {
         type: Number,
         required: [true, "🔢 Quantity Ordered is required."],
-        min: [1, "Quantity must be at least 1."],
+        min: [0, "Quantity must be at least 0."],
     },
     qty_delivered: {
         type: Number,

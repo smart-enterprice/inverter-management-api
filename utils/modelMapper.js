@@ -25,13 +25,18 @@ const PRODUCT_BRAND_RESPONSE_FIELDS = [
 ];
 
 const STOCK_RESPONSE_FIELDS = [
-    'stock_id', 'product_id', 'stock', 'add_stock', 'return_stock',
-    'stock_action', 'stock_type', 'stock_notes', 'created_by', 'order_number',
+    'stock_id', 'product_id', 'stock', 'packed_stock', 'unpacked_stock',
+    'created_by', 'created_at', 'updated_at'
+];
+
+const STOCK_HISTORY_RESPONSE_FIELDS = [
+    'stock_history_id', 'product_id', 'order_number', 'action', 'stock_type',
+    'quantity', 'previous_stock', 'new_stock', 'notes', 'created_by',
     'created_at', 'updated_at'
 ];
 
 const ORDER_RESPONSE_FIELDS = [
-    'order_number', 'dealer_id', 'priority', 'order_note', 'status', 'salesman_id',
+    'order_number', 'dealer_id', 'priority', 'order_note', 'payment_notes', 'status', 'salesman_id',
     'delivery_date', 'promised_delivery_date', 'created_by', 'order_total_price',
     'order_total_discount', 'payment_status', 'payment_type', 'amount_paid',
     'amount_due', 'last_payment_date', 'sales_target_updated', 'created_at', 'updated_at'
@@ -108,37 +113,55 @@ export const mapStockEntityToResponse = (stock) => {
     return response;
 };
 
-export const transformOrderToResponse = (order, dealer, orderDetailsList = []) => {
-    if (!order) return { order: null };
+export const mapOrderEntityToResponse = (order) => {
+    if (!order) return null;
 
     const orderData = {};
-
     ORDER_RESPONSE_FIELDS.forEach((field) => {
         if (order[field] !== undefined) {
             orderData[field] = order[field];
         }
     });
 
+    return orderData;
+};
+
+export const mapDealerEntityToResponse = (dealer) => {
+    if (!dealer) return null;
+
     const dealerData = {};
-    if (dealer) {
-        EMPLOYEE_RESPONSE_FIELDS.forEach((field) => {
-            if (dealer[field] !== undefined) {
-                dealerData[field] = dealer[field];
-            }
-        });
-    }
-
-    orderData.dealer = dealerData;
-
-    orderData.order_details = orderDetailsList.map((detail) => {
-        const orderDetailData = {};
-        ORDER_DETAILS_RESPONSE_FIELDS.forEach((field) => {
-            if (detail[field] !== undefined) {
-                orderDetailData[field] = detail[field];
-            }
-        });
-        return orderDetailData;
+    EMPLOYEE_RESPONSE_FIELDS.forEach((field) => {
+        if (dealer[field] !== undefined) {
+            dealerData[field] = dealer[field];
+        }
     });
+
+    return dealerData;
+};
+
+export const mapOrderDetailEntityToResponse = (detail) => {
+    if (!detail) return null;
+
+    const orderDetailData = {};
+    ORDER_DETAILS_RESPONSE_FIELDS.forEach((field) => {
+        if (detail[field] !== undefined) {
+            orderDetailData[field] = detail[field];
+        }
+    });
+
+    return orderDetailData;
+};
+
+export const mapOrderDetailsListToResponse = (details = []) => {
+    return details.map(mapOrderDetailEntityToResponse);
+};
+
+export const transformOrderToResponse = (order, dealer, orderDetailsList = []) => {
+    if (!order) return { order: null };
+
+    const orderData = mapOrderEntityToResponse(order);
+    orderData.dealer = mapDealerEntityToResponse(dealer);
+    orderData.order_details = mapOrderDetailsListToResponse(orderDetailsList);
 
     return { order: orderData };
 };
@@ -165,4 +188,11 @@ export const mapDealerDiscountEntityToResponse = (discount) => {
     });
 
     return response;
+};
+
+export const formatFileSize = (bytes) => {
+    if (bytes === 0) return "0 Bytes";
+    const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + " " + sizes[i];
 };

@@ -14,13 +14,13 @@ router.post('/create', orderController.createOrder);
 
 // @route   GET
 router.get('/', orderController.getAll);
+router.get('/date-filter', orderController.fetchOrdersByDateFilter);
 router.get('/:orderId', orderController.getByOrderId);
-router.get('/orders/:orderStatus', orderController.getByOrderStatus);
-router.get("/orders/date-filter", orderController.fetchOrdersByDateFilter);
+router.get('/status/:orderStatus', orderController.getByOrderStatus);
 
 // @route   PUT
-router.put("/order-details/:orderDetailsId", orderController.updateOrderDetailStatus);
-router.put("/orders/:orderNumber/order-details", orderController.updateMultipleOrderDetailsStatus);
+router.put('/:orderDetailsId', orderController.updateOrderDetailStatus);
+router.put('/order/:orderNumber', orderController.updateMultipleOrderDetailsStatus);
 
 // router.put('/:orderId', orderController.updateProduct);
 

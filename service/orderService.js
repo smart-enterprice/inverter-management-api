@@ -15,9 +15,9 @@ import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../utils/ge
 import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";
 import { getAuthenticatedEmployeeContext, sanitizeInput } from "../utils/validationUtils.js";
 
-import { APPROVAL_GRANTED_ROLES, ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIELDS, ORDER_REQUIRED_FIELDS, ROLES, STOCK_ACTIONS, STOCK_TYPES, VALID_ORDER_STATUSES, VALID_PAYMENT_STATUSES } from "../utils/constants.js";
-import { transformOrderToResponse } from "../utils/modelMapper.js";
-import { calculateAvailableStock, productService } from "./productService.js";
+import { APPROVAL_GRANTED_ROLES, getISTDate, ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIELDS, ORDER_REQUIRED_FIELDS, ROLES, STOCK_ACTIONS, STOCK_TYPES, VALID_ORDER_STATUSES, VALID_PAYMENT_STATUSES } from "../utils/constants.js";
+import { mapOrderDetailEntityToResponse, transformOrderToResponse } from "../utils/modelMapper.js";
+import { calculateAvailableStock, productService, saveOrUpdateStockTransaction } from "./productService.js";
 import Product from "../models/product.js";
 
 dayjs.extend(utc);
@@ -149,6 +149,10 @@ const orderService = {
                 product, stocks, qtyOrdered, employeeId, employeeRole, orderNumber
             );
 
+            if (productionRequired > 0 || unpackedUsed > 0) {
+                hasPendingProduction = true;
+            }
+
             const stockUsageMap = {
                 PACKED: packedUsed || 0,
                 UNPACKED: unpackedUsed || 0,
@@ -161,10 +165,6 @@ const orderService = {
                 PRODUCTION: productionRequired || 0,
                 hasUnpacked: (unpackedUsed || 0) > 0,
                 hasProduction: (productionRequired || 0) > 0,
-            }
-
-            if (productionRequired > 0 || unpackedUsed > 0) {
-                hasPendingProduction = true;
             }
 
             let unitPrice = product.price;
@@ -229,9 +229,14 @@ const orderService = {
         }));
 
         order.status = hasPendingProduction ? "PENDING_PRODUCTION" : "PENDING";
+
         order.sales_target_updated = false;
         order.order_total_price = totalOrderAmount;
         order.order_total_discount = totalOrderDiscount;
+
+        if (typeof order.amount_paid !== "undefined" && order.amount_paid > 0) {
+            await order.addPayment(order.amount_paid, order.payment_type || "CASH");
+        }
 
         if (order.amount_paid > order.order_total_price) {
             // ✅ Instead of blocking the transaction, we now handle dealer’s old balance.
@@ -239,7 +244,7 @@ const orderService = {
             // exceeds the order total, the extra amount should be adjusted against that balance.
             // This ensures the order can still be completed, and the remaining excess is carried forward
             // as the dealer’s updated balance for future transactions.
-            throw new BadRequestException("Amount paid cannot exceed total order price.");
+            // throw new BadRequestException("Amount paid cannot exceed total order price.");
         }
 
         await order.save();
@@ -419,30 +424,26 @@ const orderService = {
             orderDetail.notes += ` | Cancelled ${cancelQty} units`;
         }
 
-        if (STOCK_RETURN_UNPACKED > 0) {
-            await productService.saveOrUpdateStockTransaction({
-                product,
-                quantity: STOCK_RETURN_UNPACKED,
-                action: STOCK_ACTIONS.STOCK_RETURN,
-                stockType: STOCK_TYPES.STOCK_UNPACKED,
-                employeeId,
-                role: employeeRole,
-                orderNumber: order.order_number,
-                orderDetailsNumber: orderDetail.order_details_number
-            });
-        }
+        if (STOCK_RETURN_UNPACKED > 0 || STOCK_RETURN_PACKED > 0) {
+            const stockReturns = [
+                { qty: STOCK_RETURN_UNPACKED, type: STOCK_TYPES.STOCK_UNPACKED },
+                { qty: STOCK_RETURN_PACKED, type: STOCK_TYPES.STOCK_PACKED }
+            ];
 
-        if (STOCK_RETURN_PACKED > 0) {
-            await productService.saveOrUpdateStockTransaction({
-                product,
-                quantity: STOCK_RETURN_PACKED,
-                action: STOCK_ACTIONS.STOCK_RETURN,
-                stockType: STOCK_TYPES.STOCK_PACKED,
-                employeeId,
-                role: employeeRole,
-                orderNumber: order.order_number,
-                orderDetailsNumber: orderDetail.order_details_number
-            });
+            for (const { qty, type } of stockReturns) {
+                if (qty > 0) {
+                    await saveOrUpdateStockTransaction({
+                        product,
+                        quantity: qty,
+                        action: STOCK_ACTIONS.STOCK_RETURN,
+                        stockType: type,
+                        employeeId,
+                        role: employeeRole,
+                        orderNumber: order.order_number,
+                        orderDetailsNumber: orderDetail.order_details_number
+                    });
+                }
+            }
         }
 
         if (updateDto.delivered_qty !== undefined) {
@@ -454,7 +455,7 @@ const orderService = {
 
             const deliveredDate = updateDto.delivered_date
                 ? new Date(updateDto.delivered_date)
-                : new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+                : getISTDate();
 
             if (isNaN(deliveredDate.getTime())) {
                 throw new BadRequestException("Invalid delivered_date format. Must be a valid date.");
@@ -504,13 +505,16 @@ const orderService = {
 
         orderDetail.status = newStatus;
 
-        if (orderDetail.qty_ordered === orderDetail.qty_delivered) {
-            orderDetail.status = "DELIVERED";
-            orderDetail.delivery_date = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-        } else {
-            const remainingQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
-            const currentDate = new Date().toISOString().split("T")[0];
-            orderDetail.notes += ` | Pending delivery: ${remainingQty} unit(s) as of ${currentDate}`;
+        if (orderDetail.qty_ordered !== 0) {
+            if (orderDetail.qty_ordered === orderDetail.qty_delivered) {
+                orderDetail.status = "DELIVERED";
+                orderDetail.delivery_date = getISTDate();
+            } else {
+                const remainingQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
+                const currentDate = new Date().toISOString().split("T")[0];
+                orderDetail.notes = (orderDetail.notes || "") +
+                    ` | Pending delivery: ${remainingQty} unit(s) as of ${currentDate}`;
+            }
         }
 
         await orderDetail.save();
@@ -539,7 +543,7 @@ const orderService = {
             await product.save();
         }
 
-        return orderDetail;
+        return mapOrderDetailEntityToResponse(orderDetail);
     }),
 
     updateMultipleOrderDetailsStatus: asyncHandler(async (orderNumber, updates) => {
@@ -549,30 +553,94 @@ const orderService = {
             throw new UnauthorizedException(`Access denied: only users with roles ${Object.values(ROLES).join(", ")} are authorized to update order details.`);
         }
 
-        if (!Array.isArray(updates) || updates.length === 0) {
-            throw new BadRequestException("No order details provided for update.");
+        if (!updates || typeof updates !== "object") {
+            throw new BadRequestException("Invalid request body.");
         }
 
-        const detailIds = updates.map(ud => ud.order_details_number);
-        const orderDetailsList = await OrderDetails.find({ order_details_number: { $in: detailIds } });
+        const {
+            order_number,
+            priority,
+            order_note,
+            status,
+            amount_paid,
+            payment_method,
+            order_details = []
+        } = updates;
 
-        if (orderDetailsList.length !== updates.length) {
-            throw new BadRequestException("One or more order details were not found.");
+        if (order_number !== orderNumber) {
+            throw new BadRequestException(`Order number mismatch: path(${orderNumber}) ≠ body(${order_number}).`);
         }
 
         const order = await Order.findByOrderNumber(orderNumber);
         if (!order) throw new BadRequestException(`No order found for: ${orderNumber}`);
 
-        for (const dto of updates) {
-            const orderDetail = orderDetailsList.find(od => od.order_details_number === dto.order_details_number);
-            if (orderDetail) {
-                await orderService.updateOrderDetailStatus(orderDetail.order_details_number, dto);
+        if (priority && priority !== order.priority) {
+            order.priority = priority;
+        }
+
+        if (order_note && order_note.trim() && order_note !== order.order_note) {
+            order.order_note = order_note.trim();
+        }
+
+        if (Array.isArray(order_details) && order_details.length > 0) {
+            const detailIds = order_details.map(d => d.order_details_number);
+            const orderDetailsList = await OrderDetails.find({ order_details_number: { $in: detailIds } });
+
+            for (const dto of order_details) {
+                const orderDetail = orderDetailsList.find(od => od.order_details_number === dto.order_details_number);
+                if (orderDetail) {
+                    await orderService.updateOrderDetailStatus(orderDetail.order_details_number, dto);
+                }
             }
         }
 
         const updatedOrderDetails = await OrderDetails.find({ order_number: orderNumber });
 
-        return updatedOrderDetails;
+        if (status && VALID_ORDER_STATUSES.includes(status.toUpperCase())) {
+            const normalizedStatus = status.toUpperCase();
+
+            switch (normalizedStatus) {
+                case "CANCELLED":
+                    const cancelledDetails = updatedOrderDetails.map(detail => ({
+                        order_details_number: detail.order_details_number,
+                        cancel_qty: detail.qty_ordered,
+                        status: "CANCELLED",
+                    }));
+
+                    for (const dto of cancelledDetails) {
+                        await orderService.updateOrderDetailStatus(dto.order_details_number, dto);
+                    }
+
+                    order.order_total_discount = 0;
+                    order.order_total_price = 0;
+                    order.status = "CANCELLED";
+                    break;
+
+                case "PENDING":
+                    const requiresProduction = updatedOrderDetails.some(d =>
+                        d.status === "PENDING_PRODUCTION"
+                    );
+                    order.status = requiresProduction ? "PENDING_PRODUCTION" : "PENDING";
+                    break;
+
+                case "APPROVED":
+                    order.status = "APPROVED";
+                    break;
+
+                default:
+                    order.status = normalizedStatus;
+            }
+
+        }
+
+        if (typeof amount_paid !== "undefined" && (!status || status.toUpperCase() !== "CANCELLED")) {
+            const paidAmount = Number(amount_paid) || 0;
+            await order.addPayment(paidAmount, payment_method || "CASH");
+        }
+
+        await order.save();
+
+        return transformOrderToResponse(order, null, updatedOrderDetails);
     }),
 
     updateOrderStatus: asyncHandler(async (orderNumber, newStatus) => {

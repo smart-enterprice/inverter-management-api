@@ -18,3 +18,8 @@ SUPER_ADMIN_PASSWORD = superadmin@123
 
 ENCRYPTION_SECRET_KEY = your encryption key
 ALLOWED_ORIGINS=http://localhost:5173,your urls
+
+AWS_ACCESS_KEY_ID=access_key
+AWS_SECRET_ACCESS_KEY=secret_key
+AWS_REGION=ap-south-1
+S3_BUCKET_NAME=my-node-bucket
