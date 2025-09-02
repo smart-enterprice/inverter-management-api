@@ -427,6 +427,45 @@ const productService = {
         return { productMap, productStockMap, productAvailableStockMap };
     }),
 
+    getAllProductsByBrands: asyncHandler(async (dto) => {
+        const { employee_id } = validateMainRoleAccess();
+
+        if (!Array.isArray(dto.brands) || dto.brands.length === 0) {
+            throw new BadRequestException("At least one brand must be provided.");
+        }
+
+        const requestedBrands = dto.brands.map((b) =>
+            sanitizeInput(b).toUpperCase()
+        );
+
+        const activeBrands = await Brand.find({
+            brand_name: { $in: requestedBrands },
+            status: "active",
+        });
+
+        if (!activeBrands.length) {
+            throw new BadRequestException(`No active brands found for [${brandInputs.join(", ")}]`);
+        }
+
+        const validBrandNames = activeBrands.map((b) =>
+            sanitizeInput(b.brand_name).toUpperCase()
+        );
+
+        const products = await Product.find({
+            brand: { $in: validBrandNames },
+            status: "active",
+        }).sort({ created_at: -1 });
+
+        if (!products.length) {
+            throw new BadRequestException(`No products found for active brands: [${brandInputs.join(", ")}]`);
+        }
+
+        const productsWithStock = await Promise.all(
+            products.map((p) => fetchProductWithStocks(p))
+        );
+        return productsWithStock;
+    }),
+
     checkAndReserveStock: asyncHandler(async (product, stock, requiredQty, employeeId, role, orderNumber) => {
         if (requiredQty <= 0) {
             throw new BadRequestException("Ordered quantity must be greater than 0.");
