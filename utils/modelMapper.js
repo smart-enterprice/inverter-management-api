@@ -60,11 +60,11 @@ export const mapEmployeeRequestToEntity = (data, employeeId = null, isUpdate = f
     const entity = {};
 
     if (employeeId) entity.employee_id = employeeId;
-    if (!isUpdate) entity.status = 'active';
+    if (!isUpdate) entity.status = "active";
 
-    EMPLOYEE_INPUT_FIELDS.forEach(field => {
+    EMPLOYEE_INPUT_FIELDS.forEach((field) => {
         if (data[field] !== undefined) {
-            entity[field] = sanitizeInput(data[field]);
+            entity[field] = field === "photo" ? data[field] : sanitizeInput(data[field]);
         }
     });
 
