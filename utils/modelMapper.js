@@ -1,5 +1,6 @@
 // modelMapper.js
 
+import logger from './logger.js';
 import { sanitizeInput } from './validationUtils.js';
 
 const EMPLOYEE_INPUT_FIELDS = [
@@ -64,7 +65,12 @@ export const mapEmployeeRequestToEntity = (data, employeeId = null, isUpdate = f
 
     EMPLOYEE_INPUT_FIELDS.forEach((field) => {
         if (data[field] !== undefined) {
-            entity[field] = field === "photo" ? data[field] : sanitizeInput(data[field]);
+            if (field === "photo") {
+                logger.info("Employee photo field received", { photo: data[field] });
+                entity[field] = data[field];
+            } else {
+                entity[field] = sanitizeInput(data[field]);
+            }
         }
     });
 
