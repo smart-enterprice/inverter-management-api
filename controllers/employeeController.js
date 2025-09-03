@@ -439,6 +439,27 @@ const employeeController = {
         })
     ],
 
+    updateDealerDiscount: [
+        sanitizeInputBody,
+        asyncHandler(async (req, res) => {
+            const discountData = req.body;
+
+            if (!discountData || !discountData.dealer_discount_id) {
+                throw new BadRequestException("Dealer Discount ID is required in the request body.");
+            }
+
+            const updatedDiscount = await employeeService.updateDealerDiscount(discountData);
+
+            return res.status(200).json({
+                success: true,
+                status: 200,
+                message: "Dealer Discount updated successfully ✅",
+                data: updatedDiscount,
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+            });
+        }),
+    ],
+
     getDealerDiscount: [
         asyncHandler(async (req, res) => {
             const { page, limit, skip } = getPaginationParams(req.query);

@@ -26,7 +26,8 @@ import {
     SUPER_ADMIN_PHONE,
     SUPER_ADMIN_EMAIL,
     SUPER_ADMIN_PASSWORD,
-    ROLES
+    ROLES,
+    getISTDate
 } from '../utils/constants.js';
 import { tokenBlacklistService } from "./tokenBlacklistService.js";
 import Brand from "../models/brand.js";
@@ -383,12 +384,12 @@ const employeeService = {
         const { employeeId } = getAuthenticatedEmployeeContext();
         validateDealerDiscountRequiredFields(discountData);
 
-        const brand_name = discountData.brand_name.toUpperCase();
-        const model_name = discountData.model_name.toUpperCase();
+        const brandName = discountData.brand_name.toUpperCase();
+        const modelName = discountData.model_name.toUpperCase();
 
         const [dealer, brandRecord] = await Promise.all([
-            employeeSchema.findOne({ employee_id: discountData.dealer_id, role: ROLES.DEALER }).lean(),
-            Brand.findOne({ brand_name: brand_name }).lean()
+            employeeSchema.findOne({ employee_id: discountData.dealer_id, role: ROLES.DEALER, }).lean(),
+            Brand.findOne({ brand_name: brandName }).lean(),
         ]);
 
         if (!dealer) {
@@ -396,44 +397,137 @@ const employeeService = {
         }
 
         if (!brandRecord) {
-            throw new BadRequestException(`Brand ${brand_name} not found.`);
+            throw new BadRequestException(`Brand ${brandName} not found.`);
         }
 
         const brandModels = brandRecord.brand_models.map(m => m.toUpperCase());
         const brandStatus = brandRecord.status.toLowerCase();
 
         if (brandStatus === "discontinued") {
-            throw new BadRequestException(`Cannot create discount. Brand ${brand_name} is discontinued.`);
+            throw new BadRequestException(
+                `Cannot create discount. Brand ${brandName} is discontinued.`
+            );
         }
 
-        if (!brandModels.includes(model_name.toUpperCase())) {
-            throw new BadRequestException(`Model ${model_name} is not associated with brand ${brand_name}.`);
+        if (!brandModels.includes(modelName)) {
+            throw new BadRequestException(
+                `Model ${modelName} is not associated with brand ${brandName}.`
+            );
         }
 
-        await checkIfDiscountExists(brand_name, model_name, discountData.dealer_id);
+        await checkIfDiscountExists(brandName, modelName, discountData.dealer_id);
 
-        let discountPrice = null;
+        let discountValue = null;
         if (discountData.discount_value != null) {
-            const parsedPrice = Number(discountData.discount_value);
-            if (isNaN(parsedPrice) || parsedPrice < 0) {
+            const parsedValue = Number(discountData.discount_value);
+
+            if (isNaN(parsedValue) || parsedValue < 0) {
                 throw new BadRequestException("Discount value must be a positive number.");
             }
-            discountPrice = Math.round(parsedPrice * 100) / 100;
+
+            discountValue = Math.round(parsedValue * 100) / 100;
+        }
+
+        const isPercentage = !!discountData.is_percentage;
+        if (isPercentage && discountValue > 100) {
+            throw new BadRequestException("Percentage discount value cannot exceed 100%.");
+        }
+
+        let description = "";
+        if (typeof discountData.description === "string" && discountData.description.trim() !== "") {
+            description = discountData.description.trim();
         }
 
         const dealerDiscountId = await generateUniqueDealerDiscountId();
         const dealerDiscount = await DealerDiscount.create({
             dealer_discount_id: dealerDiscountId,
-            brand_name,
-            model_name,
+            brand_name: brandName,
+            model_name: modelName,
             dealer_id: dealer.employee_id,
-            discount_value: discountPrice,
-            is_percentage: discountData.is_percentage,
-            description: discountData.description,
-            created_by: employeeId
+            discount_value: discountValue,
+            is_percentage: isPercentage,
+            description,
+            created_by: employeeId,
         });
 
         return mapDealerDiscountEntityToResponse(dealerDiscount);
+    }),
+
+    updateDealerDiscount: asyncHandler(async (discountData) => {
+        const { employeeId } = getAuthenticatedEmployeeContext();
+
+        const { dealer_discount_id, discount_value, brand_name, model_name, is_percentage, description } = discountData;
+
+        if (!dealer_discount_id) {
+            throw new BadRequestException("Dealer Discount ID is required.");
+        }
+
+        const existingDiscount = await DealerDiscount.findOne({
+            dealer_discount_id,
+            status: "active",
+        });
+
+        if (!existingDiscount) {
+            throw new NotFoundException(`Dealer Discount with ID ${dealer_discount_id} not found.`);
+        }
+
+        if (brand_name || model_name) {
+            const brandName = brand_name?.toUpperCase() || existingDiscount.brand_name.toUpperCase();
+            const modelName = model_name?.toUpperCase() || existingDiscount.model_name.toUpperCase();
+
+            const brandRecord = await Brand.findOne({ brand_name: brandName }).lean();
+            if (!brandRecord) {
+                throw new BadRequestException(`Brand ${brandName} not found.`);
+            }
+
+            const brandModels = brandRecord.brand_models.map((m) => m.toUpperCase());
+            if (!brandModels.includes(modelName)) {
+                throw new BadRequestException(
+                    `Model ${modelName} is not associated with brand ${brandName}.`
+                );
+            }
+        }
+
+        let updatedIsPercentage = existingDiscount.is_percentage;
+        if (typeof is_percentage === "boolean" && is_percentage !== existingDiscount.is_percentage) {
+            updatedIsPercentage = is_percentage;
+        }
+
+        let updatedDiscountValue = existingDiscount.discount_value;
+        if (discount_value !== undefined && discount_value !== existingDiscount.discount_value) {
+            const parsedValue = Number(discount_value);
+
+            if (isNaN(parsedValue) || parsedValue < 0) {
+                throw new BadRequestException("Discount value must be a positive number.");
+            }
+
+            updatedDiscountValue = Math.round(parsedValue * 100) / 100;
+        }
+
+        if (updatedIsPercentage && updatedDiscountValue > 100) {
+            throw new BadRequestException("Percentage discount value cannot exceed 100%.");
+        }
+
+        let updatedDescription = existingDiscount.description;
+        if (typeof description === "string" && description.trim()) {
+            updatedDescription = description.trim();
+        }
+
+        const updatedDiscount = await DealerDiscount.findOneAndUpdate(
+            { dealer_discount_id },
+            {
+                $set: {
+                    discount_value: updatedDiscountValue,
+                    is_percentage: updatedIsPercentage,
+                    description: updatedDescription,
+                    updated_at: getISTDate(),
+                    updated_by: employeeId,
+                },
+            },
+            { new: true }
+        );
+
+        return mapDealerDiscountEntityToResponse(updatedDiscount);
     }),
 
     getDealerDiscount: asyncHandler(async (filtersData = {}, pagination) => {
