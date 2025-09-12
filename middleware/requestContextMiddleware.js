@@ -15,6 +15,9 @@ import {
 } from '../utils/constants.js';
 
 const PUBLIC_ROUTES = [
+    '/',
+    '/health',
+    '/favicon.ico',
     `${PATH_ROUTES.AUTH_ROUTE}/signin`
 ];
 
@@ -27,25 +30,28 @@ const ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES = [
     `${PATH_ROUTES.EMPLOYEE_ROUTE}/update/delete-employee`
 ];
 
-const isPublicRoute = (path) => PUBLIC_ROUTES.includes(path);
-const isSuperAdminOnlyRoute = (path) => SUPER_ADMIN_ONLY_ROUTES.includes(path);
-const isAdminOrSuperAdminRoute = (path) => ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES.includes(path);
+const isMatch = (url, routes) => routes.some((route) => url.startsWith(route));
 
 export const requestContextMiddleware = async (req, res, next) => {
-    const { path, headers } = req;
+    const { originalUrl, headers } = req;
 
-    if (isPublicRoute(path)) {
+    if (isMatch(originalUrl, PUBLIC_ROUTES)) {
         return next();
     }
 
     const authHeader = headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return next(new UnauthorizedException('Authorization token missing or malformed'));
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return next(new UnauthorizedException("Authorization token missing or malformed"));
     }
 
-    const token = authHeader.split(' ')[1];
+    logger.info(`[Auth] JWT_SECRET original path : ${originalUrl}`, {
+        method: req.method,
+        headers: {
+            authorization: authHeader ? "present" : "missing"
+        }
+    });
 
+    const token = authHeader.split(" ")[1];
     if (!token || token === 'undefined' || token === 'null') {
         return next(new UnauthorizedException('Authentication failed: Token is missing or invalid.'));
     }
@@ -68,7 +74,7 @@ export const requestContextMiddleware = async (req, res, next) => {
         return next(new UnauthorizedException('Token has been invalidated or session expired'));
     }
 
-    const { employee_id: employeeId, role, status } = decoded;
+    const { employee_id: employeeId, role } = decoded;
 
     if (!employeeId || !role) {
         return next(new UnauthorizedException('Invalid token payload'));
@@ -80,12 +86,12 @@ export const requestContextMiddleware = async (req, res, next) => {
         return next(new UnauthorizedException('User does not exist or is inactive.'));
     }
 
-    if (isSuperAdminOnlyRoute(path) && role !== ROLES.SUPER_ADMIN) {
-        return next(new UnauthorizedException('Access restricted to Super Admins only'));
+    if (isMatch(originalUrl, SUPER_ADMIN_ONLY_ROUTES) && role !== ROLES.SUPER_ADMIN) {
+        return next(new UnauthorizedException("Access restricted to Super Admins only"));
     }
 
-    if (isAdminOrSuperAdminRoute(path) && !Object.values(APPROVAL_GRANTED_ROLES).includes(role)) {
-        return next(new UnauthorizedException('Access restricted to Admins or Super Admins'));
+    if (isMatch(originalUrl, ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES) && !Object.values(APPROVAL_GRANTED_ROLES).includes(role)) {
+        return next(new UnauthorizedException("Access restricted to Admins or Super Admins"));
     }
 
     CurrentRequestContext.run({}, () => {
@@ -93,12 +99,7 @@ export const requestContextMiddleware = async (req, res, next) => {
         CurrentRequestContext.setRole(role);
         CurrentRequestContext.setCurrentToken(token);
 
-        req.user = {
-            employeeId,
-            role,
-            status
-        };
-
+        req.user = { employeeId, role, status: employee.status };
         next();
     });
 };

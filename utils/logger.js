@@ -4,6 +4,7 @@ import winston from 'winston';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { APPLICATION_NAME, ENVIRONMENT } from './constants.js';
 
 const __filename = fileURLToPath(
     import.meta.url);
@@ -45,8 +46,8 @@ const logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
     format: logFormat,
     defaultMeta: {
-        service: 'employee-service',
-        environment: process.env.NODE_ENV || 'development'
+        service: APPLICATION_NAME,
+        environment: ENVIRONMENT || 'development'
     },
     transports: [
         new winston.transports.File({
@@ -90,7 +91,7 @@ const logger = winston.createLogger({
     ]
 });
 
-if (process.env.NODE_ENV !== 'production') {
+if (ENVIRONMENT !== 'production') {
     logger.add(new winston.transports.Console({
         format: consoleFormat
     }));

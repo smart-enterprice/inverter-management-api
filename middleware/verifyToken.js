@@ -4,12 +4,9 @@ import { UnauthorizedException } from './CustomError.js';
 const JWT_SECRET = process.env.JWT_SECRET;
 
 export const verifyToken = async (req, res, next) => {
-    console.log('[Auth] Verifying authorization header...');
-
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        console.error('[Auth] Missing or malformed token.');
         throw new UnauthorizedException('Authorization token missing or malformed');
     }
 
@@ -25,7 +22,6 @@ export const verifyToken = async (req, res, next) => {
         
         next();
     } catch (err) {
-        console.warn('[Auth Error]:', err.message);
         throw new UnauthorizedException('Invalid or expired token');
     }
 };
