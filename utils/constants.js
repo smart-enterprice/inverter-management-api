@@ -32,6 +32,10 @@ export const PATH_ROUTES = {
 };
 
 export const {
+    PORT,
+    APPLICATION_NAME,
+    APPLICATION_URL,
+    ENVIRONMENT,
     JWT_SECRET,
     JWT_EXPIRES_IN,
     SUPER_ADMIN,
@@ -43,6 +47,7 @@ export const {
     AWS_SECRET_ACCESS_KEY,
     AWS_REGION,
     S3_BUCKET_NAME,
+    ALLOWED_ORIGINS,
 } = process.env;
 
 export const ROLES = {

@@ -5,7 +5,13 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import compression from "compression";
 import hpp from "hpp";
+import path from 'path';
+import mongoose from "mongoose";
 import dotenv from "dotenv";
+
+import fs from 'fs';
+import swaggerUi from 'swagger-ui-express';
+import expressOasGenerator from 'express-oas-generator';
 
 import logger, { securityLogger, apiLogger } from "./utils/logger.js";
 import { handleRateLimitError, globalErrorHandler } from "./middleware/errorHandler.js";
@@ -16,11 +22,13 @@ import orderRoute from "./routes/orderRoute.js";
 import productRoute from "./routes/productRoute.js";
 import publicRoute from "./routes/publicRoute.js";
 
-import { STATUS_CODES, PATH_ROUTES } from "./utils/constants.js";
+import { PATH_ROUTES, APPLICATION_NAME, ENVIRONMENT, PORT, APPLICATION_URL, ALLOWED_ORIGINS } from "./utils/constants.js";
+
 import { NotFoundException } from "./middleware/CustomError.js";
 import { requestContextMiddleware } from "./middleware/requestContextMiddleware.js";
 
 import { connectToDatabase, closeDatabaseConnection } from "./config/dbConfig.js";
+
 import { employeeService } from "./service/employeeService.js";
 
 process.on('uncaughtException', (err) => {
@@ -36,6 +44,7 @@ process.on('unhandledRejection', (reason) => {
 dotenv.config();
 
 const app = express();
+const port = PORT || 3000;
 
 app.set("trust proxy", 1);
 
@@ -52,28 +61,42 @@ const globalLimiter = rateLimit({
 });
 
 const corsOptions = {
-    origin: function(origin, callback) {
-        const allowedOrigins = process.env.ALLOWED_ORIGINS ?
-            process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : ['http://localhost:5173'];
+    origin: function (origin, callback) {
+        const allowedOrigins = ALLOWED_ORIGINS ? ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : ['http://localhost:5173'];
 
-        if (!origin) return callback(null, true);
+        allowedOrigins.push('http://localhost:3000');
+        allowedOrigins.push('https://editor.swagger.io');
+        allowedOrigins.push('http://localhost:1280');
+
+        if (!origin) {
+            return callback(null, true);
+        }
+
+        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+            return callback(null, true);
+        }
 
         if (allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            securityLogger.warn('CORS violation attempt', { origin });
-            callback(new Error('Not allowed by CORS'));
+            return callback(null, true);
         }
+
+        console.warn('[CORS] Origin blocked:', origin);
+        callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
     optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept'],
 };
+
 app.use(cors(corsOptions));
 
-app.use(requestContextMiddleware);
+const swaggerFile = path.resolve('./swagger-output.json');
+const swaggerDocument = JSON.parse(fs.readFileSync(swaggerFile, 'utf8'));
 
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+app.use(requestContextMiddleware);
 app.use(helmet());
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
@@ -94,23 +117,21 @@ if (missingEnvVars.length > 0) {
     process.exit(1);
 }
 
-const PORT = process.env.PORT || 3000;
-
-const startServer = async() => {
+const startServer = async () => {
     try {
         await connectToDatabase();
 
-        const server = app.listen(PORT, () => {
+        const server = app.listen(port, () => {
             employeeService.defaultSuperAdminSetup();
 
-            logger.info(`Server started on port ${PORT}`, {
-                environment: process.env.NODE_ENV || "development",
+            logger.info(`Server started on port ${port}`, {
+                environment: ENVIRONMENT || "development",
             });
         });
 
         const gracefulShutdown = (signal) => {
             logger.info(`Received ${signal}. Shutting down gracefully...`);
-            server.close(async() => {
+            server.close(async () => {
                 await closeDatabaseConnection();
                 process.exit(0);
             });
@@ -130,7 +151,7 @@ startServer();
 app.get("/", (req, res) => {
     res.json({
         success: true,
-        message: "👋 Welcome to Smart Enterprise",
+        message: `👋 Welcome to ${APPLICATION_NAME}`,
         version: "1.0.0",
         status: "operational",
         timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
@@ -138,27 +159,27 @@ app.get("/", (req, res) => {
 });
 
 // Health check endpoint
-app.get("/health", async(req, res) => {
+app.get("/health", async (req, res) => {
     let dbStatus = "unknown";
     let dbName = "unknown";
 
-    if (globalThis && globalThis.mongoose && globalThis.mongoose.connection) {
-        const state = globalThis.mongoose.connection.readyState;
+    if (mongoose && mongoose.connection) {
+        const state = mongoose.connection.readyState;
         const mongooseConnectionState = {
             0: "disconnected",
             1: "connected",
             2: "connecting",
-            3: "disconnecting"
+            3: "disconnecting",
         };
         dbStatus = mongooseConnectionState[state] || "unknown";
-        dbName = globalThis.mongoose.connection.name || "unknown";
+        dbName = mongoose.connection.name || "unknown";
     }
 
     res.status(200).json({
         success: true,
         message: "🩺 Health check OK",
-        service: "Smart Enterprise",
-        environment: process.env.NODE_ENV || "development",
+        service: APPLICATION_NAME,
+        environment: ENVIRONMENT || "development",
         version: "1.0.0",
         timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
         db: {
@@ -169,10 +190,11 @@ app.get("/health", async(req, res) => {
 });
 
 app.use(PATH_ROUTES.AUTH_ROUTE, authRoute);
+app.use(PATH_ROUTES.BASIC_ROUTE, publicRoute);
+
 app.use(PATH_ROUTES.EMPLOYEE_ROUTE, employeeRoute);
 app.use(PATH_ROUTES.PRODUCT_ROUTE, productRoute);
 app.use(PATH_ROUTES.ORDER_ROUTE, orderRoute);
-app.use(PATH_ROUTES.BASIC_ROUTE, publicRoute);
 
 app.use((req, res, next) => {
     next(new NotFoundException(`Endpoint '${req.method} ${req.originalUrl}' not found.`));

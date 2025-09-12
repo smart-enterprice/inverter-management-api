@@ -1,6 +1,7 @@
 import {
     CustomException
 } from '../middleware/CustomError.js';
+import { ENVIRONMENT } from '../utils/constants.js';
 import logger from '../utils/logger.js';
 
 const sendError = (err, req, res) => {
@@ -13,7 +14,7 @@ const sendError = (err, req, res) => {
         timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
     };
 
-    if (process.env.NODE_ENV === 'development') {
+    if (ENVIRONMENT === 'development') {
         response.stack = err.stack;
     }
 
