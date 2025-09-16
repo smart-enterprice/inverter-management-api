@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { UnauthorizedException } from './CustomError.js';
+import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -19,8 +20,14 @@ export const verifyToken = async (req, res, next) => {
         if (!employee_id || !role) {
             throw new UnauthorizedException('Invalid token payload.');
         }
+
+        CurrentRequestContext.run({}, () => {
+            CurrentRequestContext.setEmployeeId(employee_id);
+            CurrentRequestContext.setRole(role);
+            CurrentRequestContext.setCurrentToken(token);
         
-        next();
+            next();
+        });
     } catch (err) {
         throw new UnauthorizedException('Invalid or expired token');
     }

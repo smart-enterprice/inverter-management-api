@@ -186,7 +186,6 @@ export const mapProductBrandEntityToResponse = (brand) => {
 
 export const mapDealerDiscountEntityToResponse = (discount) => {
     const response = {};
-
     DEALER_DISCOUNT_RESPONSE_FIELDS.forEach(field => {
         if (discount[field] !== undefined) {
             response[field] = discount[field];

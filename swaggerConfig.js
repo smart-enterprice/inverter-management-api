@@ -1,4 +1,5 @@
 // swaggerConfig.js
+        
 import swaggerAutogen from 'swagger-autogen';
 import path from 'path';
 import fs from 'fs';
@@ -72,6 +73,9 @@ const determinePathPrefix = (originalPath) => {
 };
 
 const REQUEST_BODY_PATTERNS = {
+    '/logout': { type: 'object', properties: {} },
+    '/{employeeid}': { type: 'object', properties: { name: { type: 'string' } } },
+    '/dealer/get-discounts': { type: 'object', properties: {} },
     'signin': {
         type: 'object',
         required: ['employee_email', 'password'],
@@ -126,19 +130,30 @@ const REQUEST_BODY_PATTERNS = {
         }
     },
     "/dealer/create-discounts": {
-        "type": "array",
-        "items": {
-            "type": "object",
-            "required": ["brand_name", "model_name", "dealer_id", "discount_value", "is_percentage"],
-            "properties": {
-                "brand_name": { "type": "string", "example": "InverterX" },
-                "model_name": { "type": "string", "example": "Model-123" },
-                "dealer_id": { "type": "string", "example": "DLR001" },
-                "discount_value": { "type": "number", "example": 10 },
-                "is_percentage": { "type": "boolean", "example": true },
-                "description": { "type": "string", "example": "Summer discount" }
+        "post": {
+            "summary": "Create dealer discounts",
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                type: 'object', properties: {}
+                            }
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": {
+                    "description": "Dealer discounts created successfully"
+                },
+                "400": {
+                    "description": "Invalid input"
+                }
             }
-        },
+        }
     },
     'product': {
         type: 'object',
@@ -208,24 +223,32 @@ const detectRequestBodySchema = (path, method) => {
     const lowerPath = path.toLowerCase();
 
     for (const [pattern, schema] of Object.entries(REQUEST_BODY_PATTERNS)) {
-        if (lowerPath.includes(pattern)) {
+        if (lowerPath.includes(pattern.toLowerCase())) {
             return { ...schema };
         }
     }
 
-    if (method === 'post' || method === 'put') {
+    if (lowerPath.includes('/dealer/create-discounts') && ['post', 'put'].includes(method.toLowerCase())) {
+        const discountProperties = {
+            brand_name: { type: 'string', example: 'ENTERPRISES' },
+            model_name: { type: 'string', example: 'WL 9865' },
+            dealer_id: { type: 'string', example: 'KoYpkqUnuh' },
+            discount_value: { type: 'number', example: 80.0 },
+            is_percentage: { type: 'boolean', example: true },
+            description: { type: 'string', example: '' }
+        };
+
         return {
-            type: 'object',
-            properties: {
-                data: {
-                    type: 'object',
-                    description: 'Request payload data',
-                    example: {}
-                }
+            type: 'array',
+            items: {
+                type: 'object',
+                required: Object.keys(discountProperties),
+                properties: discountProperties
             }
         };
     }
 
+    console.log("abscsd with path", path, method);
     return null;
 };
 
@@ -454,15 +477,5 @@ const generateSwagger = async () => {
         process.exit(1);
     }
 };
-
-process.on('uncaughtException', (error) => {
-    console.error('❌ Uncaught exception:', error.message);
-    process.exit(1);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled rejection at:', promise, 'reason:', reason);
-    process.exit(1);
-});
 
 generateSwagger();

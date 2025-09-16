@@ -57,7 +57,7 @@ const employeeController = {
             }
 
             const createdByEmployeeId = CurrentRequestContext.getEmployeeId();
-            const newEmployee = employeeService.createEmployee(req.body, createdByEmployeeId);
+            const newEmployee = await employeeService.createEmployee(req.body, createdByEmployeeId);
 
             return res.status(201).json({
                 success: true,
@@ -286,7 +286,7 @@ const employeeController = {
                 throw new BadRequestException("Reset password data is required");
             }
 
-            const employee = employeeService.resetPasswordById(employeeId, req.body);
+            const employee = await employeeService.resetPasswordById(employeeId, req.body);
 
             return res.status(200).json({
                 success: true,
@@ -407,7 +407,7 @@ const employeeController = {
                 throw new BadRequestException("Request body is required");
             }
 
-            const dealerDiscountData = employeeService.createDealerDiscount(req.body);
+            const dealerDiscountData = await employeeService.createDealerDiscount(req.body);
             return res.status(200).json({
                 success: true,
                 status: 200,
