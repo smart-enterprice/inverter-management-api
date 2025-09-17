@@ -564,11 +564,39 @@ const employeeService = {
         if (filtersData.dealer_id) {
             const dealer = await employeeSchema.findOne({
                 employee_id: filtersData.dealer_id,
-                role: ROLES.DEALER
+                role: ROLES.DEALER,
             });
 
             if (!dealer) {
                 throw new BadRequestException(`Dealer with ID ${filtersData.dealer_id} not found or role mismatch.`);
+            }
+
+            if (dealer.brand && dealer.brand.length > 0) {
+                const dealerBrands = dealer.brand.map(b => b.toUpperCase());
+                const brandRecords = await Brand.find({ brand_name: { $in: dealerBrands } });
+
+                if (brandRecords.length > 0) {
+                    const allModels = brandRecords.flatMap(br =>
+                        br.brand_models.map(m => m.toUpperCase())
+                    );
+
+                    if (filters.brand_name && !dealerBrands.includes(filters.brand_name)) {
+                        throw new BadRequestException(
+                            `Dealer ${dealer.employee_id} is not allowed for brand ${filters.brand_name}.`
+                        );
+                    }
+                    if (filters.model_name && !allModels.includes(filters.model_name)) {
+                        throw new BadRequestException(
+                            `Dealer ${dealer.employee_id} is not allowed for model ${filters.model_name}.`
+                        );
+                    }
+                    if (!filters.brand_name) {
+                        filters.brand_name = { $in: dealerBrands };
+                    }
+                    if (!filters.model_name && allModels.length > 0) {
+                        filters.model_name = { $in: allModels };
+                    }
+                }
             }
 
             filters.dealer_id = dealer.employee_id;
