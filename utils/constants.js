@@ -36,6 +36,7 @@ export const {
     APPLICATION_NAME,
     APPLICATION_URL,
     ENVIRONMENT,
+    MONGO_URL,
     JWT_SECRET,
     JWT_EXPIRES_IN,
     SUPER_ADMIN,
@@ -48,6 +49,7 @@ export const {
     AWS_REGION,
     S3_BUCKET_NAME,
     ALLOWED_ORIGINS,
+    LOG_LEVEL,
 } = process.env;
 
 export const ROLES = {
