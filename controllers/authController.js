@@ -35,7 +35,7 @@ const authController = {
                 throw new BadRequestException("Email and password are required");
             }
 
-            const loginResult = employeeService.loginEmployee(req.body);
+            const loginResult = await employeeService.loginEmployee(req.body);
 
             return res.status(200).json({
                 success: true,

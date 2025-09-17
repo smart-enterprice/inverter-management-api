@@ -81,10 +81,10 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// const swaggerFile = path.resolve('./swagger-output.json');
-// const swaggerDocument = JSON.parse(fs.readFileSync(swaggerFile, 'utf8'));
+const swaggerFile = path.resolve('./swagger-output.json');
+const swaggerDocument = JSON.parse(fs.readFileSync(swaggerFile, 'utf8'));
 
-// app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.use(requestContextMiddleware);
 app.use(helmet());
@@ -190,15 +190,14 @@ app.use((req, res, next) => {
     next(new NotFoundException(`Endpoint '${req.method} ${req.originalUrl}' not found.`));
 });
 
-process.on('uncaughtException', (err) => {
-    console.error('Uncaught Exception:', err);
-    process.exit(1);
-});
-
-process.on('unhandledRejection', (reason) => {
-    console.error('Unhandled Rejection:', reason);
-    process.exit(1);
-});
-
 app.use(handleRateLimitError);
 app.use(globalErrorHandler);
+
+process.on('unhandledRejection', (reason) => {
+    if (reason.isOperational) {
+        console.warn('Operational rejection:', reason.message);
+    } else {
+        console.error('Unhandled Rejection:', reason);
+        process.exit(1);
+    }
+});
