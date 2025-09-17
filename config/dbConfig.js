@@ -2,14 +2,16 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import { dbLogger } from "../utils/logger.js";
+import { MONGO_URL } from "../utils/constants.js";
 
 dotenv.config();
+const mongo_url = MONGO_URL;
 
-const MONGO_URL = process.env.MONGO_URL;
-
-export const connectToDatabase = async() => {
+export const connectToDatabase = async () => {
     try {
-        await mongoose.connect(MONGO_URL);
+        mongoose.set("strictQuery", false);
+
+        await mongoose.connect(mongo_url);
         dbLogger.info("Database connected successfully", {
             database: mongoose.connection.name,
         });
@@ -31,7 +33,7 @@ export const connectToDatabase = async() => {
     }
 };
 
-export const closeDatabaseConnection = async() => {
+export const closeDatabaseConnection = async () => {
     try {
         await mongoose.connection.close(false);
         dbLogger.info("MongoDB connection closed");

@@ -1,8 +1,9 @@
 import jwt from 'jsonwebtoken';
 import { UnauthorizedException } from './CustomError.js';
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
+import { JWT_SECRET } from '../utils/constants.js';
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const jwt_secret = JWT_SECRET;
 
 export const verifyToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -14,7 +15,7 @@ export const verifyToken = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, jwt_secret);
 
         const { employee_id, role, status } = decoded;
         if (!employee_id || !role) {

@@ -4,7 +4,7 @@ import winston from 'winston';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { APPLICATION_NAME, ENVIRONMENT } from './constants.js';
+import { APPLICATION_NAME, ENVIRONMENT, LOG_LEVEL } from './constants.js';
 
 const __filename = fileURLToPath(
     import.meta.url);
@@ -43,7 +43,7 @@ const consoleFormat = winston.format.combine(
 );
 
 const logger = winston.createLogger({
-    level: process.env.LOG_LEVEL || 'info',
+    level: LOG_LEVEL || 'info',
     format: logFormat,
     defaultMeta: {
         service: APPLICATION_NAME,

@@ -6,14 +6,13 @@ import cookieParser from "cookie-parser";
 import compression from "compression";
 import hpp from "hpp";
 import path from 'path';
-import mongoose from "mongoose";
-import dotenv from "dotenv";
-
 import fs from 'fs';
-import swaggerUi from 'swagger-ui-express';
-import expressOasGenerator from 'express-oas-generator';
+import dotenv from "dotenv";
+import mongoose from "mongoose";
 
-import logger, { securityLogger, apiLogger } from "./utils/logger.js";
+import swaggerUi from 'swagger-ui-express';
+
+import logger, { apiLogger } from "./utils/logger.js";
 import { handleRateLimitError, globalErrorHandler } from "./middleware/errorHandler.js";
 
 import employeeRoute from "./routes/employeeRoute.js";
@@ -28,7 +27,6 @@ import { NotFoundException } from "./middleware/CustomError.js";
 import { requestContextMiddleware } from "./middleware/requestContextMiddleware.js";
 
 import { connectToDatabase, closeDatabaseConnection } from "./config/dbConfig.js";
-
 import { employeeService } from "./service/employeeService.js";
 
 dotenv.config();
@@ -58,35 +56,25 @@ const corsOptions = {
         allowedOrigins.push('https://editor.swagger.io');
         allowedOrigins.push('http://localhost:1280');
 
-        if (!origin) {
+        if (!origin || origin.includes("localhost") || origin.includes("127.0.0.1")) {
             return callback(null, true);
         }
-
-        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-            return callback(null, true);
-        }
-
         if (allowedOrigins.includes(origin)) {
             return callback(null, true);
         }
 
-        console.warn('[CORS] Origin blocked:', origin);
-        callback(new Error('Not allowed by CORS'));
+        logger.warn(`[CORS] Origin blocked: ${origin}`);
+        return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
     optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept'],
+    optionsSuccessStatus: 200,
 };
 
 app.use(cors(corsOptions));
 
-const swaggerFile = path.resolve('./swagger-output.json');
-const swaggerDocument = JSON.parse(fs.readFileSync(swaggerFile, 'utf8'));
-
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-
-app.use(requestContextMiddleware);
 app.use(helmet());
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
@@ -94,11 +82,21 @@ app.use(cookieParser());
 app.use(compression());
 app.use(hpp());
 app.use(globalLimiter);
+app.use(requestContextMiddleware);
 
 app.use((req, res, next) => {
     apiLogger.info(`Incoming ${req.method} request to ${req.originalUrl}`);
     next();
 });
+
+// -------------------------------------------------------------
+// Swagger
+// -------------------------------------------------------------
+const swaggerFile = path.resolve("./swagger-output.json");
+if (fs.existsSync(swaggerFile)) {
+    const swaggerDocument = JSON.parse(fs.readFileSync(swaggerFile, "utf8"));
+    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+}
 
 const requiredEnvVars = ["MONGO_URL", "JWT_SECRET"];
 const missingEnvVars = requiredEnvVars.filter((envVar) => !process.env[envVar]);
@@ -150,20 +148,13 @@ app.get("/", (req, res) => {
 
 // Health check endpoint
 app.get("/health", async (req, res) => {
-    let dbStatus = "unknown";
-    let dbName = "unknown";
-
-    if (mongoose && mongoose.connection) {
-        const state = mongoose.connection.readyState;
-        const mongooseConnectionState = {
-            0: "disconnected",
-            1: "connected",
-            2: "connecting",
-            3: "disconnecting",
-        };
-        dbStatus = mongooseConnectionState[state] || "unknown";
-        dbName = mongoose.connection.name || "unknown";
-    }
+    const state = mongoose.connection?.readyState ?? 0;
+    const dbStatus = {
+        0: "disconnected",
+        1: "connected",
+        2: "connecting",
+        3: "disconnecting",
+    }[state] || "unknown";
 
     res.status(200).json({
         success: true,
@@ -174,14 +165,13 @@ app.get("/health", async (req, res) => {
         timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
         db: {
             status: dbStatus,
-            name: dbName
-        }
+            name: mongoose.connection?.name || "unknown",
+        },
     });
 });
 
 app.use(PATH_ROUTES.AUTH_ROUTE, authRoute);
 app.use(PATH_ROUTES.BASIC_ROUTE, publicRoute);
-
 app.use(PATH_ROUTES.EMPLOYEE_ROUTE, employeeRoute);
 app.use(PATH_ROUTES.PRODUCT_ROUTE, productRoute);
 app.use(PATH_ROUTES.ORDER_ROUTE, orderRoute);
@@ -193,11 +183,16 @@ app.use((req, res, next) => {
 app.use(handleRateLimitError);
 app.use(globalErrorHandler);
 
-process.on('unhandledRejection', (reason) => {
-    if (reason.isOperational) {
-        console.warn('Operational rejection:', reason.message);
+process.on("unhandledRejection", reason => {
+    if (reason?.isOperational) {
+        logger.warn(`Operational rejection: ${reason.message}`);
     } else {
-        console.error('Unhandled Rejection:', reason);
+        logger.error("Unhandled Rejection:", reason);
         process.exit(1);
     }
+});
+
+process.on("uncaughtException", err => {
+    logger.error("Uncaught Exception:", err);
+    process.exit(1);
 });
