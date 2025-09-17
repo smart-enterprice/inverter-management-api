@@ -10,7 +10,7 @@ import employeeSchema from "../models/employees.js";
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 import { mapEmployeeEntityToResponse } from "../utils/modelMapper.js";
 import { revealPassword } from "../utils/employeeAuth.js";
-import { sanitizeInputBody } from "../utils/validationUtils.js";
+import { sanitizeInputBody, validateMainRoleAccess } from "../utils/validationUtils.js";
 import { ROLES } from "../utils/constants.js";
 
 const getPaginationParams = (query) => {
@@ -48,16 +48,13 @@ const employeeController = {
         employeeService.createAccountLimiter,
         sanitizeInputBody,
         asyncHandler(async (req, res) => {
-            if (!req.user || !signUpRoles.includes(req.user.role)) {
-                throw new UnauthorizedException(`Access denied: This action requires one of the following roles: ${signUpRoles.join(', ')}.`);
-            }
-
+            const { employee_id } = validateMainRoleAccess();
+            
             if (!req.body || Object.keys(req.body).length === 0) {
                 throw new BadRequestException("Request body is required");
             }
-
-            const createdByEmployeeId = CurrentRequestContext.getEmployeeId();
-            const newEmployee = await employeeService.createEmployee(req.body, createdByEmployeeId);
+            
+            const newEmployee = await employeeService.createEmployee(req.body, employee_id);
 
             return res.status(201).json({
                 success: true,
@@ -321,9 +318,7 @@ const employeeController = {
 
     getAllDeletedEmployees: [
         asyncHandler(async (req, res) => {
-            if (!req.user || !signUpRoles.includes(req.user.role)) {
-                throw new UnauthorizedException(`Access denied: This action requires one of the following roles: ${signUpRoles.join(', ')}.`);
-            }
+            const { employee_id } = validateMainRoleAccess();
 
             const page = parseInt(req.query.page || "1", 10);
             const limit = parseInt(req.query.limit || "10", 10);
@@ -361,9 +356,7 @@ const employeeController = {
 
     getAllDeletedDealerEmployees: [
         asyncHandler(async (req, res) => {
-            if (!req.user || !signUpRoles.includes(req.user.role)) {
-                throw new UnauthorizedException(`Access denied: This action requires one of the following roles: ${signUpRoles.join(', ')}.`);
-            }
+            const { employee_id } = validateMainRoleAccess();
 
             const page = parseInt(req.query.page || "1", 10);
             const limit = parseInt(req.query.limit || "10", 10);
