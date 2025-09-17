@@ -11,7 +11,7 @@ router.use(sanitizeInputBody);
 
 // PRODUCT ROUTES
 // @route   POST
-router.post('/create', productController.createProduct);
+router.post('/create-product', productController.createProduct);
 router.post('/getAllProductsByBrand', productController.getAllProductsByBrands);
 
 // @route   GET

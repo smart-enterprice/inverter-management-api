@@ -10,7 +10,7 @@ router.use(verifyToken);
 router.use(sanitizeInputBody);
 
 // @route   POST
-router.post('/create', orderController.createOrder);
+router.post('/create-order', orderController.createOrder);
 
 // @route   GET
 router.get('/', orderController.getAll);

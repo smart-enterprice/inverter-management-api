@@ -1,59 +1,53 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "smart-enterprice-api",
-    "description": "#\n\n            Welcome to the smart-enterprice-api REST API documentation. This comprehensive API provides enterprise-grade functionality for managing your business operations.\n\n            🚀 Key Features\n            - Secure Authentication - JWT-based authentication system\n            - Employee Management - Complete employee lifecycle management\n            - Order Processing - End-to-end order management system\n            - Product Catalog - Dynamic product and inventory management\n            - File Operations - Secure file uploads and search capabilities\n\n            🔐 Authentication\n            All protected endpoints require a valid JWT token in the Authorization header:\n            \n            Authorization: Bearer <your_jwt_token>\n\n            📋 API Version\n            - Current Version: 1.0.0\n            - Base URL: `http://localhost:1280`\n            - API Specification: OpenAPI 3.0.0\n\n            🛠️ Getting Started\n            1. Obtain your API credentials\n            2. Authenticate using the `/auth/signin` endpoint\n            3. Include the received token in all subsequent requests\n            4. Explore the available endpoints below\n\n            *For support questions, please contact our team using the information below.*",
+    "title": "Smart Enterprises - Inverter Management System",
+    "description": "#\n\n            Welcome to the Smart Enterprises - a comprehensive enterprise-grade API for managing inverter systems, employee operations, order processing, and product management.\n            \n            📖 Overview\n\n            This API provides a complete solution for inverter management systems, including:\n\n            - 🔐 Authentication & Authorization - Secure JWT-based user management\n            - 👥 Employee Management - Complete staff lifecycle management\n            - 📦 Order Processing - End-to-end order management system\n            - 🔧 Product Catalog - Inverter and product inventory management\n            - 📊 Dealer Management - Dealer-specific operations and discounts\n            - 📁 File Operations - Secure file uploads and search functionality\n\n            🚀 Quick Start\n\n            #1. Authentication\n            ```bash\n            POST /api/v1/auth/signin\n            Content-Type: application/json\n\n            {\n            \"email\": \"admin@enterprise.com\",\n            \"password\": \"your_password\"\n            }\n            ```\n\n            #2. Use Protected Endpoints\n            ```bash\n            GET /api/v1/employees\n            Authorization: Bearer <your_jwt_token>\n            ```\n\n            🔗 API Resources\n\n            - Base URL: `http://localhost:1280`\n            - API Documentation: `/api-docs` (this page)\n            - Health Check: `/health`\n\n            🛠️ Development\n\n            This API is built with:\n            - Node.js - Runtime environment\n            - Express.js - Web framework\n            - MongoDB - Database\n            - JWT - Authentication\n            - Swagger/OpenAPI - Documentation\n\n            📋 Version Information\n\n            - API Version: 1.0.0\n            - Specification: OpenAPI 3.0.0\n            - Last Updated: 16/9/2025\n\n            *For technical support and contributions, please visit our http://localhost:1280 or contact our support team.*",
     "version": "1.0.0",
-    "termsOfService": "http://localhost:1280/terms",
     "contact": {
-      "name": "API Support Team",
-      "email": "support@example.com",
+      "name": "Smart Enterprise Support",
+      "email": "support@smart-enterprice.com",
       "url": "http://localhost:1280"
     },
     "license": {
-      "name": "Proprietary",
-      "url": "http://localhost:1280/license"
-    },
-    "x-logo": {
-      "url": "https://via.placeholder.com/200x50/3498db/ffffff?text=ENTERPRISE+API",
-      "backgroundColor": "#FFFFFF",
-      "altText": "Enterprise API Logo"
+      "name": "MIT License",
+      "url": "https://opensource.org/licenses/MIT"
     }
   },
   "tags": [
     {
-      "name": "Default",
-      "description": "Default API endpoints and health checks"
-    },
-    {
       "name": "Authentication",
-      "description": "User authentication and authorization endpoints"
+      "description": "Authentication endpoints"
     },
     {
       "name": "Employee Management",
-      "description": "Employee profile and account management operations"
+      "description": "Employee Management endpoints"
     },
     {
       "name": "Dealer Management",
-      "description": "Dealer-specific operations and discount management"
+      "description": "Dealer Management endpoints"
     },
     {
       "name": "Order Management",
-      "description": "Order processing, tracking, and status management"
+      "description": "Order Management endpoints"
     },
     {
       "name": "Product Management",
-      "description": "Product catalog, brands, and inventory management"
+      "description": "Product Management endpoints"
     },
     {
       "name": "Public Services",
-      "description": "Publicly accessible endpoints for search and file operations"
+      "description": "Public Services endpoints"
+    },
+    {
+      "name": "Default",
+      "description": "Default endpoints"
     }
   ],
   "paths": {
     "/": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /",
         "parameters": [
           {
             "name": "authorization",
@@ -65,7 +59,16 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
           },
           "default": {
             "description": ""
@@ -73,51 +76,124 @@
         },
         "tags": [
           "Default"
-        ]
+        ],
+        "summary": "GET /"
       }
     },
     "/health": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /health",
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
           }
         },
         "tags": [
           "Default"
-        ]
+        ],
+        "summary": "GET /health"
       }
     },
     "/api/v1/auth/signin": {
       "post": {
-        "description": "",
+        "description": "Endpoint for POST operations on /api/v1/auth/signin",
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "employee_email",
+                  "password"
+                ],
+                "properties": {
+                  "employee_email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "admin@enterprise.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "your_password"
+                  }
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Authentication"
-        ]
+        ],
+        "summary": "POST /api/v1/auth/signin"
       }
     },
     "/api/v1/auth/logout": {
       "post": {
-        "description": "",
+        "description": "Endpoint for POST operations on /api/v1/auth/logout",
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
           }
         },
         "tags": [
           "Authentication"
-        ]
+        ],
+        "summary": "POST /api/v1/auth/logout"
       }
     },
     "/api/v1/employees/signup": {
       "post": {
-        "description": "",
+        "description": "Endpoint for POST operations on /api/v1/employees/signup",
         "parameters": [
           {
             "name": "authorization",
@@ -128,18 +204,108 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "employee_name",
+                  "employee_email",
+                  "employee_phone",
+                  "password",
+                  "role"
+                ],
+                "properties": {
+                  "employee_name": {
+                    "type": "string",
+                    "example": "John Doe"
+                  },
+                  "employee_email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "john.doe@company.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "securePassword123"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "ROLE_SUPER_ADMIN",
+                      "ROLE_ADMIN",
+                      "ROLE_SUPERVISOR",
+                      "ROLE_MANAGER",
+                      "ROLE_SALESMAN",
+                      "ROLE_PRODUCTION",
+                      "ROLE_PACKING",
+                      "ROLE_ACCOUNTS",
+                      "ROLE_DELIVERY",
+                      "ROLE_DEALER"
+                    ],
+                    "example": "ROLE_SUPER_ADMIN"
+                  },
+                  "employee_phone": {
+                    "type": "string",
+                    "example": "+912345678900"
+                  },
+                  "address": {
+                    "type": "string",
+                    "example": "123 Main St"
+                  },
+                  "shop_name": {
+                    "type": "string",
+                    "example": "ABC Electronics"
+                  },
+                  "district": {
+                    "type": "string",
+                    "example": "Central"
+                  },
+                  "town": {
+                    "type": "string",
+                    "example": "Springfield"
+                  },
+                  "brand": {
+                    "type": "string",
+                    "example": "InverterX"
+                  },
+                  "photo": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://example.com/photo.jpg"
+                  }
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Employee Management"
-        ]
+        ],
+        "summary": "POST /api/v1/employees/signup"
       }
     },
     "/api/v1/employees/{employeeId}": {
       "put": {
-        "description": "",
+        "description": "Endpoint for PUT operations on /api/v1/employees/{employeeId}",
         "parameters": [
           {
             "name": "employeeId",
@@ -158,16 +324,44 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Employee Management"
-        ]
+        ],
+        "summary": "PUT /api/v1/employees/{employeeId}"
       },
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/employees/{employeeId}",
         "parameters": [
           {
             "name": "employeeId",
@@ -186,18 +380,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Employee Management"
-        ]
+        ],
+        "summary": "GET /api/v1/employees/{employeeId}"
       }
     },
     "/api/v1/employees/update/reset-password/{employeeId}": {
       "put": {
-        "description": "",
+        "description": "Endpoint for PUT operations on /api/v1/employees/update/reset-password/{employeeId}",
         "parameters": [
           {
             "name": "employeeId",
@@ -216,18 +423,46 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Employee Management"
-        ]
+        ],
+        "summary": "PUT /api/v1/employees/update/reset-password/{employeeId}"
       }
     },
     "/api/v1/employees/update/reset-password": {
       "put": {
-        "description": "",
+        "description": "Endpoint for PUT operations on /api/v1/employees/update/reset-password",
         "parameters": [
           {
             "name": "authorization",
@@ -238,18 +473,54 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "password"
+                ],
+                "properties": {
+                  "current_password": {
+                    "type": "string",
+                    "example": "oldPassword123"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "newSecurePassword456"
+                  }
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Employee Management"
-        ]
+        ],
+        "summary": "PUT /api/v1/employees/update/reset-password"
       }
     },
     "/api/v1/employees/update/delete-employee": {
       "put": {
-        "description": "",
+        "description": "Endpoint for PUT operations on /api/v1/employees/update/delete-employee",
         "parameters": [
           {
             "name": "authorization",
@@ -260,18 +531,42 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
         "tags": [
           "Employee Management"
-        ]
+        ],
+        "summary": "PUT /api/v1/employees/update/delete-employee"
       }
     },
     "/api/v1/employees/get/profile": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/employees/get/profile",
         "parameters": [
           {
             "name": "authorization",
@@ -282,18 +577,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Employee Management"
-        ]
+        ],
+        "summary": "GET /api/v1/employees/get/profile"
       }
     },
     "/api/v1/employees/get/employees-password": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/employees/get/employees-password",
         "parameters": [
           {
             "name": "authorization",
@@ -304,18 +612,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Employee Management"
-        ]
+        ],
+        "summary": "GET /api/v1/employees/get/employees-password"
       }
     },
     "/api/v1/employees/get/deleted-employees": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/employees/get/deleted-employees",
         "parameters": [
           {
             "name": "authorization",
@@ -326,18 +647,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Employee Management"
-        ]
+        ],
+        "summary": "GET /api/v1/employees/get/deleted-employees"
       }
     },
     "/api/v1/employees/getByRole/{employeeRole}": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/employees/getByRole/{employeeRole}",
         "parameters": [
           {
             "name": "employeeRole",
@@ -356,18 +690,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Employee Management"
-        ]
+        ],
+        "summary": "GET /api/v1/employees/getByRole/{employeeRole}"
       }
     },
     "/api/v1/employees/dealer/create-discount": {
       "post": {
-        "description": "",
+        "description": "Endpoint for POST operations on /api/v1/employees/dealer/create-discount",
         "parameters": [
           {
             "name": "authorization",
@@ -378,18 +725,82 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "brand_name",
+                  "model_name",
+                  "dealer_id",
+                  "discount_value",
+                  "is_percentage"
+                ],
+                "properties": {
+                  "brand_name": {
+                    "type": "string",
+                    "example": "InverterX"
+                  },
+                  "model_name": {
+                    "type": "string",
+                    "example": "Model-123"
+                  },
+                  "dealer_id": {
+                    "type": "string",
+                    "example": "DLR001"
+                  },
+                  "discount_value": {
+                    "type": "number",
+                    "example": 10
+                  },
+                  "is_percentage": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Summer discount"
+                  }
+                },
+                "example": {
+                  "brand_name": "InverterX",
+                  "model_name": "Model-123",
+                  "dealer_id": "DLR001",
+                  "discount_value": 10,
+                  "is_percentage": true,
+                  "description": "Summer discount"
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Dealer Management"
-        ]
+        ],
+        "summary": "POST /api/v1/employees/dealer/create-discount"
       }
     },
     "/api/v1/employees/dealer/create-discounts": {
       "post": {
-        "description": "",
+        "description": "Endpoint for POST operations on /api/v1/employees/dealer/create-discounts",
         "parameters": [
           {
             "name": "authorization",
@@ -400,18 +811,82 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "brand_name",
+                  "model_name",
+                  "dealer_id",
+                  "discount_value",
+                  "is_percentage"
+                ],
+                "properties": {
+                  "brand_name": {
+                    "type": "string",
+                    "example": "InverterX"
+                  },
+                  "model_name": {
+                    "type": "string",
+                    "example": "Model-123"
+                  },
+                  "dealer_id": {
+                    "type": "string",
+                    "example": "DLR001"
+                  },
+                  "discount_value": {
+                    "type": "number",
+                    "example": 10
+                  },
+                  "is_percentage": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Summer discount"
+                  }
+                },
+                "example": {
+                  "brand_name": "InverterX",
+                  "model_name": "Model-123",
+                  "dealer_id": "DLR001",
+                  "discount_value": 10,
+                  "is_percentage": true,
+                  "description": "Summer discount"
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Dealer Management"
-        ]
+        ],
+        "summary": "POST /api/v1/employees/dealer/create-discounts"
       }
     },
     "/api/v1/employees/dealer/get-discounts": {
       "post": {
-        "description": "",
+        "description": "Endpoint for POST operations on /api/v1/employees/dealer/get-discounts",
         "parameters": [
           {
             "name": "authorization",
@@ -422,18 +897,42 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
         "tags": [
           "Dealer Management"
-        ]
+        ],
+        "summary": "POST /api/v1/employees/dealer/get-discounts"
       }
     },
     "/api/v1/employees/dealer/update-discount": {
       "put": {
-        "description": "",
+        "description": "Endpoint for PUT operations on /api/v1/employees/dealer/update-discount",
         "parameters": [
           {
             "name": "authorization",
@@ -444,18 +943,42 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
         "tags": [
           "Dealer Management"
-        ]
+        ],
+        "summary": "PUT /api/v1/employees/dealer/update-discount"
       }
     },
     "/api/v1/employees/dealers/get": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/employees/dealers/get",
         "parameters": [
           {
             "name": "authorization",
@@ -466,18 +989,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Dealer Management"
-        ]
+        ],
+        "summary": "GET /api/v1/employees/dealers/get"
       }
     },
     "/api/v1/employees/dealers/deleted": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/employees/dealers/deleted",
         "parameters": [
           {
             "name": "authorization",
@@ -488,18 +1024,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Dealer Management"
-        ]
+        ],
+        "summary": "GET /api/v1/employees/dealers/deleted"
       }
     },
-    "/create": {
+    "/api/v1/order-details/create-order": {
       "post": {
-        "description": "",
+        "description": "Endpoint for POST operations on /api/v1/order-details/create-order",
         "parameters": [
           {
             "name": "authorization",
@@ -510,18 +1059,72 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "example": "shipped"
+                  },
+                  "trackingNumber": {
+                    "type": "string",
+                    "example": "TRK123456789"
+                  },
+                  "notes": {
+                    "type": "string",
+                    "example": "Order shipped via FedEx"
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "productId": {
+                          "type": "string"
+                        },
+                        "quantity": {
+                          "type": "number"
+                        },
+                        "price": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "tags": [
-          "Default"
-        ]
+          "Order Management"
+        ],
+        "summary": "POST /api/v1/order-details/create-order"
       }
     },
     "/api/v1/order-details/date-filter": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/order-details/date-filter",
         "parameters": [
           {
             "name": "authorization",
@@ -532,18 +1135,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Order Management"
-        ]
+        ],
+        "summary": "GET /api/v1/order-details/date-filter"
       }
     },
     "/api/v1/order-details/{orderId}": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/order-details/{orderId}",
         "parameters": [
           {
             "name": "orderId",
@@ -562,18 +1178,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Order Management"
-        ]
+        ],
+        "summary": "GET /api/v1/order-details/{orderId}"
       }
     },
     "/api/v1/order-details/status/{orderStatus}": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/order-details/status/{orderStatus}",
         "parameters": [
           {
             "name": "orderStatus",
@@ -592,18 +1221,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Order Management"
-        ]
+        ],
+        "summary": "GET /api/v1/order-details/status/{orderStatus}"
       }
     },
     "/api/v1/order-details/{orderDetailsId}": {
       "put": {
-        "description": "",
+        "description": "Endpoint for PUT operations on /api/v1/order-details/{orderDetailsId}",
         "parameters": [
           {
             "name": "orderDetailsId",
@@ -622,18 +1264,72 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "example": "shipped"
+                  },
+                  "trackingNumber": {
+                    "type": "string",
+                    "example": "TRK123456789"
+                  },
+                  "notes": {
+                    "type": "string",
+                    "example": "Order shipped via FedEx"
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "productId": {
+                          "type": "string"
+                        },
+                        "quantity": {
+                          "type": "number"
+                        },
+                        "price": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Order Management"
-        ]
+        ],
+        "summary": "PUT /api/v1/order-details/{orderDetailsId}"
       }
     },
     "/api/v1/order-details/order/{orderNumber}": {
       "put": {
-        "description": "",
+        "description": "Endpoint for PUT operations on /api/v1/order-details/order/{orderNumber}",
         "parameters": [
           {
             "name": "orderNumber",
@@ -652,18 +1348,72 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "example": "shipped"
+                  },
+                  "trackingNumber": {
+                    "type": "string",
+                    "example": "TRK123456789"
+                  },
+                  "notes": {
+                    "type": "string",
+                    "example": "Order shipped via FedEx"
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "productId": {
+                          "type": "string"
+                        },
+                        "quantity": {
+                          "type": "number"
+                        },
+                        "price": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
           "Order Management"
-        ]
+        ],
+        "summary": "PUT /api/v1/order-details/order/{orderNumber}"
       }
     },
-    "/getAllProductsByBrand": {
+    "/api/v1/product-details/create-product": {
       "post": {
-        "description": "",
+        "description": "Endpoint for POST operations on /api/v1/product-details/create-product",
         "parameters": [
           {
             "name": "authorization",
@@ -674,18 +1424,63 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Solar Inverter 5000W"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "High efficiency solar inverter"
+                  },
+                  "price": {
+                    "type": "number",
+                    "example": 899.99
+                  },
+                  "stockQuantity": {
+                    "type": "number",
+                    "example": 50
+                  },
+                  "brand": {
+                    "type": "string",
+                    "example": "SolarTech"
+                  }
+                }
+              }
+            }
+          }
+        },
         "tags": [
-          "Default"
-        ]
+          "Product Management"
+        ],
+        "summary": "POST /api/v1/product-details/create-product"
       }
     },
-    "/get/all": {
-      "get": {
-        "description": "",
+    "/api/v1/product-details/getAllProductsByBrand": {
+      "post": {
+        "description": "Endpoint for POST operations on /api/v1/product-details/getAllProductsByBrand",
         "parameters": [
           {
             "name": "authorization",
@@ -696,18 +1491,98 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "default": {
+            "description": ""
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Solar Inverter 5000W"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "High efficiency solar inverter"
+                  },
+                  "price": {
+                    "type": "number",
+                    "example": 899.99
+                  },
+                  "stockQuantity": {
+                    "type": "number",
+                    "example": 50
+                  },
+                  "brand": {
+                    "type": "string",
+                    "example": "SolarTech"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Product Management"
+        ],
+        "summary": "POST /api/v1/product-details/getAllProductsByBrand"
+      }
+    },
+    "/api/v1/product-details/get/all": {
+      "get": {
+        "description": "Endpoint for GET operations on /api/v1/product-details/get/all",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
-          "Default"
-        ]
+          "Product Management"
+        ],
+        "summary": "GET /api/v1/product-details/get/all"
       }
     },
     "/api/v1/product-details/{productId}": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/product-details/{productId}",
         "parameters": [
           {
             "name": "productId",
@@ -726,16 +1601,29 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Product Management"
-        ]
+        ],
+        "summary": "GET /api/v1/product-details/{productId}"
       },
       "put": {
-        "description": "",
+        "description": "Endpoint for PUT operations on /api/v1/product-details/{productId}",
         "parameters": [
           {
             "name": "productId",
@@ -754,18 +1642,63 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Solar Inverter 5000W"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "High efficiency solar inverter"
+                  },
+                  "price": {
+                    "type": "number",
+                    "example": 899.99
+                  },
+                  "stockQuantity": {
+                    "type": "number",
+                    "example": 50
+                  },
+                  "brand": {
+                    "type": "string",
+                    "example": "SolarTech"
+                  }
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Product Management"
-        ]
+        ],
+        "summary": "PUT /api/v1/product-details/{productId}"
       }
     },
     "/api/v1/product-details/createOrUpdate/product-stocks": {
       "put": {
-        "description": "",
+        "description": "Endpoint for PUT operations on /api/v1/product-details/createOrUpdate/product-stocks",
         "parameters": [
           {
             "name": "authorization",
@@ -776,18 +1709,63 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Solar Inverter 5000W"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "High efficiency solar inverter"
+                  },
+                  "price": {
+                    "type": "number",
+                    "example": 899.99
+                  },
+                  "stockQuantity": {
+                    "type": "number",
+                    "example": 50
+                  },
+                  "brand": {
+                    "type": "string",
+                    "example": "SolarTech"
+                  }
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Product Management"
-        ]
+        ],
+        "summary": "PUT /api/v1/product-details/createOrUpdate/product-stocks"
       }
     },
     "/api/v1/product-details/create/brands": {
       "post": {
-        "description": "",
+        "description": "Endpoint for POST operations on /api/v1/product-details/create/brands",
         "parameters": [
           {
             "name": "authorization",
@@ -798,18 +1776,54 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "SolarTech"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Premium solar technology brand"
+                  }
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Product Management"
-        ]
+        ],
+        "summary": "POST /api/v1/product-details/create/brands"
       }
     },
     "/api/v1/product-details/getAll/brands": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/product-details/getAll/brands",
         "parameters": [
           {
             "name": "authorization",
@@ -820,18 +1834,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Product Management"
-        ]
+        ],
+        "summary": "GET /api/v1/product-details/getAll/brands"
       }
     },
     "/api/v1/product-details/getActive/brands": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/product-details/getActive/brands",
         "parameters": [
           {
             "name": "authorization",
@@ -842,18 +1869,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Product Management"
-        ]
+        ],
+        "summary": "GET /api/v1/product-details/getActive/brands"
       }
     },
     "/api/v1/product-details/brand/{brandName}": {
       "put": {
-        "description": "",
+        "description": "Endpoint for PUT operations on /api/v1/product-details/brand/{brandName}",
         "parameters": [
           {
             "name": "brandName",
@@ -872,18 +1912,54 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "SolarTech"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Premium solar technology brand"
+                  }
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "Product Management"
-        ]
+        ],
+        "summary": "PUT /api/v1/product-details/brand/{brandName}"
       }
     },
     "/api/v1/search/{searchContent}": {
       "get": {
-        "description": "",
+        "description": "Endpoint for GET operations on /api/v1/search/{searchContent}",
         "parameters": [
           {
             "name": "searchContent",
@@ -902,18 +1978,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
           "default": {
             "description": ""
           }
         },
         "tags": [
           "Public Services"
-        ]
+        ],
+        "summary": "GET /api/v1/search/{searchContent}"
       }
     },
     "/api/v1/upload-files": {
       "post": {
-        "description": "",
+        "description": "Endpoint for POST operations on /api/v1/upload-files",
         "parameters": [
           {
             "name": "authorization",
@@ -924,16 +2013,48 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success"
+          },
           "201": {
             "description": "Created"
           },
           "400": {
             "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "files"
+                ],
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
           "Public Services"
-        ]
+        ],
+        "summary": "POST /api/v1/upload-files"
       }
     }
   },
@@ -943,100 +2064,15 @@
         "type": "apiKey",
         "name": "Authorization",
         "in": "header",
-        "description": "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
-        "x-bearerFormat": "JWT"
+        "description": "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\""
       }
     },
     "responses": {
       "UnauthorizedError": {
-        "description": "Authentication token is missing or invalid",
-        "content": {
-          "application/json": {
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "example": false
-                },
-                "message": {
-                  "type": "string",
-                  "example": "Authentication required"
-                },
-                "code": {
-                  "type": "string",
-                  "example": "UNAUTHORIZED"
-                }
-              }
-            }
-          }
-        }
+        "description": "Authentication token is missing or invalid"
       },
       "ValidationError": {
-        "description": "Input validation failed",
-        "content": {
-          "application/json": {
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "example": false
-                },
-                "message": {
-                  "type": "string",
-                  "example": "Validation failed"
-                },
-                "errors": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "example": [
-                    "Email is required",
-                    "Password must be at least 8 characters"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      },
-      "ServerError": {
-        "description": "Internal server error",
-        "content": {
-          "application/json": {
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "example": false
-                },
-                "message": {
-                  "type": "string",
-                  "example": "Internal server error"
-                },
-                "code": {
-                  "type": "string",
-                  "example": "INTERNAL_ERROR"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "parameters": {
-      "AuthorizationHeader": {
-        "in": "header",
-        "name": "Authorization",
-        "description": "JWT Authorization token",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "example": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-        }
+        "description": "Input validation failed"
       }
     }
   },
@@ -1045,31 +2081,5 @@
       "bearerAuth": []
     }
   ],
-  "x-tagGroups": [
-    {
-      "name": "Core Services",
-      "tags": [
-        "Authentication",
-        "Employee Management",
-        "Order Management",
-        "Product Management"
-      ]
-    },
-    {
-      "name": "Additional Services",
-      "tags": [
-        "Dealer Management",
-        "Public Services",
-        "Default"
-      ]
-    }
-  ],
-  "x-config": {
-    "theme": {
-      "name": "enterprise",
-      "primaryColor": "#2c3e50",
-      "secondaryColor": "#3498db"
-    }
-  },
   "host": "localhost:1280"
 }
