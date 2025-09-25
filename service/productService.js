@@ -545,6 +545,15 @@ const productService = {
         return productBrands.map(mapProductBrandEntityToResponse);
     }),
 
+    getByBrandId: asyncHandler(async (brandId) => {
+        const productBrand = await Brand.findOne({ brand_id: brandId }).lean();
+        if (!productBrand) {
+            throw new BadRequestException(`No product brand found with ID ${brandId}`);
+        }
+
+        return mapProductBrandEntityToResponse(productBrand);
+    }),
+
     createProductBrands: asyncHandler(async (brandsData) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 

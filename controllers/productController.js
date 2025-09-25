@@ -8,7 +8,7 @@ import { BadRequestException } from "../middleware/CustomError.js";
 const productController = {
     sanitizeInputBody,
 
-    createProduct: asyncHandler(async(req, res) => {
+    createProduct: asyncHandler(async (req, res) => {
         const productData = await productService.createProduct(req.body);
         res.status(201).json({
             success: true,
@@ -19,7 +19,7 @@ const productController = {
         });
     }),
 
-    updateProduct: asyncHandler(async(req, res) => {
+    updateProduct: asyncHandler(async (req, res) => {
         const { productId } = req.params;
         const productData = await productService.updateProduct(productId, req.body);
         res.status(200).json({
@@ -31,7 +31,7 @@ const productController = {
         });
     }),
 
-    createOrUpdateProductStocks: asyncHandler(async(req, res) => {
+    createOrUpdateProductStocks: asyncHandler(async (req, res) => {
         const { stock_map } = req.body;
         const productStockData = await productService.createOrUpdateProductStock(stock_map);
         res.status(200).json({
@@ -43,7 +43,7 @@ const productController = {
         });
     }),
 
-    getByProductId: asyncHandler(async(req, res) => {
+    getByProductId: asyncHandler(async (req, res) => {
         const { productId } = req.params;
         const productData = await productService.getByProductId(productId);
         res.status(200).json({
@@ -68,7 +68,7 @@ const productController = {
         });
     }),
 
-    getAll: asyncHandler(async(req, res) => {
+    getAll: asyncHandler(async (req, res) => {
         const productList = await productService.getAllProducts();
         res.status(200).json({
             success: true,
@@ -79,7 +79,7 @@ const productController = {
         });
     }),
 
-    getAllActiveProducts: asyncHandler(async(req, res) => {
+    getAllActiveProducts: asyncHandler(async (req, res) => {
         const productList = await productService.getAllActiveProducts();
         res.status(200).json({
             success: true,
@@ -90,7 +90,23 @@ const productController = {
         });
     }),
 
-    getAllBrands: asyncHandler(async(req, res) => {
+    getByBrandId: asyncHandler(async (req, res) => {
+        const { brandId } = req.params;
+        if (!brandId) {
+            throw new BadRequestException("Brand ID is required");
+        }
+
+        const brandData = await productService.getByBrandId(brandId);
+        res.status(200).json({
+            success: true,
+            status: 200,
+            message: `📦 Brand details for ID ${brandId} fetched successfully`,
+            data: brandData,
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        });
+    }),
+
+    getAllBrands: asyncHandler(async (req, res) => {
         const brandListData = await productService.getAllBrands();
         res.status(200).json({
             success: true,
@@ -101,7 +117,7 @@ const productController = {
         });
     }),
 
-    getActiveBrands: asyncHandler(async(req, res) => {
+    getActiveBrands: asyncHandler(async (req, res) => {
         const brandListData = await productService.getActiveBrands();
         res.status(200).json({
             success: true,
@@ -112,7 +128,7 @@ const productController = {
         });
     }),
 
-    createProductBrands: asyncHandler(async(req, res) => {
+    createProductBrands: asyncHandler(async (req, res) => {
         if (!Array.isArray(req.body) || req.body.length === 0) {
             throw new BadRequestException("Invalid brand list.Provide a non - empty array ");
         }
@@ -132,7 +148,7 @@ const productController = {
         const { brandName } = req.params;
 
         const updatedBrand = await productService.statusChangeByBrandName(brandName.trim(), req.body);
-        
+
         res.status(200).json({
             success: true,
             status: 200,
