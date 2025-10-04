@@ -15,7 +15,7 @@ import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId, 
 import { BadRequestException } from "../middleware/CustomError.js";
 import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext } from "../utils/validationUtils.js";
 import { mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse } from "../utils/modelMapper.js";
-import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS } from "../utils/constants.js";
+import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS, ROLES } from "../utils/constants.js";
 
 async function fetchProductWithStocks(product) {
     const stocks = await Stock.find({ product_id: product.product_id });
@@ -534,14 +534,36 @@ const productService = {
         return { availableStockUsed, productionRequired, packedUsed, unpackedUsed };
     }),
 
-    getAllBrands: asyncHandler(async () => {
-        const productBrands = await Brand.find().sort({ created_at: -1 });
-        return productBrands.map(mapProductBrandEntityToResponse);
-    }),
+    getAllBrands: asyncHandler(async ({ dealerId = "all", status = "all" }) => {
+        let filter = {};
+        let productBrands = [];
 
-    getActiveBrands: asyncHandler(async () => {
-        const productBrands = await Brand.find({ status: "active" })
-            .sort({ created_at: -1 });
+        if (status !== "all") {
+            filter.status = status;
+        }
+
+        if (dealerId !== "all") {
+            const dealer = await Employee.findOne({
+                employee_id: dealerId,
+                role: ROLES.DEALER
+            });
+
+            if (!dealer) {
+                throw new BadRequestException(
+                    `Invalid dealer ID: ${dealerId}. Dealer not found or not assigned the DEALER role.`
+                );
+            }
+
+            if (Array.isArray(dealer.brand) && dealer.brand.length > 0) {
+                const dealerBrands = dealer.brand.map(b => b.toUpperCase());
+                filter.brand_name = { $in: dealerBrands };
+            } else {
+                // Dealer has no brands assigned
+                return [];
+            }
+        }
+
+        productBrands = await Brand.find(filter).sort({ created_at: -1 });
         return productBrands.map(mapProductBrandEntityToResponse);
     }),
 

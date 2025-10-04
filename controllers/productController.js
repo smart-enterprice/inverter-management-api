@@ -107,22 +107,15 @@ const productController = {
     }),
 
     getAllBrands: asyncHandler(async (req, res) => {
-        const brandListData = await productService.getAllBrands();
-        res.status(200).json({
-            success: true,
-            status: 200,
-            message: "📦 Product Brand list fetched successfully!",
-            data: brandListData,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
-        });
-    }),
+        const dealerId = req.query.dealerId || "all";
+        const status = req.query.status || "all";
 
-    getActiveBrands: asyncHandler(async (req, res) => {
-        const brandListData = await productService.getActiveBrands();
+        const brandListData = await productService.getAllBrands({ dealerId, status });
+
         res.status(200).json({
             success: true,
             status: 200,
-            message: "📦 Active Product Brand list fetched successfully!",
+            message: `📦 Product Brand list fetched successfully!`,
             data: brandListData,
             timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });

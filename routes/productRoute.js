@@ -29,7 +29,6 @@ router.post('/create/brands', productController.createProductBrands);
 
 // @route   GET
 router.get('/getAll/brands', productController.getAllBrands);
-router.get('/getActive/brands', productController.getActiveBrands);
 router.get('/product-brand/:brandId', productController.getByBrandId);
 
 // @route   PUT
