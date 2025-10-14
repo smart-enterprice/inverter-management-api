@@ -154,6 +154,27 @@ const employeeService = {
         const employeeData = mapEmployeeRequestToEntity(employeeRequest, employeeId);
         employeeData.password = hashedPassword;
 
+        if (employeeData.role?.equalsIgnoreCase(ROLES.DEALER) && Array.isArray(employeeData.brand) && employeeData.brand.length > 0) {
+            const brands = employeeData.brand.map(b => b.toUpperCase());
+
+            const filter = {
+                $or: [
+                    { brand_name: { $in: brands } },
+                    { brand_id: { $in: brands } }
+                ],
+                status: 'active'
+            };
+            const productBrands = await Brand.find(filter).sort({ created_at: -1 });
+
+            const foundBrands = productBrands.map(b => b.brand_name.toUpperCase());
+            const missingBrands = brands.filter(b => !foundBrands.includes(b));
+
+            if (missingBrands.length > 0) {
+                logger.info(`Invalid brand(s) for dealer: ${missingBrands.join(', ')}`);
+            }
+            employeeData.brand = productBrands.map(b => b.brand_name);
+        }
+
         logger.info(`Created Employee ID: ${createdByEmployeeId}`);
         employeeData.created_by = createdByEmployeeId;
 
@@ -289,10 +310,41 @@ const employeeService = {
         }
 
         const mappedData = mapEmployeeRequestToEntity(updateData, employeeId, true);
+
+        if (existingEmployee.role?.equalsIgnoreCase(ROLES.DEALER) && Array.isArray(mappedData.brand) && mappedData.brand.length > 0) {
+            const existingBrands = Array.isArray(existingEmployee.brand) ? existingEmployee.brand.map(b => b.toUpperCase()) : [];
+            const newBrands = mappedData.brand.map(b => b.toUpperCase());
+            const uniqueBrands = [...new Set([...existingBrands, ...newBrands])];
+
+            logger.info(`Existing dealer brands: ${JSON.stringify(existingBrands, null, 2)}`);
+            logger.info(`Updating dealer brands: ${JSON.stringify(newBrands, null, 2)}`);
+            logger.info(`Combined unique brands: ${JSON.stringify(uniqueBrands, null, 2)}`);
+
+            const filter = {
+                $or: [
+                    { brand_name: { $in: uniqueBrands } },
+                    { brand_id: { $in: uniqueBrands } }
+                ],
+                status: 'active'
+            };
+
+            const productBrands = await Brand.find(filter).sort({ created_at: -1 });
+
+            const foundBrands = productBrands.map(b => b.brand_name.toUpperCase());
+            const missingBrands = uniqueBrands.filter(b => !foundBrands.includes(b));
+            if (missingBrands.length > 0) {
+                logger.info(`Invalid brand(s) for dealer: ${missingBrands.join(', ')}`);
+            }
+
+            mappedData.brand = productBrands.map(b => b.brand_name);
+        }
+
         mappedData.updated_at = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
-        const updatedEmployee = await employeeSchema.findOneAndUpdate({ employee_id: employeeId },
-            mappedData, { new: true, runValidators: true }
+        const updatedEmployee = await employeeSchema.findOneAndUpdate(
+            { employee_id: employeeId },
+            mappedData,
+            { new: true, runValidators: true }
         );
 
         logger.info(`Employee updated: ${employeeId}`);

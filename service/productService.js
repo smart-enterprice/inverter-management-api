@@ -536,7 +536,6 @@ const productService = {
 
     getAllBrands: asyncHandler(async ({ dealerId = "all", status = "all" }) => {
         let filter = {};
-        let productBrands = [];
 
         if (status !== "all") {
             filter.status = status;
@@ -554,16 +553,21 @@ const productService = {
                 );
             }
 
-            if (Array.isArray(dealer.brand) && dealer.brand.length > 0) {
-                const dealerBrands = dealer.brand.map(b => b.toUpperCase());
-                filter.brand_name = { $in: dealerBrands };
-            } else {
-                // Dealer has no brands assigned
+            logger.info(`Dealer brands: ${JSON.stringify(dealer.brand, null, 2)}`);
+
+            if (!Array.isArray(dealer.brand) || dealer.brand.length === 0) {
+                // Dealer has no assigned brands
                 return [];
             }
+
+            const dealerBrands = dealer.brand.map(b => b.toUpperCase());
+            filter.$or = [
+                { brand_name: { $in: dealerBrands } },
+                { brand_id: { $in: dealerBrands } }
+            ];
         }
 
-        productBrands = await Brand.find(filter).sort({ created_at: -1 });
+        const productBrands = await Brand.find(filter).sort({ created_at: -1 });
         return productBrands.map(mapProductBrandEntityToResponse);
     }),
 
