@@ -154,6 +154,29 @@ const employeeService = {
         const employeeData = mapEmployeeRequestToEntity(employeeRequest, employeeId);
         employeeData.password = hashedPassword;
 
+        if (employeeData.role?.equalsIgnoreCase(ROLES.DEALER) && Array.isArray(employeeData.brand) && employeeData.brand.length > 0) {
+            const brands = employeeData.brand.map(b => b.toUpperCase());
+
+            const filter = {
+                $or: [
+                    { brand_name: { $in: brands } },
+                    { brand_id: { $in: brands } }
+                ],
+                status: 'active'
+            };
+            const productBrands = await Brand.find(filter).sort({ created_at: -1 });
+
+            const foundBrands = productBrands.map(b => b.brand_name.toUpperCase());
+            const missingBrands = brands.filter(b => !foundBrands.includes(b));
+
+            if (missingBrands.length > 0) {
+                logger.info(`Invalid brand(s) for dealer: ${missingBrands.join(', ')}`);
+            }
+            employeeData.brand = productBrands.map(b => ({
+                brand_name: b.brand_name
+            }));
+        }
+
         logger.info(`Created Employee ID: ${createdByEmployeeId}`);
         employeeData.created_by = createdByEmployeeId;
 
