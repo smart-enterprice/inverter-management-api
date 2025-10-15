@@ -154,7 +154,11 @@ const employeeService = {
         const employeeData = mapEmployeeRequestToEntity(employeeRequest, employeeId);
         employeeData.password = hashedPassword;
 
-        if (employeeData.role?.equalsIgnoreCase(ROLES.DEALER) && Array.isArray(employeeData.brand) && employeeData.brand.length > 0) {
+        if (typeof employeeData.role === 'string' &&
+            employeeData.role.toLowerCase() === ROLES.DEALER.toLowerCase() &&
+            Array.isArray(employeeData.brand) &&
+            employeeData.brand.length > 0
+        ) {
             const brands = employeeData.brand.map(b => b.toUpperCase());
 
             const filter = {
@@ -311,7 +315,11 @@ const employeeService = {
 
         const mappedData = mapEmployeeRequestToEntity(updateData, employeeId, true);
 
-        if (existingEmployee.role?.equalsIgnoreCase(ROLES.DEALER) && Array.isArray(mappedData.brand) && mappedData.brand.length > 0) {
+        if (typeof existingEmployee.role === 'string' &&
+            existingEmployee.role.toLowerCase() === ROLES.DEALER.toLowerCase() &&
+            Array.isArray(mappedData.brand) &&
+            mappedData.brand.length > 0
+        ) {
             const existingBrands = Array.isArray(existingEmployee.brand) ? existingEmployee.brand.map(b => b.toUpperCase()) : [];
             const newBrands = mappedData.brand.map(b => b.toUpperCase());
             const uniqueBrands = [...new Set([...existingBrands, ...newBrands])];
