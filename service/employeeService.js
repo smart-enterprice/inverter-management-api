@@ -612,10 +612,19 @@ const employeeService = {
         const skip = (page - 1) * limit;
 
         if (dealer_id && product_id) {
+            const dealer = await employeeSchema.findOne({ employee_id: dealer_id, role: ROLES.DEALER })
+                .select("employee_id brand")
+                .lean();
+            if (!dealer) throw new BadRequestException(`Dealer ${dealer_id} not found.`);
+
             const product = await Product.findOne({ product_id, status: "active" })
                 .select("brand model")
                 .lean();
             if (!product) throw new BadRequestException(`Product ${product_id} not found.`);
+
+            const dealerBrands = dealer.brand?.map(b => b.toUpperCase()) || [];
+            if (!dealerBrands.includes(product.brand.toUpperCase()))
+                throw new BadRequestException(`Dealer ${dealer_id} not allowed for brand ${product.brand}.`);
 
             const dealerDiscount = await DealerDiscount.findOne({
                 dealer_id,
@@ -647,7 +656,7 @@ const employeeService = {
         }
 
         if (dealer_id) {
-            const dealer = await Employee.findOne({ employee_id: dealer_id, role: ROLES.DEALER })
+            const dealer = await employeeSchema.findOne({ employee_id: dealer_id, role: ROLES.DEALER })
                 .select("employee_id brand")
                 .lean();
             if (!dealer) throw new BadRequestException(`Dealer ${dealer_id} not found.`);
