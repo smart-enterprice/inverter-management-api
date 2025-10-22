@@ -49,11 +49,11 @@ const employeeController = {
         sanitizeInputBody,
         asyncHandler(async (req, res) => {
             const { employee_id } = validateMainRoleAccess();
-            
+
             if (!req.body || Object.keys(req.body).length === 0) {
                 throw new BadRequestException("Request body is required");
             }
-            
+
             const newEmployee = await employeeService.createEmployee(req.body, employee_id);
 
             return res.status(201).json({
@@ -453,21 +453,21 @@ const employeeController = {
         }),
     ],
 
-    getDealerDiscount: [
+    getDealerDiscounts: [
+        sanitizeInputBody,
         asyncHandler(async (req, res) => {
-            const { page, limit, skip } = getPaginationParams(req.query);
-
-            const dealerDiscountData = await employeeService.getDealerDiscount(req.body || {}, { page, limit });
+            const { page, limit } = req.query;
+            const response = await employeeService.getDealerDiscounts(req.body || {}, { page, limit });
 
             return res.status(200).json({
                 success: true,
                 status: 200,
-                message: "✅ Dealer discounts fetched successfully!",
-                data: dealerDiscountData.data,
-                pagination: dealerDiscountData.pagination,
-                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+                message: "✅ Dealer discount(s) fetched successfully.",
+                data: response.data,
+                pagination: response.pagination,
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
             });
-        })
+        }),
     ],
 
 };
