@@ -60,7 +60,7 @@ router.get("/getByRole/:employeeRole", employeeController.getAllProfileByEmploye
 // Dealer Discount Management
 router.post("/dealer/create-discount", employeeController.createDealerDiscount);
 router.post("/dealer/create-discounts", employeeController.createDealerDiscountList);
-router.post("/dealer/get-discounts", employeeController.getDealerDiscount);
+router.post("/dealer/get-discounts", employeeController.getDealerDiscounts);
 router.put("/dealer/update-discount", employeeController.updateDealerDiscount);
 
 // Dealer Employee Management

@@ -32,6 +32,7 @@ import {
 import { tokenBlacklistService } from "./tokenBlacklistService.js";
 import Brand from "../models/brand.js";
 import DealerDiscount from "../models/dealerDiscount.js";
+import Product from "../models/product.js";
 
 const checkExistingEmployee = async (email, phone, excludeId = null) => {
     const query = excludeId ? { _id: { $ne: excludeId } } : {};
@@ -315,36 +316,48 @@ const employeeService = {
 
         const mappedData = mapEmployeeRequestToEntity(updateData, employeeId, true);
 
-        if (typeof existingEmployee.role === 'string' &&
-            existingEmployee.role.toLowerCase() === ROLES.DEALER.toLowerCase() &&
-            Array.isArray(mappedData.brand) &&
-            mappedData.brand.length > 0
-        ) {
-            const existingBrands = Array.isArray(existingEmployee.brand) ? existingEmployee.brand.map(b => b.toUpperCase()) : [];
-            const newBrands = mappedData.brand.map(b => b.toUpperCase());
-            const uniqueBrands = [...new Set([...existingBrands, ...newBrands])];
+        const isDealer =
+            typeof existingEmployee.role === "string" &&
+            existingEmployee.role.toLowerCase() === ROLES.DEALER.toLowerCase();
 
-            logger.info(`Existing dealer brands: ${JSON.stringify(existingBrands, null, 2)}`);
-            logger.info(`Updating dealer brands: ${JSON.stringify(newBrands, null, 2)}`);
-            logger.info(`Combined unique brands: ${JSON.stringify(uniqueBrands, null, 2)}`);
+        if (isDealer) {
+            const existingBrands = Array.isArray(existingEmployee.brand)
+                ? existingEmployee.brand.map((b) => b.toUpperCase())
+                : [];
 
-            const filter = {
-                $or: [
-                    { brand_name: { $in: uniqueBrands } },
-                    { brand_id: { $in: uniqueBrands } }
-                ],
-                status: 'active'
-            };
+            const newBrands =
+                Array.isArray(mappedData.brand) && mappedData.brand.length > 0
+                    ? mappedData.brand.map((b) => b.toUpperCase())
+                    : [];
 
-            const productBrands = await Brand.find(filter).sort({ created_at: -1 });
-
-            const foundBrands = productBrands.map(b => b.brand_name.toUpperCase());
-            const missingBrands = uniqueBrands.filter(b => !foundBrands.includes(b));
-            if (missingBrands.length > 0) {
-                logger.info(`Invalid brand(s) for dealer: ${missingBrands.join(', ')}`);
+            let updatedBrands = [...existingBrands];
+            if (Array.isArray(updateData.remove_brands) && updateData.remove_brands.length > 0) {
+                const removeBrands = updateData.remove_brands.map((b) => b.toUpperCase());
+                updatedBrands = existingBrands.filter((b) => !removeBrands.includes(b));
             }
 
-            mappedData.brand = productBrands.map(b => b.brand_name);
+            const combinedBrands = [...new Set([...updatedBrands, ...newBrands])];
+
+            const brandFilter = {
+                $or: [
+                    { brand_name: { $in: combinedBrands } },
+                    { brand_id: { $in: combinedBrands } },
+                ],
+                status: "active",
+            };
+
+            const productBrands = await Brand.find(brandFilter).sort({ created_at: -1 });
+            const validBrandNames = productBrands.map((b) => b.brand_name.toUpperCase());
+
+            const invalidBrands = combinedBrands.filter(
+                (b) => !validBrandNames.includes(b)
+            );
+
+            if (invalidBrands.length > 0) {
+                logger.warn(`Invalid brand(s) ignored for dealer ${employeeId}: ${invalidBrands.join(", ")}`);
+            }
+
+            mappedData.brand = validBrandNames;
         }
 
         mappedData.updated_at = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
@@ -590,93 +603,70 @@ const employeeService = {
         return mapDealerDiscountEntityToResponse(updatedDiscount);
     }),
 
-    getDealerDiscount: asyncHandler(async (filtersData = {}, pagination) => {
+    getDealerDiscounts: asyncHandler(async (payload = {}, pagination = {}) => {
         getAuthenticatedEmployeeContext();
 
-        const page = parseInt(pagination.page, 10) || 1;
-        const limit = parseInt(pagination.limit, 10) || 10;
+        const { dealer_id, product_id, brand_name, model_name } = payload;
+        const page = +pagination.page || 1;
+        const limit = +pagination.limit || 10;
         const skip = (page - 1) * limit;
 
-        const filters = {};
+        if (dealer_id && product_id) {
+            const product = await Product.findOne({ product_id, status: "active" })
+                .select("brand model")
+                .lean();
+            if (!product) throw new BadRequestException(`Product ${product_id} not found.`);
 
-        if (filtersData.brand_name) {
-            const brandName = filtersData.brand_name.toUpperCase();
-            const brandRecord = await Brand.findOne({ brand_name: brandName });
+            const dealerDiscount = await DealerDiscount.findOne({
+                dealer_id,
+                brand_name: product.brand.toUpperCase(),
+                model_name: product.model.toUpperCase(),
+                status: "active"
+            }).lean();
 
-            if (!brandRecord) {
-                throw new BadRequestException(`Brand ${brandName} not found.`);
-            }
+            if (!dealerDiscount)
+                throw new NotFoundException(`No discount for dealer ${dealer_id} and product ${product_id}.`);
 
-            if (filtersData.model_name) {
-                const modelName = filtersData.model_name.toUpperCase();
-                const brandModels = brandRecord.brand_models.map(m => m.toUpperCase());
-
-                if (!brandModels.includes(modelName)) {
-                    throw new BadRequestException(`Model ${modelName} is not associated with brand ${brandName}.`);
-                }
-
-                filters.model_name = modelName;
-            }
-
-            filters.brand_name = brandName;
+            return { data: [mapDealerDiscountEntityToResponse(dealerDiscount)] };
         }
 
-        if (filtersData.dealer_id) {
-            const dealer = await employeeSchema.findOne({
-                employee_id: filtersData.dealer_id,
-                role: ROLES.DEALER,
-            });
+        const filters = {};
+        const brandUpper = brand_name?.toUpperCase();
+        const modelUpper = model_name?.toUpperCase();
 
-            if (!dealer) {
-                throw new BadRequestException(`Dealer with ID ${filtersData.dealer_id} not found or role mismatch.`);
-            }
+        if (brandUpper) {
+            const brand = await Brand.findOne({ brand_name: brandUpper })
+                .select("brand_models brand_name")
+                .lean();
+            if (!brand) throw new BadRequestException(`Brand ${brandUpper} not found.`);
 
-            if (dealer.brand && dealer.brand.length > 0) {
-                const dealerBrands = dealer.brand.map(b => b.toUpperCase());
-                const brandRecords = await Brand.find({ brand_name: { $in: dealerBrands } });
+            if (modelUpper && !brand.brand_models.map(m => m.toUpperCase()).includes(modelUpper))
+                throw new BadRequestException(`Model ${modelUpper} not part of brand ${brandUpper}.`);
 
-                if (brandRecords.length > 0) {
-                    const allModels = brandRecords.flatMap(br =>
-                        br.brand_models.map(m => m.toUpperCase())
-                    );
+            Object.assign(filters, { brand_name: brand.brand_name, ...(modelUpper && { model_name: modelUpper }) });
+        }
 
-                    if (filters.brand_name && !dealerBrands.includes(filters.brand_name)) {
-                        throw new BadRequestException(
-                            `Dealer ${dealer.employee_id} is not allowed for brand ${filters.brand_name}.`
-                        );
-                    }
-                    if (filters.model_name && !allModels.includes(filters.model_name)) {
-                        throw new BadRequestException(
-                            `Dealer ${dealer.employee_id} is not allowed for model ${filters.model_name}.`
-                        );
-                    }
-                    if (!filters.brand_name) {
-                        filters.brand_name = { $in: dealerBrands };
-                    }
-                    if (!filters.model_name && allModels.length > 0) {
-                        filters.model_name = { $in: allModels };
-                    }
-                }
-            }
+        if (dealer_id) {
+            const dealer = await Employee.findOne({ employee_id: dealer_id, role: ROLES.DEALER })
+                .select("employee_id brand")
+                .lean();
+            if (!dealer) throw new BadRequestException(`Dealer ${dealer_id} not found.`);
+
+            const dealerBrands = dealer.brand?.map(b => b.toUpperCase()) || [];
+            if (brandUpper && !dealerBrands.includes(brandUpper))
+                throw new BadRequestException(`Dealer ${dealer_id} not allowed for brand ${brandUpper}.`);
 
             filters.dealer_id = dealer.employee_id;
+            filters.brand_name ??= { $in: dealerBrands };
         }
-
-        const [dealerDiscounts, total] = await Promise.all([
-            DealerDiscount.find(filters)
-                .skip(skip)
-                .limit(limit)
-                .sort({ created_at: -1 }),
+        const [records, total] = await Promise.all([
+            DealerDiscount.find(filters).skip(skip).limit(limit).sort({ created_at: -1 }).lean(),
             DealerDiscount.countDocuments(filters)
         ]);
 
         return {
-            data: dealerDiscounts.map(discount => mapDealerDiscountEntityToResponse(discount)),
-            pagination: {
-                page,
-                limit,
-                total
-            }
+            data: records.map(mapDealerDiscountEntityToResponse),
+            pagination: { page, limit, total }
         };
     }),
 
