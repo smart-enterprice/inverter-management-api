@@ -61,7 +61,7 @@ const productController = {
         return res.status(200).json({
             success: true,
             status: 200,
-            message: "Products retrieved successfully 🎉",
+            message: "🎉 Products retrieved successfully!",
             count: productData.length,
             data: productData,
             timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
