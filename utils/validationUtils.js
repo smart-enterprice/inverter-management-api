@@ -85,7 +85,7 @@ export const getAuthenticatedEmployeeContext = () => {
     const employeeId = CurrentRequestContext.getEmployeeId();
     const employeeRole = CurrentRequestContext.getRole();
 
-    console.log(`roles and djefj : ${employeeId} :: ${employeeRole}`);
+    console.log(`roles : ${employeeId} :: ${employeeRole}`);
     if (!employeeId || !employeeRole) {
         throw new UnauthorizedException(`You do not have permission to perform this action. Allowed roles: ${Object.values(ROLES).join(', ')}`);
     }
