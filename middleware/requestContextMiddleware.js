@@ -30,76 +30,78 @@ const ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES = [
     `${PATH_ROUTES.EMPLOYEE_ROUTE}/update/delete-employee`
 ];
 
-const isMatch = (url, routes) => routes.some((route) => url.startsWith(route));
+const isRouteMatch = (url, routes) => routes.some(route => url.startsWith(route));
 
 export const requestContextMiddleware = async (req, res, next) => {
-    const { originalUrl, headers } = req;
-
-    if (isMatch(originalUrl, PUBLIC_ROUTES)) {
-        return next();
-    }
-
-    const authHeader = headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return next(new UnauthorizedException("Authorization token missing or malformed"));
-    }
-
-    logger.info(`[Auth] JWT_SECRET original path : ${originalUrl}`, {
-        method: req.method,
-        headers: {
-            authorization: authHeader ? "present" : "missing"
-        }
-    });
-
-    const token = authHeader.split(" ")[1];
-    if (!token || token === 'undefined' || token === 'null') {
-        return next(new UnauthorizedException('Authentication failed: Token is missing or invalid.'));
-    }
-
-    if (!JWT_SECRET) {
-        logger.error('[Auth] JWT_SECRET is not defined in environment.');
-        return next(new BadRequestException('JWT_SECRET is missing in environment variables'));
-    }
-
-    let decoded;
     try {
-        decoded = jwt.verify(token, JWT_SECRET);
-        logger.info('[Auth] Token verified successfully.');
+        const { originalUrl, headers } = req;
+
+        // Allow public routes without authentication
+        if (isRouteMatch(originalUrl, PUBLIC_ROUTES)) return next();
+
+        const authHeader = headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+            throw new UnauthorizedException('Authorization token missing or malformed');
+        }
+
+        const token = authHeader.split(' ')[1];
+        if (!token || token === 'undefined' || token === 'null') {
+            throw new UnauthorizedException('Authentication failed: Token is missing or invalid');
+        }
+
+        if (!JWT_SECRET) {
+            logger.error('[Auth] Missing JWT_SECRET in environment variables');
+            throw new BadRequestException('JWT_SECRET is missing in environment variables');
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(token, JWT_SECRET);
+            logger.info('[Auth] Token verified successfully', { path: originalUrl });
+        } catch (err) {
+            logger.warn('[Auth] JWT verification failed', { reason: err.message });
+            throw new UnauthorizedException('Invalid or expired token');
+        }
+
+        // Token blacklisted check
+        if (tokenBlacklistService.isBlacklisted(token)) {
+            throw new UnauthorizedException('Token has been invalidated or session expired');
+        }
+
+        const { employee_id: employeeId, role } = decoded;
+        if (!employeeId || !role) {
+            throw new UnauthorizedException('Invalid token payload');
+        }
+
+        const employee = await Employee.findOne({ employee_id: employeeId, status: 'active' });
+        if (!employee) {
+            await employeeService.logout(token);
+            throw new UnauthorizedException('User does not exist or is inactive');
+        }
+
+        // Role-based route restrictions
+        if (isRouteMatch(originalUrl, SUPER_ADMIN_ONLY_ROUTES) && role !== ROLES.SUPER_ADMIN) {
+            throw new UnauthorizedException('Access restricted to Super Admins only');
+        }
+
+        if (
+            isRouteMatch(originalUrl, ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES) &&
+            !Object.values(APPROVAL_GRANTED_ROLES).includes(role)
+        ) {
+            throw new UnauthorizedException('Access restricted to Admins or Super Admins');
+        }
+
+        // Set context and user data
+        CurrentRequestContext.run({}, () => {
+            CurrentRequestContext.setEmployeeId(employeeId);
+            CurrentRequestContext.setRole(role);
+            CurrentRequestContext.setCurrentToken(token);
+
+            req.user = { employeeId, role, status: employee.status };
+            next();
+        });
+
     } catch (err) {
-        logger.warn('[Auth] JWT verification failed:', err.message);
-        return next(new UnauthorizedException('Invalid or expired token'));
+        next(err);
     }
-
-    if (tokenBlacklistService.isBlacklisted(token)) {
-        return next(new UnauthorizedException('Token has been invalidated or session expired'));
-    }
-
-    const { employee_id: employeeId, role } = decoded;
-
-    if (!employeeId || !role) {
-        return next(new UnauthorizedException('Invalid token payload'));
-    }
-
-    const employee = await Employee.findOne({ employee_id: employeeId, status: 'active' });
-    if (!employee) {
-        await employeeService.logout(token);
-        return next(new UnauthorizedException('User does not exist or is inactive.'));
-    }
-
-    if (isMatch(originalUrl, SUPER_ADMIN_ONLY_ROUTES) && role !== ROLES.SUPER_ADMIN) {
-        return next(new UnauthorizedException("Access restricted to Super Admins only"));
-    }
-
-    if (isMatch(originalUrl, ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES) && !Object.values(APPROVAL_GRANTED_ROLES).includes(role)) {
-        return next(new UnauthorizedException("Access restricted to Admins or Super Admins"));
-    }
-
-    CurrentRequestContext.run({}, () => {
-        CurrentRequestContext.setEmployeeId(employeeId);
-        CurrentRequestContext.setRole(role);
-        CurrentRequestContext.setCurrentToken(token);
-
-        req.user = { employeeId, role, status: employee.status };
-        next();
-    });
 };

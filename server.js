@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
@@ -7,7 +10,6 @@ import compression from "compression";
 import hpp from "hpp";
 import path from 'path';
 import fs from 'fs';
-import dotenv from "dotenv";
 import mongoose from "mongoose";
 
 import swaggerUi from 'swagger-ui-express';
@@ -29,8 +31,6 @@ import { requestContextMiddleware } from "./middleware/requestContextMiddleware.
 import { connectToDatabase, closeDatabaseConnection } from "./config/dbConfig.js";
 import { employeeService } from "./service/employeeService.js";
 
-dotenv.config();
-
 const app = express();
 const port = PORT || 3000;
 
@@ -39,24 +39,20 @@ app.set("trust proxy", 1);
 const globalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 200,
-    message: {
-        success: false,
-        message: "Too many requests from this IP. Please try again later.",
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
     handler: handleRateLimitError,
 });
 
 const corsOptions = {
-    origin: function (origin, callback) {
-        const allowedOrigins = ALLOWED_ORIGINS ? ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : ['http://localhost:5173'];
+    origin(origin, callback) {
+        const allowedOrigins = ALLOWED_ORIGINS
+            ? ALLOWED_ORIGINS.split(',').map(o => o.trim())
+            : ['http://localhost:5173'];
 
         allowedOrigins.push('http://localhost:3000');
         allowedOrigins.push('https://editor.swagger.io');
         allowedOrigins.push('http://localhost:1280');
 
-        if (!origin || origin.includes("localhost") || origin.includes("127.0.0.1")) {
+        if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
             return callback(null, true);
         }
         if (allowedOrigins.includes(origin)) {
@@ -64,10 +60,9 @@ const corsOptions = {
         }
 
         logger.warn(`[CORS] Origin blocked: ${origin}`);
-        return callback(new Error("Not allowed by CORS"));
+        return callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
-    optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept'],
     optionsSuccessStatus: 200,
@@ -112,8 +107,8 @@ const startServer = async () => {
         const server = app.listen(port, () => {
             employeeService.defaultSuperAdminSetup();
 
-            logger.info(`Server started on port ${port}`, {
-                environment: ENVIRONMENT || "development",
+            logger.info(`Server started on ${APPLICATION_URL || 'http://localhost:' + port}`, {
+                environment: ENVIRONMENT || 'development',
             });
         });
 
@@ -132,8 +127,6 @@ const startServer = async () => {
         process.exit(1);
     }
 };
-
-startServer();
 
 // Routes
 app.get("/", (req, res) => {
@@ -180,8 +173,9 @@ app.use((req, res, next) => {
     next(new NotFoundException(`Endpoint '${req.method} ${req.originalUrl}' not found.`));
 });
 
-app.use(handleRateLimitError);
 app.use(globalErrorHandler);
+
+startServer();
 
 process.on("unhandledRejection", reason => {
     if (reason?.isOperational) {

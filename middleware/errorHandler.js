@@ -4,55 +4,55 @@ import {
 import { ENVIRONMENT } from '../utils/constants.js';
 import logger from '../utils/logger.js';
 
-const sendError = (err, req, res) => {
+const sendErrorResponse = (err, req, res) => {
     const response = {
         success: false,
-        name: err.name,
-        message: err.message,
+        name: err.name || 'Error',
+        message: err.message || 'Internal Server Error',
         statusCode: err.statusCode || 500,
         errors: err.errors || null,
-        timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        timestamp: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
     };
 
-    if (ENVIRONMENT === 'development') {
+    if (ENVIRONMENT === 'development' && err.stack) {
         response.stack = err.stack;
     }
 
-    logger.error(`${err.name || 'Error'}: ${err.message}`, response);
+    logger.error(`${response.name}: ${response.message}`, {
+        path: req.originalUrl,
+        method: req.method,
+        statusCode: response.statusCode,
+        stack: err.stack,
+    });
     res.status(response.statusCode).json(response);
 };
 
-const handleRateLimitError = (err, req, res, next) => {
-    if (err.status === 429) {
-        logger.warn('Rate limit exceeded', {
-            ip: req.ip,
-            url: req.originalUrl
-        });
+export const handleRateLimitError = (err, req, res, next) => {
+    const retryAfter = 3600; // default 1 hour
 
-        const retryAfter = (err.headers && err.headers['retry-after']) || 3600;
+    logger.warn('Rate limit exceeded', {
+        ip: req.ip,
+        url: req.originalUrl,
+    });
 
-        return res.status(429).json({
-            success: false,
-            status: 429,
-            message: 'Too many requests. Please try again later.',
-            retryAfter,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
-        });
-    }
-
-    next(err);
+    res.status(429).json({
+        success: false,
+        statusCode: 429,
+        message: 'Too many requests. Please try again later.',
+        retryAfter,
+        timestamp: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+    });
 };
 
-const globalErrorHandler = (err, req, res, next) => {
-    if (!(err instanceof CustomException)) {
-        err = new CustomException(err.message || 'Internal Server Error', 500);
-        err.stack = err.stack;
+export const globalErrorHandler = (err, req, res, next) => {
+    let error = err;
+
+    if (!(error instanceof CustomException)) {
+        const message = error.message || 'Internal Server Error';
+        const statusCode = error.statusCode || 500;
+        error = new CustomException(message, statusCode);
+        error.stack = err.stack;
     }
 
-    sendError(err, req, res);
-};
-
-export {
-    handleRateLimitError,
-    globalErrorHandler
+    sendErrorResponse(error, req, res);
 };
