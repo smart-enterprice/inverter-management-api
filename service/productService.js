@@ -428,23 +428,30 @@ const productService = {
     }),
 
     getAllProductsByBrands: asyncHandler(async (dto) => {
-        const { employee_id } = validateMainRoleAccess();
+        const { employee_id, role } = validateMainRoleAccess();
+        const { brands } = dto;
 
-        if (!Array.isArray(dto.brands) || dto.brands.length === 0) {
-            throw new BadRequestException("At least one brand must be provided.");
+        if (!Array.isArray(brands) || brands.length === 0) {
+            throw new BadRequestException('At least one brand must be provided.');
         }
 
-        const requestedBrands = dto.brands.map((b) =>
-            sanitizeInput(b).toUpperCase()
+        const brandInputs = brands.map((brand) =>
+            sanitizeInput(brand).toUpperCase()
         );
 
-        const activeBrands = await Brand.find({
-            brand_name: { $in: requestedBrands },
-            status: "active",
-        });
+        logger.info(`product by brands | employee_id: ${employee_id} | role: ${role} | requested brands: [${brandInputs.join(', ')}]`);
 
-        if (!activeBrands.length) {
-            throw new BadRequestException(`No active brands found for [${brandInputs.join(", ")}]`);
+        const activeBrands = await Brand.find({
+            $or: [
+                { brand_name: { $in: brandInputs } },
+                { brand_id: { $in: brandInputs } },
+            ],
+            status: 'active',
+        }).lean();
+
+        if (activeBrands.length === 0) {
+            logger.warn(`product by brands | no active brands found | requested: [${brandInputs.join(', ')}]`);
+            throw new BadRequestException(`No active brands found for [${brandInputs.join(', ')}]`);
         }
 
         const validBrandNames = activeBrands.map((b) =>
@@ -453,16 +460,22 @@ const productService = {
 
         const products = await Product.find({
             brand: { $in: validBrandNames },
-            status: "active",
-        }).sort({ created_at: -1 });
+            status: 'active',
+        })
+            .sort({ created_at: -1 })
+            .lean();
 
-        if (!products.length) {
-            throw new BadRequestException(`No products found for active brands: [${brandInputs.join(", ")}]`);
+        if (products.length === 0) {
+            logger.warn(`product by brands | no products found for active brands: [${validBrandNames.join(', ')}]`);
+            throw new BadRequestException(`No products found for active brands: [${validBrandNames.join(', ')}]`);
         }
 
-        const productsWithStock = await Promise.all(
-            products.map((p) => fetchProductWithStocks(p))
-        );
+        logger.info(`product by brands | ${products.length} products found for brands: [${validBrandNames.join(', ')}]`);
+
+        const productsWithStock = await Promise.all(products.map(fetchProductWithStocks));
+
+        logger.info(`product by brands | response ready | total: ${productsWithStock.length}`);
+
         return productsWithStock;
     }),
 
