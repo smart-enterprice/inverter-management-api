@@ -28,14 +28,16 @@ const sendErrorResponse = (err, req, res) => {
 };
 
 export const handleRateLimitError = (err, req, res, next) => {
-    const retryAfter = 3600; // default 1 hour
-
     logger.warn('Rate limit exceeded', {
         ip: req.ip,
         url: req.originalUrl,
     });
 
-    res.status(429).json({
+    const retryAfter = options?.standardHeaders
+    ? res.getHeader('Retry-After') || 3600
+    : 3600;
+
+    return res.status(429).json({
         success: false,
         statusCode: 429,
         message: 'Too many requests. Please try again later.',
