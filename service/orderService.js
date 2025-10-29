@@ -17,7 +17,7 @@ import { getAuthenticatedEmployeeContext, sanitizeInput } from "../utils/validat
 
 import { APPROVAL_GRANTED_ROLES, getISTDate, ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIELDS, ORDER_REQUIRED_FIELDS, ROLES, STOCK_ACTIONS, STOCK_TYPES, VALID_ORDER_STATUSES, VALID_PAYMENT_STATUSES } from "../utils/constants.js";
 import { mapOrderDetailEntityToResponse, transformOrderToResponse } from "../utils/modelMapper.js";
-import { calculateAvailableStock, productService, saveOrUpdateStockTransaction } from "./productService.js";
+import { productService, saveOrUpdateStockTransaction } from "./productService.js";
 import Product from "../models/product.js";
 
 dayjs.extend(utc);
@@ -539,7 +539,7 @@ const orderService = {
             //     // throw new BadRequestException("Amount paid cannot exceed total order price.");
             // }
 
-            product.available_stock = await calculateAvailableStock(product.product_id);
+            product.available_stock = await productService.calculateAvailableStock(product.product_id);
             await product.save();
         }
 
