@@ -4,40 +4,38 @@ import {
 import { ENVIRONMENT } from '../utils/constants.js';
 import logger from '../utils/logger.js';
 
-const sendErrorResponse = (err, req, res) => {
+const sendErrorResponse = (error, req, res) => {
     const response = {
         success: false,
-        name: err.name || 'Error',
-        message: err.message || 'Internal Server Error',
-        statusCode: err.statusCode || 500,
-        errors: err.errors || null,
+        name: error.name || 'Error',
+        message: error.message || 'Internal Server Error',
+        statusCode: error.statusCode || 500,
+        errors: error.errors || null,
         timestamp: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
     };
 
-    if (ENVIRONMENT === 'development' && err.stack) {
-        response.stack = err.stack;
+    if (ENVIRONMENT === 'development' && error.stack) {
+        response.stack = error.stack;
     }
 
     logger.error(`${response.name}: ${response.message}`, {
-        path: req.originalUrl,
         method: req.method,
+        path: req.originalUrl,
         statusCode: response.statusCode,
-        stack: err.stack,
+        stack: error.stack,
     });
+
     res.status(response.statusCode).json(response);
 };
 
-export const handleRateLimitError = (err, req, res, next) => {
-    logger.warn('Rate limit exceeded', {
-        ip: req.ip,
-        url: req.originalUrl,
-    });
+export const handleRateLimitError = (req, res, next, options) => {
+    logger.warn('Rate limit exceeded', { ip: req.ip, url: req.originalUrl });
 
     const retryAfter = options?.standardHeaders
-    ? res.getHeader('Retry-After') || 3600
-    : 3600;
+        ? res.getHeader('Retry-After') || 3600
+        : 3600;
 
-    return res.status(429).json({
+    res.status(429).json({
         success: false,
         statusCode: 429,
         message: 'Too many requests. Please try again later.',
