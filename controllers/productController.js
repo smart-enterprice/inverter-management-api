@@ -69,24 +69,24 @@ const productController = {
     }),
 
     getAll: asyncHandler(async (req, res) => {
-        const productList = await productService.getAllProducts();
+        const productList = await productService.getProducts({});
         res.status(200).json({
             success: true,
             status: 200,
-            message: "📦 Product list fetched successfully!",
+            message: "📦 All products fetched successfully",
             data: productList,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
         });
     }),
 
     getAllActiveProducts: asyncHandler(async (req, res) => {
-        const productList = await productService.getAllActiveProducts();
+        const productList = await productService.getProducts({ status: "active" }); // only active
         res.status(200).json({
             success: true,
             status: 200,
-            message: "📦 Product list fetched successfully!",
+            message: "📦 Active products fetched successfully",
             data: productList,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
         });
     }),
 

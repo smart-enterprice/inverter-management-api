@@ -410,38 +410,25 @@ const productService = {
         return fetchProductWithStocks(product);
     }),
 
-    getAllActiveProducts: asyncHandler(async (filter = {}) => {
-        const products = await Product.getActiveProducts(filter);
+    getProducts: asyncHandler(async (filter = {}) => {
+        const products = await Product.find(filter).lean();
+        if (!products.length) return [];
+
         const productIds = products.map(p => p.product_id);
 
         const stocks = await Stock.find({ product_id: { $in: productIds } }).lean();
-        const stockMap = stocks.length
-            ? stocks.reduce((acc, s) => {
-                const pid = s.product_id;
+        const stockMap = (stocks && stocks.length > 0)
+            ? stocks.reduce((acc, stock) => {
+                const pid = stock.product_id;
                 if (!acc[pid]) acc[pid] = [];
-                acc[pid].push(mapStockEntityToResponse(s));
+                acc[pid].push(mapStockEntityToResponse(stock));
                 return acc;
             }, {})
             : {};
 
-        return products.map(p => mapProductEntityToResponse(p, stockMap[p.product_id] || []));
-    }),
-
-    getAllProducts: asyncHandler(async (filter = {}) => {
-        const products = await Product.getAllProducts(filter);
-        const productIds = products.map(p => p.product_id);
-
-        const stocks = await Stock.find({ product_id: { $in: productIds } }).lean();
-        const stockMap = stocks.length
-            ? stocks.reduce((acc, s) => {
-                const pid = s.product_id;
-                if (!acc[pid]) acc[pid] = [];
-                acc[pid].push(mapStockEntityToResponse(s));
-                return acc;
-            }, {})
-            : {};
-
-        return products.map(p => mapProductEntityToResponse(p, stockMap[p.product_id] || []));
+        return products.map(p =>
+            mapProductEntityToResponse(p, stockMap[p.product_id] || [])
+        );
     }),
 
     getProductsByIds: asyncHandler(async (productIds) => {
