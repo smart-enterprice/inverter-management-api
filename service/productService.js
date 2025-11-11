@@ -449,43 +449,29 @@ const productService = {
         const productStockMap = new Map();
         const productAvailableStockMap = new Map();
 
-        products.forEach((p) => productMap.set(p.product_id, p));
+        products.forEach(p => {
+            productMap.set(p.product_id, p);
+        });
 
-        // stocks.forEach((s) => {
-        //     productStockMap.set(s.product_id, {
-        //         stock_id: s.stock_id,
-        //         packed_stock: s.packed_stock,
-        //         unpacked_stock: s.unpacked_stock,
-        //         total_stock: s.stock
-        //     });
-        //     productAvailableStockMap.set(s.product_id, s.stock);
-        // });
-
-        stocks.forEach((doc) => {
-            productStockMap.set(doc.product_id, doc);
-            productAvailableStockMap.set(doc.product_id, doc.stock);
+        stocks.forEach(s => {
+            productStockMap.set(s.product_id, s);
+            productAvailableStockMap.set(s.product_id, s.stock); // packed + unpacked
         });
 
         return { productMap, productStockMap, productAvailableStockMap };
     }),
 
     checkAndReserveStock: asyncHandler(async (product, stockDoc, requiredQty, employeeId, role, orderNumber) => {
-        if (requiredQty <= 0) {
-            throw new BadRequestException("Ordered quantity must be greater than 0.");
-        }
+        if (requiredQty <= 0) throw new BadRequestException('Ordered quantity must be greater than 0.');
+        if (!stockDoc || !stockDoc.save) throw new BadRequestException('Invalid stock document supplied.');
 
-        if (!stockDoc || !stockDoc.save) {
-            throw new BadRequestException("Invalid stock document supplied.");
-        }
+        let remaining = requiredQty;
+        const prevPacked = stockDoc.packed_stock;
+        const prevUnpacked = stockDoc.unpacked_stock;
 
         let packedUsed = 0;
         let unpackedUsed = 0;
         let productionRequired = 0;
-
-        let remaining = requiredQty;
-
-        const prevPacked = stockDoc.packed_stock;
-        const prevUnpacked = stockDoc.unpacked_stock;
 
         if (stockDoc.packed_stock > 0) {
             const used = Math.min(stockDoc.packed_stock, remaining);
@@ -501,17 +487,16 @@ const productService = {
             remaining -= used;
         }
 
-        if (remaining > 0) {
-            productionRequired = remaining;
-        }
+        if (remaining > 0) productionRequired = remaining;
 
         stockDoc.stock = stockDoc.packed_stock + stockDoc.unpacked_stock;
         await stockDoc.save();
 
         const dateNow = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
+        const historyPromises = [];
         if (packedUsed > 0) {
-            await logStockHistory({
+            historyPromises.push(logStockHistory({
                 productId: product.product_id,
                 orderNumber,
                 action: STOCK_ACTIONS.STOCK_SALE,
@@ -521,11 +506,11 @@ const productService = {
                 newStock: stockDoc.packed_stock,
                 notes: `Sale PACKED order:${orderNumber} product:${product.product_id} qty:${packedUsed} date:${dateNow}`,
                 employeeId
-            });
+            }));
         }
 
         if (unpackedUsed > 0) {
-            await logStockHistory({
+            historyPromises.push(logStockHistory({
                 productId: product.product_id,
                 orderNumber,
                 action: STOCK_ACTIONS.STOCK_SALE,
@@ -535,20 +520,17 @@ const productService = {
                 newStock: stockDoc.unpacked_stock,
                 notes: `Sale UNPACKED order:${orderNumber} product:${product.product_id} qty:${unpackedUsed} date:${dateNow}`,
                 employeeId
-            });
+            }));
         }
+
+        await Promise.all(historyPromises);
 
         product.available_stock = await productService.calculateAvailableStock(product.product_id);
         await product.save();
 
         logger.info(`Stock updated product: ${product.product_id} packed: ${packedUsed} unpacked: ${unpackedUsed} production: ${productionRequired}`);
 
-        return {
-            availableStockUsed: packedUsed + unpackedUsed,
-            productionRequired,
-            packedUsed,
-            unpackedUsed
-        };
+        return { availableStockUsed: packedUsed + unpackedUsed, productionRequired, packedUsed, unpackedUsed };
     }),
 
     getAllBrands: asyncHandler(async ({ dealerId = "all", status = "all" }) => {
