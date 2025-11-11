@@ -137,11 +137,11 @@ const orderService = {
                 hasProduction: (productionRequired || 0) > 0
             };
 
-            let unitPrice = product.price;
+            const unitPrice = Number(product.price || 0);
             let unitDiscount = 0;
 
             if (detail.discount_price && Number(detail.discount_price) > 0) {
-                unitDiscount = unitPrice - Number(detail.discount_price);
+                unitDiscount = Number(detail.discount_price);
             } else if (detail.dealer_discount_id) {
                 const dealerDiscount = await DealerDiscount.findOne({
                     dealer_discount_id: sanitizeInput(detail.dealer_discount_id),
@@ -155,6 +155,12 @@ const orderService = {
                         ? (unitPrice * dealerDiscount.discount_value) / 100
                         : dealerDiscount.discount_value;
                 }
+            }
+
+            if (Number.isNaN(unitDiscount) || unitDiscount < 0) unitDiscount = 0;
+            if (unitDiscount > unitPrice) {
+                logger.warn(`Clamping unit discount for product ${product.product_id}: unitDiscount(${unitDiscount}) > unitPrice(${unitPrice}).`);
+                unitDiscount = unitPrice;
             }
 
             const totalProductPrice = unitPrice * qtyOrdered;
