@@ -199,10 +199,6 @@ const orderService = {
         order.order_total_price = totalOrderAmount;
         order.order_total_discount = totalOrderDiscount;
 
-        if (order.amount_paid > 0) {
-            await order.addPayment(order.amount_paid, order.payment_type || 'CASH');
-        }
-
         // if (order.amount_paid > order.order_total_price) {
         //     // ✅ Instead of blocking the transaction, we now handle dealer’s old balance.
         //     // If a dealer already has a positive balance (advance/credit), and the current payment
