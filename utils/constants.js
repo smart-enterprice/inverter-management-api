@@ -28,7 +28,10 @@ export const PATH_ROUTES = {
     },
     get PRODUCT_ROUTE() {
         return `${this.BASIC_ROUTE}/product-details`;
-    }
+    },
+    get LOCATION_ROUTE() {
+        return `${this.BASIC_ROUTE}/locations`;
+    },
 };
 
 export const {
