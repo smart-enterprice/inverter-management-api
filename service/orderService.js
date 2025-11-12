@@ -109,8 +109,9 @@ const orderService = {
         let totalOrderAmount = 0;
         let totalOrderDiscount = 0;
         let hasPendingProduction = false;
+        const orderDetailsPayload = [];
 
-        const orderDetailsPayload = await Promise.all(dto.order_details.map(async (detail) => {
+        for (const detail of dto.order_details) {
             const product = productMap.get(detail.product_id);
             if (!product) throw new BadRequestException(`Product not found: ${detail.product_id}`);
 
@@ -176,7 +177,7 @@ const orderService = {
             if (productionRequired > 0) notes.push(`Production Required: ${productionRequired} units`);
             if (unpackedUsed > 0) notes.push(`Unpacked Required for Packing: ${unpackedUsed} units`);
 
-            return {
+            const orderDetails = {
                 order_details_number: await generateUniqueOrderDetailsId(),
                 order_number: orderNumber,
                 product_id: product.product_id,
@@ -197,10 +198,10 @@ const orderService = {
                 total_price: totalPrice,
                 is_free: isProductScheme
             };
-        }));
+            orderDetailsPayload.push(orderDetails);
+        }
 
         order.status = hasPendingProduction ? 'PENDING_PRODUCTION' : 'PENDING';
-
         order.sales_target_updated = false;
         order.order_total_price = totalOrderAmount;
         order.order_total_discount = totalOrderDiscount;
@@ -215,10 +216,12 @@ const orderService = {
         // }
 
         await order.save();
-        logger.info(`💾 Order Saved — order_number: ${orderNumber} || total_price: ${order.order_total_price} || discount: ${order.order_total_discount} || amount_paid: ${order.amount_paid}`);
 
-        const orderDetailsList = await OrderDetails.insertMany(orderDetailsPayload);
-        logger.info(`✅ Order Created Successfully — order_number: ${orderNumber} || total_items: ${orderDetailsList.length}`);
+        let orderDetailsList = [];
+        if (orderDetailsPayload.length > 0) {
+            orderDetailsList = await OrderDetails.insertMany(orderDetailsPayload);
+        }
+        logger.info(`✅ Order created successfully — Order#: ${orderNumber} | Total Items: ${orderDetailsList.length}`);
 
         return transformOrderToResponse(order, dealer, orderDetailsList);
     }),
