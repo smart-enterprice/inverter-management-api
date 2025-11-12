@@ -18,7 +18,8 @@ const PUBLIC_ROUTES = [
     '/',
     '/health',
     '/favicon.ico',
-    `${PATH_ROUTES.AUTH_ROUTE}/signin`
+    `${PATH_ROUTES.AUTH_ROUTE}/signin`,
+    PATH_ROUTES.LOCATION_ROUTE
 ];
 
 const SUPER_ADMIN_ONLY_ROUTES = [
