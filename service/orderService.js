@@ -121,7 +121,7 @@ const orderService = {
             logger.info('📦 Stocks for %s: %o', detail.product_id, stockDoc);
 
             const isProductScheme = Boolean(detail.is_product_scheme);
-            logger.info("is_product_scheme for %s: %s", product.product_id, isProductScheme);
+            logger.info("is_product_scheme for %s: %s: %s: %s", product.product_id, isProductScheme, detail.is_product_scheme, Boolean(detail.is_product_scheme));
 
             const { productionRequired, packedUsed, unpackedUsed } = await productService.checkAndReserveStock(
                 product, stockDoc, qtyOrdered, employeeId, employeeRole, orderNumber
