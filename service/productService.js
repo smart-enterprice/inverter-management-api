@@ -453,7 +453,9 @@ const productService = {
             productMap.set(p.product_id, p);
         });
 
-        stocks.forEach(s => {
+        const filteredStocks = stocks.filter(s => s.stock > 0);
+
+        filteredStocks.forEach(s => {
             productStockMap.set(s.product_id, s);
             productAvailableStockMap.set(s.product_id, s.stock); // packed + unpacked
         });

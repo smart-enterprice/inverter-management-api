@@ -80,7 +80,6 @@ stockSchema.statics.findByProductId = async function (productId) {
 
 stockSchema.statics.getAvailableStockByProductId = async function (productId) {
     const stock = await this.findOne({ product_id: productId });
-
     if (!stock) {
         return 0;
     }
