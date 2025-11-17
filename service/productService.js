@@ -438,7 +438,10 @@ const productService = {
 
         const [products, stocks] = await Promise.all([
             Product.find({ product_id: { $in: productIds } }),
-            Stock.find({ product_id: { $in: productIds } })
+            Stock.find({
+                product_id: { $in: productIds },
+                stock: { $gt: 0 }
+            })
         ]);
 
         if (!products.length) {
@@ -453,11 +456,9 @@ const productService = {
             productMap.set(p.product_id, p);
         });
 
-        const filteredStocks = stocks.filter(s => s.stock > 0);
-
-        filteredStocks.forEach(s => {
+        stocks.forEach(s => {
             productStockMap.set(s.product_id, s);
-            productAvailableStockMap.set(s.product_id, s.stock); // packed + unpacked
+            productAvailableStockMap.set(s.product_id, s.stock);
         });
 
         return { productMap, productStockMap, productAvailableStockMap };
