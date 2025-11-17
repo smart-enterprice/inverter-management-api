@@ -118,7 +118,7 @@ const orderService = {
             const stockDoc = productStockMap.get(detail.product_id);
             const qtyOrdered = Number(detail.qty_ordered);
 
-            logger.info('📦 Stocks for %s: %o', detail.product_id, stockDoc);
+            logger.info(`📦 Stocks for ${detail.product_id}, ${stockDoc}`);
 
             const isProductScheme = Boolean(detail.is_product_scheme);
             logger.info(`📦 Product: ${product.product_id} | is_product_scheme: ${detail.is_product_scheme} | Parsed: ${isProductScheme}`);
