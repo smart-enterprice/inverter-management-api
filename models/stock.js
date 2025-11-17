@@ -79,12 +79,17 @@ stockSchema.statics.findByProductId = async function (productId) {
 };
 
 stockSchema.statics.getAvailableStockByProductId = async function (productId) {
-    const stock = await this.findOne({ product_id: productId });
-    if (!stock) {
+    const stocks = await this.find(
+        { product_id: productId },
+        { stock: 1 }
+    );
+
+    if (!stocks || stocks.length === 0) {
         return 0;
     }
 
-    return stock.stock;
+    const totalStock = stocks.reduce((sum, s) => sum + (s.stock || 0), 0);
+    return totalStock;
 };
 
 const Stock = mongoose.model("Stock", stockSchema);
