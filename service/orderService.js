@@ -294,7 +294,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetails);
     }),
 
-    getAllOrders: asyncHandler(async () => {
+    getAllOrders: asyncHandler(async ({ includeRejected = false, page = 1, limit = 10 }) => {
         const filter = {};
 
         if (!includeRejected) {
