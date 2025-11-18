@@ -3,7 +3,7 @@
 import validator from 'validator';
 
 import { BadRequestException, ValidationException, UnauthorizedException } from '../middleware/CustomError.js';
-import { ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, ROLES, PRODUCT_REQUIRED_FIELDS, DEALER_DISCOUNT_REQUIRED_FIELDS, } from './constants.js';
+import { ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, ROLES, PRODUCT_REQUIRED_FIELDS, DEALER_DISCOUNT_REQUIRED_FIELDS, ALLOWED_TRANSITIONS, } from './constants.js';
 import { validatePassword } from './employeeAuth.js';
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 
@@ -119,4 +119,19 @@ export const validateDealerDiscountRequiredFields = (dto) => {
     for (const field of DEALER_DISCOUNT_REQUIRED_FIELDS) {
         if (dto[field] === null || dto[field] === undefined) throw new BadRequestException(`${field} is required`);
     }
+};
+
+export const isValidTransition = (from, to) => {
+    if (from === to) return false;
+    const allowed = ALLOWED_TRANSITIONS[from] || [];
+    return allowed.includes(to);
+};
+
+export const isRoleAllowedForApproval = (employeeRole) => {
+    const role = (employeeRole || "").toUpperCase();
+    return [
+        ROLES.ADMIN,
+        ROLES.SUPER_ADMIN,
+        ROLES.MANAGER,
+    ].includes(role);
 };

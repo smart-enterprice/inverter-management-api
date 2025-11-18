@@ -1,13 +1,12 @@
 import mongoose from "mongoose";
 import { BadRequestException } from "../middleware/CustomError.js";
+import { ORDER_STATUSES, PAYMENT_STATUSES } from "../utils/constants.js";
 
 function getISTDate() {
     const date = new Date();
     const utcOffset = 330;
     return new Date(date.getTime() + utcOffset * 60000);
 }
-
-const VALID_ORDER_STATUSES = ["PENDING", "APPROVED", "CANCELLED", "IN_PROGRESS", "DELIVERED", "PENDING_PRODUCTION"];
 
 const orderSchema = new mongoose.Schema({
     order_number: {
@@ -37,7 +36,7 @@ const orderSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        default: "PENDING",
+        default: ORDER_STATUSES.PENDING, // PENDING, CONFIRMED, PRODUCTION, PACKING, INVOICE, SHIPPED, DELIVERED, CANCELLED, REJECTED
     },
     promised_delivery_date: {
         type: Date
@@ -56,7 +55,7 @@ const orderSchema = new mongoose.Schema({
 
     payment_status: {
         type: String,
-        default: "PENDING",
+        default: PAYMENT_STATUSES.DUE, // DUE, PARTIAL, PAID, FAILED, REFUNDED
     },
     payment_type: {
         type: String,
@@ -73,7 +72,7 @@ const orderSchema = new mongoose.Schema({
     },
     amount_due: {
         type: Number,
-        default: function() {
+        default: function () {
             return this.order_total_price;
         },
         min: [0, "Amount due cannot be negative."],
@@ -93,17 +92,17 @@ const orderSchema = new mongoose.Schema({
     },
 });
 
-orderSchema.pre("save", function(next) {
+orderSchema.pre("save", function (next) {
     const istNow = getISTDate();
     if (this.isNew) this.created_at = istNow;
     this.updated_at = istNow;
 
     if (this.amount_paid === 0) {
-        this.payment_status = "PENDING";
+        this.payment_status = PAYMENT_STATUSES.DUE;
     } else if (this.amount_paid > 0 && this.amount_paid < this.order_total_price) {
-        this.payment_status = "PARTIALLY_PAID";
+        this.payment_status = PAYMENT_STATUSES.PARTIAL;
     } else if (this.amount_paid >= this.order_total_price) {
-        this.payment_status = "PAID";
+        this.payment_status = PAYMENT_STATUSES.PAID;
     }
 
     this.amount_due = Math.max(this.order_total_price - this.amount_paid, 0);
@@ -111,7 +110,7 @@ orderSchema.pre("save", function(next) {
     next();
 });
 
-orderSchema.pre('findOneAndUpdate', function(next) {
+orderSchema.pre('findOneAndUpdate', function (next) {
     this._update.updated_at = getISTDate();
     next();
 });
@@ -150,9 +149,10 @@ export default class Order extends OrderModel {
     }
 
     static async findByOrderStatus(status) {
-        if (!VALID_ORDER_STATUSES.includes(status)) {
+        if (!Object.values(ORDER_STATUSES).includes(status)) {
             throw new BadRequestException(`Invalid order status: ${status}`);
         }
+
         return await this.find({ status });
     }
 

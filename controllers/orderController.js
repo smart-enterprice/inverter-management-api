@@ -35,13 +35,23 @@ const orderController = {
     }),
 
     getAll: asyncHandler(async (req, res) => {
-        const orders = await orderService.getAllOrders();
+        const includeRejected = req.query.includeRejected === "true";
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+
+        const { orders, total } = await orderService.getAllOrders(includeRejected, page, limit);
 
         res.status(200).json({
             success: true,
             status: 200,
-            message: "📦 Order list fetched successfully!",
+            message: "Order list fetched successfully",
             data: orders,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit)
+            },
             timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),
