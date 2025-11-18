@@ -35,7 +35,7 @@ const orderController = {
     }),
 
     getAll: asyncHandler(async (req, res) => {
-        const includeRejected = req.query.includeRejected === "true";
+        const includeRejected = req.query.includeRejected === "true" ? true : false;
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
 
