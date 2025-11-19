@@ -23,14 +23,6 @@ import Product from "../models/product.js";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-function ensureAuthenticatedRole(employeeId, employeeRole) {
-    const upper = (employeeRole || "").toUpperCase();
-    if (!employeeId || !upper || !Object.values(ROLES).includes(upper)) {
-        throw new UnauthorizedException(`Access denied: only users with roles ${Object.values(ROLES).join(", ")} are authorized.`);
-    }
-    return upper;
-}
-
 function deriveOrderStatusFromDetails(details = []) {
     if (!Array.isArray(details) || details.length === 0) return ORDER_STATUSES.PENDING;
 
@@ -295,10 +287,16 @@ const orderService = {
     }),
 
     getAllOrders: asyncHandler(async ({ includeRejected = false, page = 1, limit = 10 }) => {
+        const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+
         const filter = {};
 
         if (!includeRejected) {
             filter.status = { $ne: ORDER_STATUSES.REJECTED };
+        }
+
+        if (![ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(employeeRole)) {
+            filter.created_by = employeeId;
         }
 
         const skip = (page - 1) * limit;
@@ -311,6 +309,7 @@ const orderService = {
 
             Order.countDocuments(filter)
         ]);
+
         const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
 
         const transformed = orders.map(order =>
@@ -320,8 +319,8 @@ const orderService = {
                 detailsMap[order.order_number]
             )
         );
-        return { orders: transformed, total };
 
+        return { orders: transformed, total };
     }),
 
     getByOrderStatus: asyncHandler(async (orderStatus) => {
@@ -335,6 +334,8 @@ const orderService = {
     }),
 
     getOrdersByDateFilter: asyncHandler(async ({ year, month, start_date, end_date }) => {
+        const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+
         let startDate, endDate;
 
         if (year && month) {
@@ -359,7 +360,16 @@ const orderService = {
             end: dayjs(endDate).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss"),
         });
 
-        const orders = await Order.find({ created_at: { $gte: startDate, $lte: endDate } }).sort({ created_at: -1 });
+        const filter = {
+            created_at: { $gte: startDate, $lte: endDate }
+        };
+
+        // Restrict salesman
+        if (![ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(employeeRole)) {
+            filter.created_by = employeeId;
+        }
+
+        const orders = await Order.find(filter).sort({ created_at: -1 });
         const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
 
         return orders.map((order) => transformOrderToResponse(order, dealerMap[order.dealer_id], detailsMap[order.order_number]));
@@ -372,9 +382,11 @@ const orderService = {
         const orderDetail = await OrderDetails.findOne({ order_details_number: orderDetailsId });
         if (!orderDetail) throw new BadRequestException(`No order detail found for ID: ${orderDetailsId}`);
 
-        const product = await Product.findOne({ product_id: orderDetail.product_id });
         const order = await Order.findByOrderNumber(orderDetail.order_number);
         if (!order) throw new BadRequestException(`No order found for: ${orderDetail.order_number}`);
+
+        const product = await Product.findOne({ product_id: orderDetail.product_id });
+        if (!product) throw new BadRequestException(`No product found for ID: ${orderDetail.product_id}`);
 
         const otherOrderDetails = await OrderDetails.find({
             order_number: order.order_number,
@@ -387,6 +399,9 @@ const orderService = {
             UNPACKED: unPackedQty = 0,
             PRODUCTION: productionQty = 0
         } = orderDetail.stock_flags || {};
+
+        const safeNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+        const appendNote = (text) => { orderDetail.notes = (orderDetail.notes || "") + ` | ${text}`; };
 
         if (updateDto.has_production_completed && productionQty > 0) {
             unPackedQty += productionQty;
@@ -404,9 +419,9 @@ const orderService = {
         let STOCK_RETURN_UNPACKED = 0;
 
         if (typeof updateDto.cancel_qty !== "undefined") {
-            const cancelQty = Number(updateDto.cancel_qty);
+            const cancelQty = safeNumber(updateDto.cancel_qty);
 
-            if (!Number.isFinite(cancelQty) || cancelQty <= 0) throw new BadRequestException("Cancel quantity must be greater than 0.");
+            if (cancelQty <= 0) throw new BadRequestException("Cancel quantity must be greater than 0.");
             if (cancelQty > orderDetail.qty_ordered - orderDetail.qty_delivered) {
                 throw new BadRequestException("Cancel quantity exceeds remaining orderable quantity.");
             }
@@ -414,51 +429,38 @@ const orderService = {
             orderDetail.qty_ordered -= cancelQty;
             let remaining = cancelQty;
 
+            // consume production
             if (productionQty > 0 && remaining > 0) {
-                if (productionQty >= remaining) {
-                    productionQty -= remaining;
-                    PRODUCTION = Math.max(0, PRODUCTION - remaining);
-                    remaining = 0;
-                } else {
-                    remaining -= productionQty;
-                    productionQty = 0;
-                    PRODUCTION = 0;
-                }
+                const used = Math.min(productionQty, remaining);
+                productionQty -= used;
+                PRODUCTION = Math.max(0, PRODUCTION - used);
+                remaining -= used;
             }
 
+            // consume unpacked
             if (unPackedQty > 0 && remaining > 0) {
-                if (unPackedQty >= remaining) {
-                    unPackedQty -= remaining;
-                    STOCK_RETURN_UNPACKED = remaining;
-                    UNPACKED = Math.max(0, UNPACKED - remaining);
-                    remaining = 0;
-                } else {
-                    STOCK_RETURN_UNPACKED = unPackedQty;
-                    remaining -= unPackedQty;
-                    UNPACKED = 0;
-                    unPackedQty = 0;
-                }
+                const used = Math.min(unPackedQty, remaining);
+                unPackedQty -= used;
+                STOCK_RETURN_UNPACKED += used;
+                UNPACKED = Math.max(0, UNPACKED - used);
+                remaining -= used;
             }
 
+            // consume packed
             if (remaining > 0) {
-                if (packedQty >= remaining) {
-                    packedQty -= remaining;
-                    STOCK_RETURN_PACKED = remaining;
-                    PACKED = Math.max(0, PACKED - remaining);
-                    remaining = 0;
-                } else {
-                    STOCK_RETURN_PACKED = packedQty;
-                    PACKED = 0;
-                    packedQty = 0;
-                }
+                const used = Math.min(packedQty, remaining);
+                packedQty -= used;
+                STOCK_RETURN_PACKED += used;
+                PACKED = Math.max(0, PACKED - used);
+                remaining -= used;
             }
 
-            const unitPrice = Number(orderDetail.unit_product_price || 0);
-            const unitDiscount = Number(orderDetail.dealer_discount || 0);
+            const unitPrice = safeNumber(orderDetail.unit_product_price);
+            const unitDiscount = safeNumber(orderDetail.dealer_discount);
             orderDetail.total_product_price = unitPrice * orderDetail.qty_ordered;
             orderDetail.total_dealer_discount = unitDiscount * orderDetail.qty_ordered;
             orderDetail.total_price = orderDetail.total_product_price - orderDetail.total_dealer_discount;
-            orderDetail.notes = (orderDetail.notes || "") + ` | Cancelled ${cancelQty} units`;
+            appendNote(`Cancelled ${cancelQty} units`);
         }
 
         if (STOCK_RETURN_UNPACKED > 0 || STOCK_RETURN_PACKED > 0) {
@@ -469,26 +471,26 @@ const orderService = {
                     { qty: STOCK_RETURN_PACKED, type: STOCK_TYPES.STOCK_PACKED }
                 ],
                 employeeId,
-                role: employeeRole,
+                role: upperRole,
                 orderNumber: order.order_number,
                 orderDetailsNumber: orderDetail.order_details_number
             });
         }
 
         if (typeof updateDto.delivered_qty !== "undefined") {
-            const deliveredQty = Number(updateDto.delivered_qty);
-            if (!Number.isFinite(deliveredQty) || deliveredQty <= 0) {
-                throw new BadRequestException("Delivered quantity must be a valid positive number.");
-            }
-            const deliveredDate = updateDto.delivered_date ? new Date(updateDto.delivered_date) : getISTDate();
-            if (isNaN(deliveredDate.getTime())) {
-                throw new BadRequestException("Invalid delivered_date format. Must be a valid date.");
+            const deliveredQty = safeNumber(updateDto.delivered_qty);
+            if (deliveredQty <= 0) throw new BadRequestException("Delivered quantity must be a valid positive number.");
+
+            if (deliveredQty > (orderDetail.qty_ordered - orderDetail.qty_delivered)) {
+                throw new BadRequestException("Delivered quantity exceeds remaining undelivered quantity.");
             }
 
-            orderDetail.qty_delivered += deliveredQty;
+            const deliveredDate = updateDto.delivered_date ? new Date(updateDto.delivered_date) : getISTDate();
+            if (isNaN(deliveredDate.getTime())) throw new BadRequestException("Invalid delivered_date format. Must be a valid date.");
+
+            orderDetail.qty_delivered = (orderDetail.qty_delivered || 0) + deliveredQty;
             orderDetail.delivery_date = deliveredDate;
-            const formattedDate = deliveredDate.toISOString().split("T")[0];
-            orderDetail.notes = (orderDetail.notes || "") + ` | Delivered ${deliveredQty} unit(s) on ${formattedDate}`;
+            appendNote(`Delivered ${deliveredQty} unit(s) on ${deliveredDate.toISOString().split("T")[0]}`);
         }
 
         orderDetail.stock_flags = {
@@ -500,8 +502,12 @@ const orderService = {
         };
 
         if (updateDto.status) {
-            const requested = updateDto.status.toUpperCase();
+            const requested = String(updateDto.status).toUpperCase();
             if (!Object.values(ORDER_STATUSES).includes(requested)) throw new BadRequestException(`Invalid status: ${requested}`);
+
+            if ((orderDetail.stock_flags.hasProduction || orderDetail.stock_flags.hasUnpacked) && requested !== ORDER_STATUSES.CANCELLED) {
+                throw new BadRequestException("Cannot manually change item status while production or unpacked stock remains.");
+            }
 
             if (!isValidTransition(orderDetail.status, requested) && requested !== ORDER_STATUSES.CANCELLED) {
                 if (!(requested === ORDER_STATUSES.DELIVERED && orderDetail.qty_ordered === orderDetail.qty_delivered)) {
@@ -510,9 +516,18 @@ const orderService = {
             } else {
                 orderDetail.status = requested;
             }
+        } else {
+            if (packedQty > 0 && unPackedQty === 0 && productionQty === 0) {
+                if (isValidTransition(orderDetail.status, ORDER_STATUSES.PACKING) || orderDetail.status === ORDER_STATUSES.PACKING) {
+                    orderDetail.status = ORDER_STATUSES.PACKING;
+                }
+            }
         }
 
-        if (orderDetail.qty_ordered === orderDetail.qty_delivered) {
+        if (orderDetail.qty_ordered === 0 && orderDetail.qty_delivered === 0) {
+            orderDetail.status = ORDER_STATUSES.CANCELLED;
+        }
+        else if (orderDetail.qty_ordered === orderDetail.qty_delivered) {
             orderDetail.status = ORDER_STATUSES.DELIVERED;
             orderDetail.delivery_date = getISTDate();
         } else if (orderDetail.stock_flags.hasProduction || orderDetail.stock_flags.hasUnpacked) {
@@ -525,41 +540,39 @@ const orderService = {
 
         if (orderDetail.qty_ordered !== 0 && orderDetail.qty_ordered !== orderDetail.qty_delivered) {
             const remainingQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
-            const currentDate = new Date().toISOString().split("T")[0];
-            orderDetail.notes = (orderDetail.notes || "") + ` | Pending delivery: ${remainingQty} unit(s) as of ${currentDate}`;
+            const today = new Date().toISOString().split("T")[0];
+            const note = `Pending delivery: ${remainingQty} unit(s) as of ${today}`;
+            if (!orderDetail.notes?.includes(note)) {
+                appendNote(note);
+            }
         }
 
         await orderDetail.save();
 
         if (typeof updateDto.cancel_qty !== "undefined") {
             const allOrderDetails = [orderDetail, ...otherOrderDetails];
-
-            order.order_total_price = allOrderDetails
-                .filter(od => !od.is_free)
-                .reduce((sum, od) => sum + (od.total_price || 0), 0);
-
-            order.order_total_discount = allOrderDetails
-                .filter(od => !od.is_free)
-                .reduce((sum, od) => sum + (od.total_dealer_discount || 0), 0);
+            order.order_total_price = allOrderDetails.filter(od => !od.is_free).reduce((s, od) => s + (od.total_price || 0), 0);
+            order.order_total_discount = allOrderDetails.filter(od => !od.is_free).reduce((s, od) => s + (od.total_dealer_discount || 0), 0);
 
             product.available_stock = await productService.calculateAvailableStock(product.product_id);
             await product.save();
+            await order.save();
         }
 
         const updatedDetails = await OrderDetails.find({ order_number: order.order_number });
-        const derivedOrderStatus = deriveOrderStatusFromDetails(updatedDetails);
+        let derivedOrderStatus = deriveOrderStatusFromDetails(updatedDetails);
 
         if ([ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(derivedOrderStatus)) {
             if (!canMoveOrderToInvoice(updatedDetails)) {
-                order.status = deriveOrderStatusFromDetails(updatedDetails);
-            } else {
-                order.status = derivedOrderStatus;
+                derivedOrderStatus = deriveOrderStatusFromDetails(updatedDetails); // keeps PRODUCTION/PACKING priority
             }
+        }
+
+        if (allDetailsDelivered(updatedDetails)) {
+            order.status = ORDER_STATUSES.COMPLETED;
         } else {
             order.status = derivedOrderStatus;
         }
-
-        if (allDetailsDelivered(updatedDetails)) order.status = ORDER_STATUSES.COMPLETED;
 
         await order.save();
 
@@ -606,26 +619,23 @@ const orderService = {
             const orderDetailsList = await OrderDetails.find({ order_details_number: { $in: detailIds } });
             const orderDetailMap = Object.fromEntries(orderDetailsList.map(od => [od.order_details_number, od]));
 
-
             for (const dto of order_details) {
-                const orderDetail = orderDetailMap[dto.order_details_number];
-                if (orderDetail) {
-                    await orderService.updateOrderDetailStatus(orderDetail.order_details_number, dto);
-                }
+                const od = orderDetailMap[dto.order_details_number];
+                if (od) await orderService.updateOrderDetailStatus(od.order_details_number, dto);
             }
         }
 
         const updatedOrderDetails = await OrderDetails.find({ order_number: orderNumber });
 
         if (status) {
-            const normalized = status.toUpperCase();
+            const normalized = String(status).toUpperCase();
             if (!Object.values(ORDER_STATUSES).includes(normalized)) throw new BadRequestException(`Invalid order status: ${normalized}`);
 
             const prev = order.status;
 
             if (prev === normalized) {
                 logger.info(`Order ${orderNumber} is already in status '${prev}'. No update needed.`);
-            } else if (prev === ORDER_STATUSES.DELIVERED || prev === ORDER_STATUSES.CANCELLED) {
+            } else if ([ORDER_STATUSES.DELIVERED, ORDER_STATUSES.CANCELLED].includes(prev)) {
                 throw new BadRequestException(`Order ${orderNumber} is already '${prev}' and cannot be updated.`);
             } else if (normalized === ORDER_STATUSES.REJECTED) {
                 if (prev !== ORDER_STATUSES.PENDING) throw new BadRequestException("REJECTED is only allowed from PENDING.");
@@ -639,13 +649,13 @@ const orderService = {
                     d.status = ORDER_STATUSES.CANCELLED;
                     await d.save();
                 }
-
                 order.order_total_discount = 0;
                 order.order_total_price = 0;
                 order.status = ORDER_STATUSES.CANCELLED;
                 await order.save();
                 return transformOrderToResponse(order, null, updatedOrderDetails);
             } else {
+                // disallow moving to INVOICE+ if any detail is PRODUCTION/PACKING
                 if ([ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(normalized)) {
                     if (!canMoveOrderToInvoice(updatedOrderDetails)) {
                         throw new BadRequestException(`Cannot move order to '${normalized}' while one or more details are in PRODUCTION or PACKING.`);
@@ -655,13 +665,11 @@ const orderService = {
                 order.status = normalized;
             }
         } else {
-            const derived = deriveOrderStatusFromDetails(updatedOrderDetails);
-
+            let derived = deriveOrderStatusFromDetails(updatedOrderDetails);
             if (derived === ORDER_STATUSES.INVOICE && !canMoveOrderToInvoice(updatedOrderDetails)) {
-                order.status = deriveOrderStatusFromDetails(updatedOrderDetails); // will return PRODUCTION or PACKING
-            } else {
-                order.status = derived;
+                derived = deriveOrderStatusFromDetails(updatedOrderDetails); // remain PRODUCTION/PACKING
             }
+            order.status = derived;
         }
 
         if (allDetailsDelivered(updatedOrderDetails)) order.status = ORDER_STATUSES.COMPLETED;

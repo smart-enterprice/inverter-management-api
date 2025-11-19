@@ -83,11 +83,13 @@ export const validateMainRoleAccess = () => {
 
 export const getAuthenticatedEmployeeContext = () => {
     const employeeId = CurrentRequestContext.getEmployeeId();
-    const employeeRole = CurrentRequestContext.getRole();
+    const employee_role = CurrentRequestContext.getRole();
+    const employeeRole = (employee_role || "").toUpperCase();
 
     console.log(`roles : ${employeeId} :: ${employeeRole}`);
-    if (!employeeId || !employeeRole) {
-        throw new UnauthorizedException(`You do not have permission to perform this action. Allowed roles: ${Object.values(ROLES).join(', ')}`);
+    if (!employeeId || !employeeRole || !Object.values(ROLES).includes(employeeRole)
+    ) {
+        throw new UnauthorizedException(`Access denied: only users with roles ${Object.values(ROLES).join(", ")} are authorized.`);
     }
 
     return { employeeId, employeeRole };
