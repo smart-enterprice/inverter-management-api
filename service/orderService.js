@@ -23,14 +23,6 @@ import Product from "../models/product.js";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-function ensureAuthenticatedRole(employeeId, employeeRole) {
-    const upper = (employeeRole || "").toUpperCase();
-    if (!employeeId || !upper || !Object.values(ROLES).includes(upper)) {
-        throw new UnauthorizedException(`Access denied: only users with roles ${Object.values(ROLES).join(", ")} are authorized.`);
-    }
-    return upper;
-}
-
 function deriveOrderStatusFromDetails(details = []) {
     if (!Array.isArray(details) || details.length === 0) return ORDER_STATUSES.PENDING;
 
@@ -295,10 +287,16 @@ const orderService = {
     }),
 
     getAllOrders: asyncHandler(async ({ includeRejected = false, page = 1, limit = 10 }) => {
+        const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+
         const filter = {};
 
         if (!includeRejected) {
             filter.status = { $ne: ORDER_STATUSES.REJECTED };
+        }
+
+        if (![ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(employeeRole)) {
+            filter.created_by = employeeId;
         }
 
         const skip = (page - 1) * limit;
@@ -311,6 +309,7 @@ const orderService = {
 
             Order.countDocuments(filter)
         ]);
+
         const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
 
         const transformed = orders.map(order =>
@@ -320,8 +319,8 @@ const orderService = {
                 detailsMap[order.order_number]
             )
         );
-        return { orders: transformed, total };
 
+        return { orders: transformed, total };
     }),
 
     getByOrderStatus: asyncHandler(async (orderStatus) => {
@@ -335,6 +334,8 @@ const orderService = {
     }),
 
     getOrdersByDateFilter: asyncHandler(async ({ year, month, start_date, end_date }) => {
+        const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+
         let startDate, endDate;
 
         if (year && month) {
@@ -359,7 +360,16 @@ const orderService = {
             end: dayjs(endDate).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss"),
         });
 
-        const orders = await Order.find({ created_at: { $gte: startDate, $lte: endDate } }).sort({ created_at: -1 });
+        const filter = {
+            created_at: { $gte: startDate, $lte: endDate }
+        };
+
+        // Restrict salesman
+        if (![ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(employeeRole)) {
+            filter.created_by = employeeId;
+        }
+
+        const orders = await Order.find(filter).sort({ created_at: -1 });
         const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
 
         return orders.map((order) => transformOrderToResponse(order, dealerMap[order.dealer_id], detailsMap[order.order_number]));
