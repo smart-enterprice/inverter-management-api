@@ -462,74 +462,86 @@ const productService = {
 
     checkAndReserveStock: asyncHandler(async (product, stockDoc, requiredQty, employeeId, role, orderNumber) => {
         if (requiredQty <= 0) throw new BadRequestException('Ordered quantity must be greater than 0.');
-        // if (!stockDoc && !stockDoc.save) throw new BadRequestException('Invalid stock document supplied.');
+        if (!stockDoc) {
+            return {
+                availableStockUsed: 0,
+                packedUsed: 0,
+                unpackedUsed: 0,
+                productionRequired: requiredQty
+            };
+        }
 
         let remaining = requiredQty;
-        const prevPacked = stockDoc.packed_stock;
-        const prevUnpacked = stockDoc.unpacked_stock;
+
+        const initialPacked = stockDoc.packed_stock || 0;
+        const initialUnpacked = stockDoc.unpacked_stock || 0;
 
         let packedUsed = 0;
         let unpackedUsed = 0;
-        let productionRequired = 0;
 
-        if (stockDoc.packed_stock > 0) {
-            const used = Math.min(stockDoc.packed_stock, remaining);
-            stockDoc.packed_stock -= used;
-            packedUsed = used;
-            remaining -= used;
+        if (initialPacked > 0) {
+            packedUsed = Math.min(initialPacked, remaining);
+            stockDoc.packed_stock -= packedUsed;
+            remaining -= packedUsed;
         }
 
-        if (remaining > 0 && stockDoc.unpacked_stock > 0) {
-            const used = Math.min(stockDoc.unpacked_stock, remaining);
-            stockDoc.unpacked_stock -= used;
-            unpackedUsed = used;
-            remaining -= used;
+        if (remaining > 0 && initialUnpacked > 0) {
+            unpackedUsed = Math.min(initialUnpacked, remaining);
+            stockDoc.unpacked_stock -= unpackedUsed;
+            remaining -= unpackedUsed;
         }
 
-        if (remaining > 0) productionRequired = remaining;
+        const productionRequired = Math.max(remaining, 0);
 
         stockDoc.stock = stockDoc.packed_stock + stockDoc.unpacked_stock;
         await stockDoc.save();
 
         const dateNow = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
-        const historyPromises = [];
-        if (packedUsed > 0) {
-            historyPromises.push(logStockHistory({
-                productId: product.product_id,
-                orderNumber,
-                action: STOCK_ACTIONS.STOCK_SALE,
-                stockType: STOCK_TYPES.STOCK_PACKED,
-                quantity: packedUsed,
-                previousStock: prevPacked,
-                newStock: stockDoc.packed_stock,
-                notes: `Sale PACKED order:${orderNumber} product:${product.product_id} qty:${packedUsed} date:${dateNow}`,
-                employeeId
-            }));
-        }
+        const historyEntries = [
+            {
+                used: packedUsed,
+                type: STOCK_TYPES.STOCK_PACKED,
+                prev: initialPacked,
+                curr: stockDoc.packed_stock,
+                label: "PACKED"
+            },
+            {
+                used: unpackedUsed,
+                type: STOCK_TYPES.STOCK_UNPACKED,
+                prev: initialUnpacked,
+                curr: stockDoc.unpacked_stock,
+                label: "UNPACKED"
+            }
+        ];
 
-        if (unpackedUsed > 0) {
-            historyPromises.push(logStockHistory({
-                productId: product.product_id,
-                orderNumber,
-                action: STOCK_ACTIONS.STOCK_SALE,
-                stockType: STOCK_TYPES.STOCK_UNPACKED,
-                quantity: unpackedUsed,
-                previousStock: prevUnpacked,
-                newStock: stockDoc.unpacked_stock,
-                notes: `Sale UNPACKED order:${orderNumber} product:${product.product_id} qty:${unpackedUsed} date:${dateNow}`,
-                employeeId
-            }));
-        }
-
-        await Promise.all(historyPromises);
+        await Promise.all(
+            historyEntries
+                .filter(h => h.used > 0)
+                .map(h => logStockHistory({
+                    productId: product.product_id,
+                    orderNumber,
+                    action: STOCK_ACTIONS.STOCK_SALE,
+                    stockType: h.type,
+                    quantity: h.used,
+                    previousStock: h.prev,
+                    newStock: h.curr,
+                    notes: `Sale ${h.label} order:${orderNumber} product:${product.product_id} qty:${h.used} date:${dateNow}`,
+                    employeeId
+                }))
+        );
 
         product.available_stock = await productService.calculateAvailableStock(product.product_id);
         await product.save();
 
         logger.info(`Stock updated product: ${product.product_id} packed: ${packedUsed} unpacked: ${unpackedUsed} production: ${productionRequired}`);
 
-        return { availableStockUsed: packedUsed + unpackedUsed, productionRequired, packedUsed, unpackedUsed };
+        return {
+            availableStockUsed: packedUsed + unpackedUsed,
+            packedUsed,
+            unpackedUsed,
+            productionRequired
+        };
     }),
 
     getAllBrands: asyncHandler(async ({ dealerId = "all", status = "all" }) => {
