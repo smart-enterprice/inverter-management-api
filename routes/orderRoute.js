@@ -21,7 +21,7 @@ router.get('/status/:orderStatus', orderController.getByOrderStatus);
 // @route   PUT
 router.put('/:orderDetailsId', orderController.updateOrderDetailStatus);
 router.put('/order/:orderNumber', orderController.updateMultipleOrderDetailsStatus);
-
+router.put('/status/:orderNumber', orderController.updateOrderStatus);
 // router.put('/:orderId', orderController.updateProduct);
 
 export default router;
