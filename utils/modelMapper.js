@@ -48,7 +48,7 @@ const ORDER_DETAILS_RESPONSE_FIELDS = [
     'product_model', 'product_type', 'qty_ordered', 'qty_delivered', 'delivery_date', 'notes',
     'unit_product_price', 'total_product_price', 'is_free', 'dealer_discount',
     'stock_usage', 'stock_flags', 'total_dealer_discount', 'total_price', 'status',
-    'created_at', 'updated_at'
+    'total_cancelled_qty', 'cancellation_history', 'created_at', 'updated_at'
 ];
 
 const DEALER_DISCOUNT_RESPONSE_FIELDS = [

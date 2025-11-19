@@ -462,7 +462,7 @@ const productService = {
 
     checkAndReserveStock: asyncHandler(async (product, stockDoc, requiredQty, employeeId, role, orderNumber) => {
         if (requiredQty <= 0) throw new BadRequestException('Ordered quantity must be greater than 0.');
-        if (!stockDoc || !stockDoc.save) throw new BadRequestException('Invalid stock document supplied.');
+        // if (!stockDoc && !stockDoc.save) throw new BadRequestException('Invalid stock document supplied.');
 
         let remaining = requiredQty;
         const prevPacked = stockDoc.packed_stock;
