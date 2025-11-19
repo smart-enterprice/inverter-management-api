@@ -15,7 +15,7 @@ import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../utils/ge
 import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";
 import { getAuthenticatedEmployeeContext, isValidTransition, sanitizeInput } from "../utils/validationUtils.js";
 
-import { APPROVAL_GRANTED_ROLES, getISTDate, ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIELDS, ORDER_REQUIRED_FIELDS, ROLES, STOCK_ACTIONS, STOCK_TYPES, ORDER_STATUSES, PAYMENT_STATUSES, CANCELLABLE_STATUSES } from "../utils/constants.js";
+import { APPROVAL_GRANTED_ROLES, getISTDate, ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIELDS, ORDER_REQUIRED_FIELDS, ROLES, STOCK_ACTIONS, STOCK_TYPES, ORDER_STATUSES, PAYMENT_STATUSES, CANCELLABLE_STATUSES, ADMIN_PRIVILEGED_ROLES } from "../utils/constants.js";
 import { mapOrderDetailEntityToResponse, transformOrderToResponse } from "../utils/modelMapper.js";
 import { productService, saveOrUpdateStockTransaction } from "./productService.js";
 import Product from "../models/product.js";
