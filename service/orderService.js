@@ -136,7 +136,6 @@ export const fetchDealerAndOrderDetails = async (orders) => {
 const orderService = {
     createOrder: asyncHandler(async (dto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
-        const upperRole = employeeRole?.toUpperCase();
 
         if (!employeeId || !employeeRole || !Object.values(ORDER_CREATOR_ROLES).includes(employeeRole.toUpperCase())) {
             throw new UnauthorizedException(`Access denied: only users with roles ${Object.values(ORDER_CREATOR_ROLES).join(', ')} are authorized to create orders.`);
@@ -234,7 +233,7 @@ const orderService = {
             if (productionRequired > 0) notes.push(`Production Required: ${productionRequired} units`);
             if (unpackedUsed > 0) notes.push(`Unpacked Required for Packing: ${unpackedUsed} units`);
 
-            const detailStatus = upperRole === ROLES.SALESMAN
+            const detailStatus = employeeRole === ROLES.SALESMAN
                 ? ORDER_STATUSES.PENDING
                 : (productionRequired > 0 || unpackedUsed > 0 ? ORDER_STATUSES.PRODUCTION : ORDER_STATUSES.PACKING);
 
@@ -262,7 +261,7 @@ const orderService = {
             orderDetailsPayload.push(orderDetails);
         }
 
-        const orderStatus = upperRole === ROLES.SALESMAN ? ORDER_STATUSES.PENDING : (hasPendingProduction ? ORDER_STATUSES.PRODUCTION : ORDER_STATUSES.PACKING);
+        const orderStatus = employeeRole === ROLES.SALESMAN ? ORDER_STATUSES.PENDING : (hasPendingProduction ? ORDER_STATUSES.PRODUCTION : ORDER_STATUSES.PACKING);
 
         order.status = orderStatus;
         order.sales_target_updated = false;
@@ -377,7 +376,6 @@ const orderService = {
 
     updateOrderDetailStatus: asyncHandler(async (orderDetailsId, updateDto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
-        const upperRole = ensureAuthenticatedRole(employeeId, employeeRole);
 
         const orderDetail = await OrderDetails.findOne({ order_details_number: orderDetailsId });
         if (!orderDetail) throw new BadRequestException(`No order detail found for ID: ${orderDetailsId}`);
@@ -481,7 +479,7 @@ const orderService = {
                     { qty: STOCK_RETURN_PACKED, type: STOCK_TYPES.STOCK_PACKED }
                 ],
                 employeeId,
-                role: upperRole,
+                role: employeeRole,
                 orderNumber: order.order_number,
                 orderDetailsNumber: orderDetail.order_details_number
             });
@@ -601,7 +599,6 @@ const orderService = {
 
     updateMultipleOrderDetailsStatus: asyncHandler(async (orderNumber, updates) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
-        ensureAuthenticatedRole(employeeId, employeeRole);
 
         if (!updates || typeof updates !== "object") throw new BadRequestException("Invalid request body.");
 
@@ -695,7 +692,6 @@ const orderService = {
 
     updateOrderStatus: asyncHandler(async (orderNumber, newStatus) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
-        const upperRole = ensureAuthenticatedRole(employeeId, employeeRole);
 
         if (!newStatus || typeof newStatus !== "string") throw new BadRequestException("Invalid newStatus provided.");
 
@@ -738,7 +734,7 @@ const orderService = {
         }
 
         if (normalized === ORDER_STATUSES.CONFIRMED) {
-            if (![ROLES.ADMIN, ROLES.SUPER_ADMIN].includes(upperRole)) {
+            if (![ROLES.ADMIN, ROLES.SUPER_ADMIN].includes(employeeRole)) {
                 throw new BadRequestException(`You are not authorized to set status to '${normalized}'.`);
             }
         }
