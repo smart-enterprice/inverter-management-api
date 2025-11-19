@@ -95,11 +95,7 @@ export async function saveOrUpdateStockTransaction({
         if (orderDetailsNumber) orderDetailsQuery.order_details_number = orderDetailsNumber;
 
         const orderDetails = await OrderDetails.find(orderDetailsQuery);
-        if (!orderDetails || orderDetails.length === 0) {
-            throw new BadRequestException(
-                `No order details found for product ${product.product_id} in order ${orderNumber}`
-            );
-        }
+        if (!orderDetails || orderDetails.length === 0) throw new BadRequestException(`No order details found for product ${product.product_id} in order ${orderNumber}`);
 
         const detailNumbers = orderDetails.map(od => od.order_details_number).join(", ");
         returnReason = `RETURN: Order #${order.order_number}; Order Details [${detailNumbers}]; Returned Qty: ${quantity}`;
