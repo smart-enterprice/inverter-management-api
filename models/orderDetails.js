@@ -100,6 +100,17 @@ const orderDetailsSchema = new mongoose.Schema({
         type: String,
         default: "PENDING",
     },
+
+    cancellation_history: [
+        {
+            cancelled_qty: { type: Number, required: true },
+            cancelled_by: { type: String, required: true },
+            cancelled_by_role: { type: String, required: true },
+            cancelled_at: { type: Date, default: Date.now },
+            reason: { type: String }
+        }
+    ],
+    total_cancelled_qty: { type: Number, default: 0 },
 }, {
     timestamps: {
         createdAt: "created_at",

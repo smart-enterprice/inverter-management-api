@@ -466,8 +466,8 @@ const orderService = {
                 cancelled_qty: cancelQty,
                 cancelled_by: employeeId,
                 cancelled_by_role: employeeRole,
-                cancelled_at: new Date(),
-                reason: updateDto.cancel_reason || "Not provided"
+                cancelled_at: getISTDate(),
+                reason: updateDto.reason_for_cancellation || "Not provided"
             });
 
             appendNote(`Cancelled ${cancelQty} units`);
@@ -500,7 +500,7 @@ const orderService = {
 
             orderDetail.qty_delivered = (orderDetail.qty_delivered || 0) + deliveredQty;
             orderDetail.delivery_date = deliveredDate;
-            appendNote(`Delivered ${deliveredQty} unit(s) on ${deliveredDate.toISOString().split("T")[0]}`);
+            appendNote(`Delivered ${deliveredQty} unit(s) on ${deliveredDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}${updateDto.delivery_note ? `, ${updateDto.delivery_note}` : ""}`);
         }
 
         orderDetail.stock_flags = {
@@ -550,8 +550,9 @@ const orderService = {
 
         if (orderDetail.qty_ordered !== 0 && orderDetail.qty_ordered !== orderDetail.qty_delivered) {
             const remainingQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
-            const today = new Date().toISOString().split("T")[0];
+            const today = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
             const note = `Pending delivery: ${remainingQty} unit(s) as of ${today}`;
+
             if (!orderDetail.notes?.includes(note)) {
                 appendNote(note);
             }
