@@ -460,6 +460,16 @@ const orderService = {
             orderDetail.total_product_price = unitPrice * orderDetail.qty_ordered;
             orderDetail.total_dealer_discount = unitDiscount * orderDetail.qty_ordered;
             orderDetail.total_price = orderDetail.total_product_price - orderDetail.total_dealer_discount;
+
+            orderDetail.total_cancelled_qty = (orderDetail.total_cancelled_qty || 0) + cancelQty;
+            orderDetail.cancellation_history.push({
+                cancelled_qty: cancelQty,
+                cancelled_by: employeeId,
+                cancelled_by_role: employeeRole,
+                cancelled_at: new Date(),
+                reason: updateDto.cancel_reason || "Not provided"
+            });
+
             appendNote(`Cancelled ${cancelQty} units`);
         }
 
@@ -655,7 +665,6 @@ const orderService = {
                 await order.save();
                 return transformOrderToResponse(order, null, updatedOrderDetails);
             } else {
-                // disallow moving to INVOICE+ if any detail is PRODUCTION/PACKING
                 if ([ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(normalized)) {
                     if (!canMoveOrderToInvoice(updatedOrderDetails)) {
                         throw new BadRequestException(`Cannot move order to '${normalized}' while one or more details are in PRODUCTION or PACKING.`);
@@ -667,7 +676,7 @@ const orderService = {
         } else {
             let derived = deriveOrderStatusFromDetails(updatedOrderDetails);
             if (derived === ORDER_STATUSES.INVOICE && !canMoveOrderToInvoice(updatedOrderDetails)) {
-                derived = deriveOrderStatusFromDetails(updatedOrderDetails); // remain PRODUCTION/PACKING
+                derived = deriveOrderStatusFromDetails(updatedOrderDetails);
             }
             order.status = derived;
         }
