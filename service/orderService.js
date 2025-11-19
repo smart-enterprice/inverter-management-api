@@ -377,6 +377,88 @@ const orderService = {
     updateOrderDetailStatus: asyncHandler(async (orderDetailsId, updateDto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
+        const safeNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+        const appendNote = (text) => { orderDetail.notes = (orderDetail.notes || "") + ` | ${text}`; };
+
+        const assertRoleAllowedToCancel = () => {
+            const allowedRoles = Object.values(ADMIN_PRIVILEGED_ROLES);
+            if (!allowedRoles.includes(employeeRole)) {
+                throw new UnauthorizedException(
+                    `Access denied. Only users with roles: ${allowedRoles.join(", ")} can cancel order items.`
+                );
+            }
+        };
+
+        const consumeStockForCancellation = (qty) => {
+            let remaining = qty;
+
+            // Production
+            if (productionQty > 0 && remaining > 0) {
+                const used = Math.min(productionQty, remaining);
+                productionQty -= used;
+                PRODUCTION = Math.max(0, PRODUCTION - used);
+                remaining -= used;
+            }
+
+            // Unpacked
+            if (unPackedQty > 0 && remaining > 0) {
+                const used = Math.min(unPackedQty, remaining);
+                unPackedQty -= used;
+                STOCK_RETURN_UNPACKED += used;
+                UNPACKED = Math.max(0, UNPACKED - used);
+                remaining -= used;
+            }
+
+            // Packed
+            if (packedQty > 0 && remaining > 0) {
+                const used = Math.min(packedQty, remaining);
+                packedQty -= used;
+                STOCK_RETURN_PACKED += used;
+                PACKED = Math.max(0, PACKED - used);
+                remaining -= used;
+            }
+        };
+
+        const handleDeliveryUpdate = () => {
+            const deliveredQty = safeNumber(updateDto.delivered_qty);
+            if (deliveredQty <= 0) {
+                throw new BadRequestException("Delivered quantity must be a valid positive number.");
+            }
+
+            if (deliveredQty > (orderDetail.qty_ordered - orderDetail.qty_delivered)) {
+                throw new BadRequestException("Delivered quantity exceeds remaining undelivered quantity.");
+            }
+
+            const deliveredDate = updateDto.delivered_date
+                ? new Date(updateDto.delivered_date)
+                : getISTDate();
+
+            if (isNaN(deliveredDate.getTime())) {
+                throw new BadRequestException("Invalid delivered_date format. Must be a valid date.");
+            }
+
+            orderDetail.qty_delivered += deliveredQty;
+            orderDetail.delivery_date = deliveredDate;
+
+            appendNote(
+                `Delivered ${deliveredQty} unit(s) on ${deliveredDate.toLocaleString("en-IN", {
+                    timeZone: "Asia/Kolkata",
+                })}${updateDto.delivery_note ? `, ${updateDto.delivery_note}` : ""}`
+            );
+        };
+
+        const addPendingNoteIfApplicable = () => {
+            const remainingQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
+            if (remainingQty <= 0) return;
+
+            const now = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+            const note = `Pending delivery: ${remainingQty} unit(s) as of ${now}`;
+
+            if (!orderDetail.notes?.includes(note)) {
+                appendNote(note);
+            }
+        };
+
         const orderDetail = await OrderDetails.findOne({ order_details_number: orderDetailsId });
         if (!orderDetail) throw new BadRequestException(`No order detail found for ID: ${orderDetailsId}`);
 
@@ -398,8 +480,8 @@ const orderService = {
             PRODUCTION: productionQty = 0
         } = orderDetail.stock_flags || {};
 
-        const safeNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-        const appendNote = (text) => { orderDetail.notes = (orderDetail.notes || "") + ` | ${text}`; };
+        let STOCK_RETURN_PACKED = 0;
+        let STOCK_RETURN_UNPACKED = 0;
 
         if (updateDto.has_production_completed && productionQty > 0) {
             unPackedQty += productionQty;
@@ -413,59 +495,33 @@ const orderService = {
             UNPACKED = 0;
         }
 
-        let STOCK_RETURN_PACKED = 0;
-        let STOCK_RETURN_UNPACKED = 0;
-
         if (typeof updateDto.cancel_qty !== "undefined") {
             const cancelQty = safeNumber(updateDto.cancel_qty);
 
             if (cancelQty <= 0) throw new BadRequestException("Cancel quantity must be greater than 0.");
-            if (cancelQty > orderDetail.qty_ordered - orderDetail.qty_delivered) {
-                throw new BadRequestException("Cancel quantity exceeds remaining orderable quantity.");
-            }
+            const remainingOrderable = orderDetail.qty_ordered - orderDetail.qty_delivered;
+            if (cancelQty > remainingOrderable) throw new BadRequestException("Cancel quantity exceeds remaining orderable quantity.");
+
+            assertRoleAllowedToCancel();
 
             orderDetail.qty_ordered -= cancelQty;
-            let remaining = cancelQty;
 
-            // consume production
-            if (productionQty > 0 && remaining > 0) {
-                const used = Math.min(productionQty, remaining);
-                productionQty -= used;
-                PRODUCTION = Math.max(0, PRODUCTION - used);
-                remaining -= used;
-            }
-
-            // consume unpacked
-            if (unPackedQty > 0 && remaining > 0) {
-                const used = Math.min(unPackedQty, remaining);
-                unPackedQty -= used;
-                STOCK_RETURN_UNPACKED += used;
-                UNPACKED = Math.max(0, UNPACKED - used);
-                remaining -= used;
-            }
-
-            // consume packed
-            if (remaining > 0) {
-                const used = Math.min(packedQty, remaining);
-                packedQty -= used;
-                STOCK_RETURN_PACKED += used;
-                PACKED = Math.max(0, PACKED - used);
-                remaining -= used;
-            }
+            consumeStockForCancellation(cancelQty);
 
             const unitPrice = safeNumber(orderDetail.unit_product_price);
             const unitDiscount = safeNumber(orderDetail.dealer_discount);
+
             orderDetail.total_product_price = unitPrice * orderDetail.qty_ordered;
             orderDetail.total_dealer_discount = unitDiscount * orderDetail.qty_ordered;
             orderDetail.total_price = orderDetail.total_product_price - orderDetail.total_dealer_discount;
 
-            orderDetail.total_cancelled_qty = (orderDetail.total_cancelled_qty || 0) + cancelQty;
+            orderDetail.total_cancelled_qty = safeNumber(orderDetail.total_cancelled_qty) + cancelQty;
             orderDetail.cancellation_history.push({
                 cancelled_qty: cancelQty,
                 cancelled_by: employeeId,
                 cancelled_by_role: employeeRole,
                 cancelled_at: getISTDate(),
-                reason: updateDto.reason_for_cancellation || "Not provided"
+                reason: updateDto.reason_for_cancellation || "Not provided",
             });
 
             appendNote(`Cancelled ${cancelQty} units`);
@@ -486,19 +542,7 @@ const orderService = {
         }
 
         if (typeof updateDto.delivered_qty !== "undefined") {
-            const deliveredQty = safeNumber(updateDto.delivered_qty);
-            if (deliveredQty <= 0) throw new BadRequestException("Delivered quantity must be a valid positive number.");
-
-            if (deliveredQty > (orderDetail.qty_ordered - orderDetail.qty_delivered)) {
-                throw new BadRequestException("Delivered quantity exceeds remaining undelivered quantity.");
-            }
-
-            const deliveredDate = updateDto.delivered_date ? new Date(updateDto.delivered_date) : getISTDate();
-            if (isNaN(deliveredDate.getTime())) throw new BadRequestException("Invalid delivered_date format. Must be a valid date.");
-
-            orderDetail.qty_delivered = (orderDetail.qty_delivered || 0) + deliveredQty;
-            orderDetail.delivery_date = deliveredDate;
-            appendNote(`Delivered ${deliveredQty} unit(s) on ${deliveredDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}${updateDto.delivery_note ? `, ${updateDto.delivery_note}` : ""}`);
+            handleDeliveryUpdate();
         }
 
         orderDetail.stock_flags = {
@@ -513,17 +557,19 @@ const orderService = {
             const requested = String(updateDto.status).toUpperCase();
             if (!Object.values(ORDER_STATUSES).includes(requested)) throw new BadRequestException(`Invalid status: ${requested}`);
 
-            if ((orderDetail.stock_flags.hasProduction || orderDetail.stock_flags.hasUnpacked) && requested !== ORDER_STATUSES.CANCELLED) {
-                throw new BadRequestException("Cannot manually change item status while production or unpacked stock remains.");
-            }
+            const hasRemainingProcesses =
+                orderDetail.stock_flags.hasProduction || orderDetail.stock_flags.hasUnpacked;
 
-            if (!isValidTransition(orderDetail.status, requested) && requested !== ORDER_STATUSES.CANCELLED) {
-                if (!(requested === ORDER_STATUSES.DELIVERED && orderDetail.qty_ordered === orderDetail.qty_delivered)) {
-                    throw new BadRequestException(`Invalid status transition for order detail: ${orderDetail.status} → ${requested}`);
-                }
-            } else {
-                orderDetail.status = requested;
+            if (hasRemainingProcesses && requested !== ORDER_STATUSES.CANCELLED) throw new BadRequestException("Cannot manually change item status while production or unpacked stock remains.");
+
+            if (!isValidTransition(orderDetail.status, requested)) {
+                const canForceDelivered =
+                    requested === ORDER_STATUSES.DELIVERED &&
+                    orderDetail.qty_ordered === orderDetail.qty_delivered;
+
+                if (!canForceDelivered) throw new BadRequestException(`Invalid status transition for order detail: ${orderDetail.status} → ${requested}`);
             }
+            orderDetail.status = requested;
         } else {
             if (packedQty > 0 && unPackedQty === 0 && productionQty === 0) {
                 if (isValidTransition(orderDetail.status, ORDER_STATUSES.PACKING) || orderDetail.status === ORDER_STATUSES.PACKING) {
@@ -546,24 +592,23 @@ const orderService = {
             orderDetail.status = ORDER_STATUSES.PENDING;
         }
 
-        if (orderDetail.qty_ordered !== 0 && orderDetail.qty_ordered !== orderDetail.qty_delivered) {
-            const remainingQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
-            const today = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-            const note = `Pending delivery: ${remainingQty} unit(s) as of ${today}`;
-
-            if (!orderDetail.notes?.includes(note)) {
-                appendNote(note);
-            }
-        }
+        addPendingNoteIfApplicable();
 
         await orderDetail.save();
 
         if (typeof updateDto.cancel_qty !== "undefined") {
-            const allOrderDetails = [orderDetail, ...otherOrderDetails];
-            order.order_total_price = allOrderDetails.filter(od => !od.is_free).reduce((s, od) => s + (od.total_price || 0), 0);
-            order.order_total_discount = allOrderDetails.filter(od => !od.is_free).reduce((s, od) => s + (od.total_dealer_discount || 0), 0);
+            const allDetails = [orderDetail, ...otherOrderDetails];
+
+            order.order_total_price = allDetails
+                .filter((od) => !od.is_free)
+                .reduce((sum, od) => sum + safeNumber(od.total_price), 0);
+
+            order.order_total_discount = allDetails
+                .filter((od) => !od.is_free)
+                .reduce((sum, od) => sum + safeNumber(od.total_dealer_discount), 0);
 
             product.available_stock = await productService.calculateAvailableStock(product.product_id);
+
             await product.save();
             await order.save();
         }
@@ -577,11 +622,9 @@ const orderService = {
             }
         }
 
-        if (allDetailsDelivered(updatedDetails)) {
-            order.status = ORDER_STATUSES.COMPLETED;
-        } else {
-            order.status = derivedOrderStatus;
-        }
+        order.status = allDetailsDelivered(updatedDetails)
+            ? ORDER_STATUSES.COMPLETED
+            : derivedStatus;
 
         await order.save();
 
