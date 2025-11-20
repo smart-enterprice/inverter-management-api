@@ -10,6 +10,7 @@ const productController = {
 
     createProduct: asyncHandler(async (req, res) => {
         const productData = await productService.createProduct(req.body);
+        
         res.status(201).json({
             success: true,
             status: 201,
