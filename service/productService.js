@@ -80,7 +80,8 @@ export async function saveOrUpdateStockTransaction({
         throw new BadRequestException("Quantity must be greater than 0 for stock transaction.");
     }
 
-    let returnReason = "";
+    let returnNote = "";
+
     if (action === STOCK_ACTIONS.STOCK_RETURN) {
         if (!orderNumber || typeof orderNumber !== "string") {
             throw new BadRequestException("Order number is required for RETURN.");
@@ -91,61 +92,73 @@ export async function saveOrUpdateStockTransaction({
             throw new BadRequestException(`No order found with number: ${orderNumber}`);
         }
 
-        const orderDetailsQuery = { order_number: orderNumber, product_id: product.product_id };
-        if (orderDetailsNumber) orderDetailsQuery.order_details_number = orderDetailsNumber;
+        const query = { order_number: orderNumber, product_id: product.product_id };
+        if (orderDetailsNumber) query.order_details_number = orderDetailsNumber;
 
-        const orderDetails = await OrderDetails.find(orderDetailsQuery);
+        const orderDetails = await OrderDetails.find(query);
         if (!orderDetails || orderDetails.length === 0) throw new BadRequestException(`No order details found for product ${product.product_id} in order ${orderNumber}`);
 
-        const detailNumbers = orderDetails.map(od => od.order_details_number).join(", ");
-        returnReason = `RETURN: Order #${order.order_number}; Order Details [${detailNumbers}]; Returned Qty: ${quantity}`;
+        const detailNums = orderDetails.map(d => d.order_details_number).join(", ");
+        returnNote = `RETURN: Order #${order.order_number}; Details [${detailNums}]; Returned Qty: ${quantity}`;
     }
 
     const productionNote = productionRequired > 0 ? ` | Production Required: ${productionRequired}` : "";
-    const newNote = `${action} ${orderNumber ? `(Order:${orderNumber})` : ""}${productionNote} -- Employee:${employeeId}; Role:${role}; ${returnReason}; Date:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
-    const combinedNotes = stockNotes ? `${stockNotes} || ${newNote}` : newNote;
 
-    const stock = await Stock.findOne({ product_id: product.product_id });
+    const internalNote = `${action} ${orderNumber ? `(Order:${orderNumber})` : ""}${productionNote} -- ` +
+        `Employee:${employeeId}; Role:${role}; ${returnNote}; ` +
+        `Date:${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
 
-    let previousPacked = stock?.packed_stock || 0;
-    let previousUnpacked = stock?.unpacked_stock || 0;
-    let newPacked = previousPacked;
-    let newUnpacked = previousUnpacked;
+    const combinedNotes = stockNotes
+        ? `${stockNotes} || ${internalNote}`
+        : internalNote;
 
-    if ([STOCK_ACTIONS.STOCK_RETURN, STOCK_ACTIONS.STOCK_ADD].includes(action)) {
-        if (stockType === STOCK_TYPES.STOCK_PACKED) newPacked += quantity;
-        if (stockType === STOCK_TYPES.STOCK_UNPACKED) newUnpacked += quantity;
+    const existingStock = await Stock.findOne({ product_id: product.product_id });
+
+    const previousPacked = existingStock?.packed_stock ?? 0;
+    const previousUnpacked = existingStock?.unpacked_stock ?? 0;
+
+    let updatedPacked = previousPacked;
+    let updatedUnpacked = previousUnpacked;
+
+    if ([STOCK_ACTIONS.STOCK_ADD, STOCK_ACTIONS.STOCK_RETURN].includes(action)) {
+        if (stockType === STOCK_TYPES.STOCK_PACKED) updatedPacked += quantity;
+        if (stockType === STOCK_TYPES.STOCK_UNPACKED) updatedUnpacked += quantity;
     }
 
-    const previousTotal = previousPacked + previousUnpacked;
-    const newTotal = newPacked + newUnpacked;
+    const newTotal = updatedPacked + updatedUnpacked;
 
     let stockRecord;
-    if (stock) {
-        stock.packed_stock = newPacked;
-        stock.unpacked_stock = newUnpacked;
-        stock.stock = newTotal;
-        stock.updated_at = new Date();
-        await stock.save();
+    if (existingStock) {
+        existingStock.packed_stock = updatedPacked;
+        existingStock.unpacked_stock = updatedUnpacked;
+        existingStock.stock = newTotal;
+        existingStock.updated_at = new Date();
+        await existingStock.save();
 
-        stockRecord = stock;
-        logger.info(`🔁 Updated Stock → Product:${product.product_id}, Total:${newTotal}`);
+        stockRecord = existingStock;
+        logger.info(`Updated Stock → Product:${product.product_id}, Total:${newTotal}`);
     } else {
-        const stockData = {
+        stockRecord = await Stock.create({
             stock_id: await generateUniqueStockId(),
             product_id: product.product_id,
-            packed_stock: newPacked,
-            unpacked_stock: newUnpacked,
+            packed_stock: updatedPacked,
+            unpacked_stock: updatedUnpacked,
             stock: newTotal,
-            created_by: employeeId
-        };
+            created_by: employeeId,
+        });
 
-        stockRecord = await new Stock(stockData).save();
-        logger.info(`📦 Created Stock → Product:${product.product_id}, Total:${newTotal}`);
+        logger.info(`Created Stock → Product:${product.product_id}, Total:${newTotal}`);
     }
 
-    const previousStock = stockType === STOCK_TYPES.STOCK_PACKED ? previousPacked : previousUnpacked;
-    const newStock = stockType === STOCK_TYPES.STOCK_PACKED ? newPacked : newUnpacked;
+    const previousStockValue =
+        stockType === STOCK_TYPES.STOCK_PACKED
+            ? previousPacked
+            : previousUnpacked;
+
+    const newStockValue =
+        stockType === STOCK_TYPES.STOCK_PACKED
+            ? updatedPacked
+            : updatedUnpacked;
 
     await logStockHistory({
         productId: product.product_id,
@@ -153,8 +166,8 @@ export async function saveOrUpdateStockTransaction({
         action,
         stockType,
         quantity,
-        previousStock,
-        newStock,
+        previousStock: previousStockValue,
+        newStock: newStockValue,
         notes: combinedNotes,
         employeeId
     });
@@ -176,30 +189,29 @@ const productService = {
         }
 
         const status = brandRecord.status?.toLowerCase();
-        if (status === 'inactive' || status === 'discontinued') {
+        if (["inactive", "discontinued"].includes(status)) {
             throw new BadRequestException(`Cannot create product under brand ${dto.brand} (status: ${status}).`);
         }
 
-        if (!brandRecord.brand_models.map(m => m.toUpperCase()).includes(modelInput)) {
+        const modelList = brandRecord.brand_models.map(m => m.toUpperCase());
+        if (!modelList.includes(modelInput)) {
             throw new BadRequestException(`Model ${dto.model} is not associated with brand ${dto.brand}.`);
         }
 
-        await Product.findOne({ brand: brandInput, model: modelInput })
-            .then(existent => {
-                if (existent) {
-                    throw new BadRequestException(`Product already exists: ${brandInput} / ${modelInput}`);
-                }
-            });
+        const existingProduct = await Product.findOne({ brand: brandInput, model: modelInput });
+        if (existingProduct) {
+            throw new BadRequestException(`Product already exists: ${brandInput} / ${modelInput}`);
+        }
 
         const productId = await generateUniqueProductId();
-        const product = new Product.create({
+        const product = await Product.create({
             product_id: productId,
             brand: brandInput,
             model: modelInput,
             product_type: sanitizeInput(dto.product_type),
             product_name: sanitizeInput(dto.product_name),
             available_stock: Number(dto.available_stock || 0),
-            price: dto.product_price != null ? parseFloat(dto.product_price.toFixed(2)) : null,
+            price: dto.product_price != null ? Number(dto.product_price) : 0,
             created_by: employee_id
         });
         logger.info(`✅ Product created → ID: ${productId}, Brand: ${brandInput}, Model: ${modelInput}`);
@@ -302,6 +314,7 @@ const productService = {
             for (const entry of entryArray) {
                 const action = validateStockActionType(entry.type);
                 const stockType = validateStockType(entry.stock_type);
+
                 if (typeof entry.stock !== 'number' || entry.stock <= 0) {
                     throw new BadRequestException("Stock must be a positive number.");
                 }
