@@ -13,7 +13,7 @@ import Brand from "../models/brand.js";
 import logger from "../utils/logger.js";
 import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId, generateUniqueStockHistoryId } from "../utils/generatorIds.js";
 import { BadRequestException } from "../middleware/CustomError.js";
-import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext } from "../utils/validationUtils.js";
+import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext, normalizePrice } from "../utils/validationUtils.js";
 import { mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse } from "../utils/modelMapper.js";
 import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS, ROLES } from "../utils/constants.js";
 
@@ -211,7 +211,7 @@ const productService = {
             product_type: sanitizeInput(dto.product_type),
             product_name: sanitizeInput(dto.product_name),
             available_stock: Number(dto.available_stock || 0),
-            price: dto.product_price != null ? Number(dto.product_price) : 0,
+            price: normalizePrice(dto.product_price) || 0,
             created_by: employee_id
         });
         logger.info(`✅ Product created → ID: ${productId}, Brand: ${brandInput}, Model: ${modelInput}`);
@@ -253,12 +253,12 @@ const productService = {
             }
         }
 
-        if (dto.product_price !== undefined) {
-            const priceNum = parseFloat(dto.product_price);
-            if (isNaN(priceNum) || priceNum < 0) {
+        const normalizedPrice = normalizePrice(dto.product_price);
+        if (normalizedPrice !== undefined) {
+            if (isNaN(normalizedPrice) || normalizedPrice < 0) {
                 throw new BadRequestException('Product price must be a non-negative number.');
             }
-            updates.price = Math.round(priceNum * 100) / 100;
+            updates.price = normalizedPrice;
         }
 
         if (dto.status !== undefined) {

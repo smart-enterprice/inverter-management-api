@@ -137,3 +137,13 @@ export const isRoleAllowedForApproval = (employeeRole) => {
         ROLES.MANAGER,
     ].includes(role);
 };
+
+export function normalizePrice(value) {
+    if (value === undefined || value === null) return undefined;
+
+    const num = Number(value);
+s
+    if (!Number.isFinite(num) || num < 0) return undefined;
+
+    return Math.round(num * 100) / 100;
+}
