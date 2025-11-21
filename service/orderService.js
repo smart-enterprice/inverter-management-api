@@ -13,7 +13,7 @@ import DealerDiscount from "../models/dealerDiscount.js";
 
 import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../utils/generatorIds.js";
 import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";
-import { getAuthenticatedEmployeeContext, isValidTransition, sanitizeInput } from "../utils/validationUtils.js";
+import { getAuthenticatedEmployeeContext, isValidTransition, normalizePrice, sanitizeInput } from "../utils/validationUtils.js";
 
 import { APPROVAL_GRANTED_ROLES, getISTDate, ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIELDS, ORDER_REQUIRED_FIELDS, ROLES, STOCK_ACTIONS, STOCK_TYPES, ORDER_STATUSES, PAYMENT_STATUSES, CANCELLABLE_STATUSES, ADMIN_PRIVILEGED_ROLES } from "../utils/constants.js";
 import { mapOrderDetailEntityToResponse, transformOrderToResponse } from "../utils/modelMapper.js";
@@ -197,7 +197,7 @@ const orderService = {
                 hasProduction: (productionRequired || 0) > 0
             };
 
-            const unitPrice = Number(product.price || 0);
+            const unitPrice = normalizePrice(product.price) || 0;
             let unitDiscount = 0;
 
             if (detail.discount_price && Number(detail.discount_price) > 0) {
