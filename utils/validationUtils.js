@@ -87,8 +87,7 @@ export const getAuthenticatedEmployeeContext = () => {
     const employeeRole = (employee_role || "").toUpperCase();
 
     console.log(`roles : ${employeeId} :: ${employeeRole}`);
-    if (!employeeId || !employeeRole || !Object.values(ROLES).includes(employeeRole)
-    ) {
+    if (!employeeId || !employeeRole || !Object.values(ROLES).includes(employeeRole)) {
         throw new UnauthorizedException(`Access denied: only users with roles ${Object.values(ROLES).join(", ")} are authorized.`);
     }
 
@@ -142,7 +141,7 @@ export function normalizePrice(value) {
     if (value === undefined || value === null) return undefined;
 
     const num = Number(value);
-s
+
     if (!Number.isFinite(num) || num < 0) return undefined;
 
     return Math.round(num * 100) / 100;
