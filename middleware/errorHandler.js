@@ -5,13 +5,19 @@ import { ENVIRONMENT } from '../utils/constants.js';
 import logger from '../utils/logger.js';
 
 const sendErrorResponse = (error, req, res) => {
+    const timestamp = new Date().toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+    });
+
+
     const response = {
         success: false,
         name: error.name || 'Error',
         message: error.message || 'Internal Server Error',
         statusCode: error.statusCode || 500,
+        errorCode: error.code || null,
         errors: error.errors || null,
-        timestamp: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+        timestamp,
     };
 
     if (ENVIRONMENT === 'development' && error.stack) {
@@ -20,8 +26,10 @@ const sendErrorResponse = (error, req, res) => {
 
     logger.error(`${response.name}: ${response.message}`, {
         method: req.method,
-        path: req.originalUrl,
+        url: req.originalUrl,
         statusCode: response.statusCode,
+        ip: req.ip,
+        errorCode: response.errorCode,
         stack: error.stack,
     });
 
@@ -29,18 +37,24 @@ const sendErrorResponse = (error, req, res) => {
 };
 
 export const handleRateLimitError = (req, res, next, options) => {
+    const timestamp = new Date().toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata'
+    });
+
     logger.warn('Rate limit exceeded', { ip: req.ip, url: req.originalUrl });
 
-    const retryAfter = options?.standardHeaders
-        ? res.getHeader('Retry-After') || 3600
-        : 3600;
+    let retryAfter = 3600;
+    if (options && options.standardHeaders) {
+        retryAfter = res.getHeader('Retry-After') || 3600;
+    }
 
     res.status(429).json({
         success: false,
         statusCode: 429,
+        errorCode: 'ERR_RATE_LIMIT',
         message: 'Too many requests. Please try again later.',
         retryAfter,
-        timestamp: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+        timestamp,
     });
 };
 
@@ -50,8 +64,11 @@ export const globalErrorHandler = (err, req, res, next) => {
     if (!(error instanceof CustomException)) {
         const message = error.message || 'Internal Server Error';
         const statusCode = error.statusCode || 500;
-        error = new CustomException(message, statusCode);
-        error.stack = err.stack;
+
+        const convertedError = new CustomException(message, statusCode, null, error.code);
+        convertedError.stack = error.stack;
+
+        error = convertedError;
     }
 
     sendErrorResponse(error, req, res);
