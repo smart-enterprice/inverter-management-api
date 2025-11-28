@@ -33,7 +33,7 @@ const ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES = [
 
 const isRouteMatch = (url, routes) => routes.some(route => url.startsWith(route));
 
-export const requestContextMiddleware = async (req, res, next) => {
+export const requestContextMiddleware = async(req, res, next) => {
     try {
         const { originalUrl, headers } = req;
 
@@ -41,7 +41,7 @@ export const requestContextMiddleware = async (req, res, next) => {
         if (isRouteMatch(originalUrl, PUBLIC_ROUTES)) return next();
 
         const authHeader = headers.authorization;
-        if (!authHeader?.startsWith('Bearer ')) {
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
             throw new UnauthorizedException('Authorization token missing or malformed');
         }
 
@@ -82,14 +82,14 @@ export const requestContextMiddleware = async (req, res, next) => {
 
         // Role-based route restrictions
         if (isRouteMatch(originalUrl, SUPER_ADMIN_ONLY_ROUTES) && role !== ROLES.SUPER_ADMIN) {
-            throw new UnauthorizedException('Access restricted to Super Admins only');
+            throw new ForbiddenException('Access restricted to Super Admins only');
         }
 
         if (
             isRouteMatch(originalUrl, ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES) &&
             !Object.values(APPROVAL_GRANTED_ROLES).includes(role)
         ) {
-            throw new UnauthorizedException('Access restricted to Admins or Super Admins');
+            throw new ForbiddenException('Access restricted to Admins or Super Admins');
         }
 
         // Set context and user data

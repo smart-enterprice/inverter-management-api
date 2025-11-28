@@ -12,6 +12,7 @@ import { CurrentRequestContext } from "../utils/CurrentRequestContext.js";
 import {
     BadRequestException,
     ConflictException,
+    ForbiddenException,
     NotFoundException,
     UnauthorizedException
 } from '../middleware/CustomError.js';
@@ -34,12 +35,12 @@ import Brand from "../models/brand.js";
 import DealerDiscount from "../models/dealerDiscount.js";
 import Product from "../models/product.js";
 
-const checkExistingEmployee = async (email, phone, excludeId = null) => {
+const checkExistingEmployee = async(email, phone, excludeId = null) => {
     const query = excludeId ? { _id: { $ne: excludeId } } : {};
 
     const [existingEmail, existingPhone] = await Promise.all([
-        employeeSchema.findOne({ ...query, employee_email: email }),
-        employeeSchema.findOne({ ...query, employee_phone: phone })
+        employeeSchema.findOne({...query, employee_email: email }),
+        employeeSchema.findOne({...query, employee_phone: phone })
     ]);
 
     const errors = [];
@@ -51,7 +52,7 @@ const checkExistingEmployee = async (email, phone, excludeId = null) => {
     }
 };
 
-const findActiveEmployee = async (employeeId, includePassword = false) => {
+const findActiveEmployee = async(employeeId, includePassword = false) => {
     const query = employeeSchema.findOne({ employee_id: employeeId, status: 'active' });
     if (includePassword) query.select('+password');
 
@@ -100,7 +101,7 @@ async function checkIfDiscountExists(brand, model, dealerId) {
 };
 
 const employeeService = {
-    defaultSuperAdminSetup: asyncHandler(async () => {
+    defaultSuperAdminSetup: asyncHandler(async() => {
         if (!SUPER_ADMIN || !SUPER_ADMIN_PHONE || !SUPER_ADMIN_EMAIL || !SUPER_ADMIN_PASSWORD) {
             throw new BadRequestException("Missing required SUPER_ADMIN environment variables.");
         }
@@ -139,9 +140,9 @@ const employeeService = {
         logger.info("✅ Default Super Admin created successfully.");
     }),
 
-    createEmployee: asyncHandler(async (employeeRequest, createdByEmployeeId) => {
+    createEmployee: asyncHandler(async(employeeRequest, createdByEmployeeId) => {
         if (!createdByEmployeeId) {
-            throw new UnauthorizedException('You are not authorized to create an employee.');
+            throw new ForbiddenException('You are not authorized to create an employee.');
         }
 
         validateEmployeeData(employeeRequest);
@@ -190,7 +191,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(newEmployee);
     }),
 
-    loginEmployee: asyncHandler(async (loginRequest) => {
+    loginEmployee: asyncHandler(async(loginRequest) => {
         const { employee_email, password } = loginRequest;
 
         if (!employee_email || !password) {
@@ -234,7 +235,7 @@ const employeeService = {
         };
     }),
 
-    getEmployeeById: asyncHandler(async (employeeId) => {
+    getEmployeeById: asyncHandler(async(employeeId) => {
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
         }
@@ -252,7 +253,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(employee);
     }),
 
-    getAllEmployeeByRole: asyncHandler(async (employeeRole) => {
+    getAllEmployeeByRole: asyncHandler(async(employeeRole) => {
         if (!employeeRole) {
             throw new BadRequestException("Employee role is required");
         }
@@ -271,7 +272,7 @@ const employeeService = {
         return employees.map(mapEmployeeEntityToResponse);
     }),
 
-    getProfile: asyncHandler(async () => {
+    getProfile: asyncHandler(async() => {
         const employeeId = CurrentRequestContext.getEmployeeId();
 
         if (!employeeId) {
@@ -290,7 +291,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(employee);
     }),
 
-    updateEmployee: asyncHandler(async (employeeId, updateData) => {
+    updateEmployee: asyncHandler(async(employeeId, updateData) => {
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
         }
@@ -321,14 +322,12 @@ const employeeService = {
             existingEmployee.role.toLowerCase() === ROLES.DEALER.toLowerCase();
 
         if (isDealer) {
-            const existingBrands = Array.isArray(existingEmployee.brand)
-                ? existingEmployee.brand.map((b) => b.toUpperCase())
-                : [];
+            const existingBrands = Array.isArray(existingEmployee.brand) ?
+                existingEmployee.brand.map((b) => b.toUpperCase()) : [];
 
             const newBrands =
-                Array.isArray(mappedData.brand) && mappedData.brand.length > 0
-                    ? mappedData.brand.map((b) => b.toUpperCase())
-                    : [];
+                Array.isArray(mappedData.brand) && mappedData.brand.length > 0 ?
+                mappedData.brand.map((b) => b.toUpperCase()) : [];
 
             let updatedBrands = [...existingBrands];
             if (Array.isArray(updateData.remove_brands) && updateData.remove_brands.length > 0) {
@@ -362,17 +361,15 @@ const employeeService = {
 
         mappedData.updated_at = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
-        const updatedEmployee = await employeeSchema.findOneAndUpdate(
-            { employee_id: employeeId },
-            mappedData,
-            { new: true, runValidators: true }
+        const updatedEmployee = await employeeSchema.findOneAndUpdate({ employee_id: employeeId },
+            mappedData, { new: true, runValidators: true }
         );
 
         logger.info(`Employee updated: ${employeeId}`);
         return mapEmployeeEntityToResponse(updatedEmployee);
     }),
 
-    resetPassword: asyncHandler(async (updateData) => {
+    resetPassword: asyncHandler(async(updateData) => {
         const employeeId = CurrentRequestContext.getEmployeeId();
 
         if (!employeeId) {
@@ -391,7 +388,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(employee);
     }),
 
-    resetPasswordById: asyncHandler(async (employeeId, updateData) => {
+    resetPasswordById: asyncHandler(async(employeeId, updateData) => {
         const requesterId = CurrentRequestContext.getEmployeeId();
 
         if (!requesterId || !employeeId) {
@@ -410,7 +407,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(targetEmployee);
     }),
 
-    deleteEmployee: asyncHandler(async (updateData) => {
+    deleteEmployee: asyncHandler(async(updateData) => {
         const { employeeId, reason } = updateData;
 
         if (!employeeId) {
@@ -432,7 +429,7 @@ const employeeService = {
         }
 
         if (!Object.values(APPROVAL_GRANTED_ROLES).includes(requestingEmployee.role.toUpperCase())) {
-            throw new BadRequestException('Unauthorized: You do not have permission to delete employees');
+            throw new ForbiddenException('Unauthorized: You do not have permission to delete employees');
         }
 
         const employeeToDelete = await employeeSchema.findOne({
@@ -453,7 +450,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(employeeToDelete);
     }),
 
-    createDealerDiscount: asyncHandler(async (discountData) => {
+    createDealerDiscount: asyncHandler(async(discountData) => {
         const { employeeId } = getAuthenticatedEmployeeContext();
         validateDealerDiscountRequiredFields(discountData);
 
@@ -526,7 +523,7 @@ const employeeService = {
         return mapDealerDiscountEntityToResponse(dealerDiscount);
     }),
 
-    updateDealerDiscount: asyncHandler(async (discountData) => {
+    updateDealerDiscount: asyncHandler(async(discountData) => {
         const { employeeId } = getAuthenticatedEmployeeContext();
 
         const { dealer_discount_id, discount_value, brand_name, model_name, is_percentage, description } = discountData;
@@ -545,8 +542,13 @@ const employeeService = {
         }
 
         if (brand_name || model_name) {
-            const brandName = brand_name?.toUpperCase() || existingDiscount.brand_name.toUpperCase();
-            const modelName = model_name?.toUpperCase() || existingDiscount.model_name.toUpperCase();
+            const brandName = brand_name ?
+                brand_name.toUpperCase() :
+                existingDiscount.brand_name.toUpperCase();
+
+            const modelName = model_name ?
+                model_name.toUpperCase() :
+                existingDiscount.model_name.toUpperCase();
 
             const brandRecord = await Brand.findOne({ brand_name: brandName }).lean();
             if (!brandRecord) {
@@ -586,24 +588,20 @@ const employeeService = {
             updatedDescription = description.trim();
         }
 
-        const updatedDiscount = await DealerDiscount.findOneAndUpdate(
-            { dealer_discount_id },
-            {
-                $set: {
-                    discount_value: updatedDiscountValue,
-                    is_percentage: updatedIsPercentage,
-                    description: updatedDescription,
-                    updated_at: getISTDate(),
-                    updated_by: employeeId,
-                },
+        const updatedDiscount = await DealerDiscount.findOneAndUpdate({ dealer_discount_id }, {
+            $set: {
+                discount_value: updatedDiscountValue,
+                is_percentage: updatedIsPercentage,
+                description: updatedDescription,
+                updated_at: getISTDate(),
+                updated_by: employeeId,
             },
-            { new: true }
-        );
+        }, { new: true });
 
         return mapDealerDiscountEntityToResponse(updatedDiscount);
     }),
 
-    getDealerDiscounts: asyncHandler(async (payload = {}, pagination = {}) => {
+    getDealerDiscounts: asyncHandler(async(payload = {}, pagination = {}) => {
         getAuthenticatedEmployeeContext();
 
         const { dealer_id, product_id, brand_name, model_name } = payload;
@@ -622,7 +620,8 @@ const employeeService = {
                 .lean();
             if (!product) throw new BadRequestException(`Product ${product_id} not found.`);
 
-            const dealerBrands = dealer.brand?.map(b => b.toUpperCase()) || [];
+            const dealerBrands = dealer.brand ?
+                dealer.brand.map(b => b.toUpperCase()) : [];
             if (!dealerBrands.includes(product.brand.toUpperCase()))
                 throw new BadRequestException(`Dealer ${dealer_id} not allowed for brand ${product.brand}.`);
 
@@ -640,8 +639,8 @@ const employeeService = {
         }
 
         const filters = {};
-        const brandUpper = brand_name?.toUpperCase();
-        const modelUpper = model_name?.toUpperCase();
+        const brandUpper = brand_name ? brand_name.toUpperCase() : null;
+        const modelUpper = model_name ? model_name.toUpperCase() : null;
 
         if (brandUpper) {
             const brand = await Brand.findOne({ brand_name: brandUpper })
@@ -661,12 +660,18 @@ const employeeService = {
                 .lean();
             if (!dealer) throw new BadRequestException(`Dealer ${dealer_id} not found.`);
 
-            const dealerBrands = dealer.brand?.map(b => b.toUpperCase()) || [];
-            if (brandUpper && !dealerBrands.includes(brandUpper))
+            const dealerBrands = dealer.brand ?
+                dealer.brand.map(b => b.toUpperCase()) : [];
+
+            const brandUpper = brand_name ? brand_name.toUpperCase() : null;
+            if (brandUpper && !dealerBrands.includes(brandUpper)) {
                 throw new BadRequestException(`Dealer ${dealer_id} not allowed for brand ${brandUpper}.`);
+            }
 
             filters.dealer_id = dealer.employee_id;
-            filters.brand_name ??= { $in: dealerBrands };
+            if (dealerBrands.length > 0) {
+                filters.brand_name = { $in: dealerBrands };
+            }
         }
         const [records, total] = await Promise.all([
             DealerDiscount.find(filters).skip(skip).limit(limit).sort({ created_at: -1 }).lean(),
@@ -679,7 +684,7 @@ const employeeService = {
         };
     }),
 
-    logout: asyncHandler(async (token) => {
+    logout: asyncHandler(async(token) => {
         const decoded = jwt.decode(token);
 
         if (!decoded || !decoded.exp) {

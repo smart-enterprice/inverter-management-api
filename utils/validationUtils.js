@@ -2,7 +2,7 @@
 
 import validator from 'validator';
 
-import { BadRequestException, ValidationException, UnauthorizedException } from '../middleware/CustomError.js';
+import { BadRequestException, ValidationException, UnauthorizedException, ForbiddenException } from '../middleware/CustomError.js';
 import { ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, ROLES, PRODUCT_REQUIRED_FIELDS, DEALER_DISCOUNT_REQUIRED_FIELDS, ALLOWED_TRANSITIONS, } from './constants.js';
 import { validatePassword } from './employeeAuth.js';
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
@@ -76,7 +76,7 @@ export const validateMainRoleAccess = () => {
     const role = CurrentRequestContext.getRole();
 
     if (!employee_id || !role || !Object.values(ADMIN_PRIVILEGED_ROLES).includes(role.toUpperCase())) {
-        throw new UnauthorizedException(`You do not have permission to perform this action. Allowed roles: ${Object.values(ADMIN_PRIVILEGED_ROLES).join(', ')}`);
+        throw new ForbiddenException(`You do not have permission to perform this action. Allowed roles: ${Object.values(ADMIN_PRIVILEGED_ROLES).join(', ')}`);
     }
     return { employee_id, role };
 };
@@ -88,7 +88,7 @@ export const getAuthenticatedEmployeeContext = () => {
 
     console.log(`roles : ${employeeId} :: ${employeeRole}`);
     if (!employeeId || !employeeRole || !Object.values(ROLES).includes(employeeRole)) {
-        throw new UnauthorizedException(`Access denied: only users with roles ${Object.values(ROLES).join(", ")} are authorized.`);
+        throw new ForbiddenException(`Access denied: only users with roles ${Object.values(ROLES).join(", ")} are authorized.`);
     }
 
     return { employeeId, employeeRole };
