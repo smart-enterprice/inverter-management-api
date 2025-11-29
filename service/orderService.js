@@ -48,7 +48,7 @@ function allDetailsDelivered(details = []) {
 
 function canMoveOrderToInvoice(details = []) {
     if (!Array.isArray(details)) return false;
-    return !details.some(d => [ORDER_STATUSES.PRODUCTION, ORDER_STATUSES.PACKING].includes(d.status));
+    return !details.some(d => [ORDER_STATUSES.PRODUCTION].includes(d.status));
 }
 
 async function persistStockReturns({ product, returns, employeeId, role, orderNumber, orderDetailsNumber }) {
