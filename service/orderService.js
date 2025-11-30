@@ -46,9 +46,24 @@ function allDetailsDelivered(details = []) {
     return Array.isArray(details) && details.length > 0 && details.every(d => d.status === ORDER_STATUSES.DELIVERED);
 }
 
-function canMoveOrderToInvoice(details = []) {
+function canMoveOrderToTargetStatus(details = [], targetStatus) {
     if (!Array.isArray(details)) return false;
-    return !details.some(d => [ORDER_STATUSES.PRODUCTION].includes(d.status));
+
+    const allowedDetailStatusByOrderStatus = {
+        PENDING: ["PENDING", "CONFIRMED"],
+        CONFIRMED: ["PENDING", "CONFIRMED"],
+        PRODUCTION: ["CONFIRMED", "PRODUCTION"],
+        PACKING: ["PRODUCTION", "PACKING"],
+        INVOICE: ["PACKING", "INVOICE"],
+        SHIPPED: ["INVOICE", "SHIPPED"],
+        DELIVERED: ["SHIPPED", "DELIVERED"],
+        COMPLETED: ["DELIVERED"]
+    };
+
+    const allowedStatuses = allowedDetailStatusByOrderStatus[targetStatus];
+    if (!allowedStatuses) return false;
+
+    return details.every(d => allowedStatuses.includes(d.status));
 }
 
 async function persistStockReturns({ product, returns, employeeId, role, orderNumber, orderDetailsNumber }) {
@@ -613,12 +628,11 @@ const orderService = {
         }
 
         const updatedDetails = await OrderDetails.find({ order_number: order.order_number });
+
         let derivedOrderStatus = deriveOrderStatusFromDetails(updatedDetails);
 
-        if ([ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(derivedOrderStatus)) {
-            if (!canMoveOrderToInvoice(updatedDetails)) {
-                derivedOrderStatus = deriveOrderStatusFromDetails(updatedDetails); // keeps PRODUCTION/PACKING priority
-            }
+        if (!canMoveOrderToTargetStatus(updatedDetails, derivedOrderStatus)) {
+            derivedOrderStatus = order.status;
         }
 
         order.status = allDetailsDelivered(updatedDetails)
@@ -706,8 +720,8 @@ const orderService = {
                 return transformOrderToResponse(order, null, updatedOrderDetails);
             } else {
                 if ([ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(normalized)) {
-                    if (!canMoveOrderToInvoice(updatedOrderDetails)) {
-                        throw new BadRequestException(`Cannot move order to '${normalized}' while one or more details are in PRODUCTION or PACKING.`);
+                    if (!canMoveOrderToTargetStatus(updatedOrderDetails, normalized)) {
+                        throw new BadRequestException(`Order cannot move to '${normalized}' because one or more details are not ready for that stage.`);
                     }
                 }
                 if (!isValidTransition(prev, normalized)) throw new BadRequestException(`Invalid order status transition: ${prev} → ${normalized}`);
@@ -715,8 +729,8 @@ const orderService = {
             }
         } else {
             let derived = deriveOrderStatusFromDetails(updatedOrderDetails);
-            if (derived === ORDER_STATUSES.INVOICE && !canMoveOrderToInvoice(updatedOrderDetails)) {
-                derived = deriveOrderStatusFromDetails(updatedOrderDetails);
+            if (!canMoveOrderToTargetStatus(updatedOrderDetails, derived)) {
+                derived = order.status;
             }
             order.status = derived;
         }
@@ -768,16 +782,14 @@ const orderService = {
         const details = await OrderDetails.find({ order_number: orderNumber });
 
         if ([ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(normalized)) {
-            if (!canMoveOrderToInvoice(details)) {
-                throw new BadRequestException(
-                    `Cannot move order to '${normalized}' because one or more items are still in PRODUCTION or PACKING.`
-                );
+            if (!canMoveOrderToTargetStatus(updatedOrderDetails, normalized)) {
+                throw new BadRequestException(`Order cannot move to '${normalized}' because one or more details are not ready for that stage.`);
             }
         }
 
         if (normalized === ORDER_STATUSES.CONFIRMED) {
             if (![ROLES.ADMIN, ROLES.SUPER_ADMIN].includes(employeeRole)) {
-                throw new BadRequestException(`You are not authorized to set status to '${normalized}'.`);
+                throw new ForbiddenException(`You are not authorized to set status to '${normalized}'.`);
             }
         }
 
