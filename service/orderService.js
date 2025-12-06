@@ -697,7 +697,7 @@ const orderService = {
         const updatedDetails = await OrderDetails.find({ order_number: orderNumber });
 
         if (status) {
-            await applyOrderStatusChange({
+            await orderService.applyOrderStatusChange({
                 order,
                 updatedDetails,
                 status,
