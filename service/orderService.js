@@ -691,7 +691,7 @@ const orderService = {
         // }
 
         if (Array.isArray(order_details) && order_details.length) {
-            await updateAllOrderDetails(order_details);
+            await orderService.updateAllOrderDetails(order_details);
         }
 
         const updatedDetails = await OrderDetails.find({ order_number: orderNumber });
