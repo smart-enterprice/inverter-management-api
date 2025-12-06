@@ -19,6 +19,7 @@ import { APPROVAL_GRANTED_ROLES, getISTDate, ORDER_CREATOR_ROLES, ORDER_DETAILS_
 import { mapOrderDetailEntityToResponse, transformOrderToResponse } from "../utils/modelMapper.js";
 import { productService, saveOrUpdateStockTransaction } from "./productService.js";
 import Product from "../models/product.js";
+import { assertCancellable, assertRejectAllowed, assertTransition, isValidStatus, normalizeStatus } from "../utils/orderStatusUtils.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -46,9 +47,24 @@ function allDetailsDelivered(details = []) {
     return Array.isArray(details) && details.length > 0 && details.every(d => d.status === ORDER_STATUSES.DELIVERED);
 }
 
-function canMoveOrderToInvoice(details = []) {
+function canMoveOrderToTargetStatus(details = [], targetStatus) {
     if (!Array.isArray(details)) return false;
-    return !details.some(d => [ORDER_STATUSES.PRODUCTION].includes(d.status));
+
+    const allowedDetailStatusByOrderStatus = {
+        PENDING: ["PENDING", "CONFIRMED"],
+        CONFIRMED: ["PENDING", "CONFIRMED"],
+        PRODUCTION: ["CONFIRMED", "PRODUCTION"],
+        PACKING: ["PRODUCTION", "PACKING"],
+        INVOICE: ["PACKING", "INVOICE"],
+        SHIPPED: ["INVOICE", "SHIPPED"],
+        DELIVERED: ["SHIPPED", "DELIVERED"],
+        COMPLETED: ["DELIVERED"]
+    };
+
+    const allowedStatuses = allowedDetailStatusByOrderStatus[targetStatus];
+    if (!allowedStatuses) return false;
+
+    return details.every(d => allowedStatuses.includes(d.status));
 }
 
 async function persistStockReturns({ product, returns, employeeId, role, orderNumber, orderDetailsNumber }) {
@@ -613,12 +629,11 @@ const orderService = {
         }
 
         const updatedDetails = await OrderDetails.find({ order_number: order.order_number });
+
         let derivedOrderStatus = deriveOrderStatusFromDetails(updatedDetails);
 
-        if ([ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(derivedOrderStatus)) {
-            if (!canMoveOrderToInvoice(updatedDetails)) {
-                derivedOrderStatus = deriveOrderStatusFromDetails(updatedDetails); // keeps PRODUCTION/PACKING priority
-            }
+        if (!canMoveOrderToTargetStatus(updatedDetails, derivedOrderStatus)) {
+            derivedOrderStatus = order.status;
         }
 
         order.status = allDetailsDelivered(updatedDetails)
@@ -660,76 +675,201 @@ const orderService = {
         if (!order) throw new BadRequestException(`No order found for: ${orderNumber}`);
 
         if (priority && priority !== order.priority) order.priority = priority;
-        if (order_note && order_note.trim() && order_note !== order.order_note) {
-            order.order_note = [order.order_note, order_note.trim()].filter(Boolean).join(' | ');
+        if (order_note?.trim()) {
+            order.order_note = [order.order_note, order_note.trim()].filter(Boolean).join(" | ");
         }
 
-        if (Array.isArray(order_details) && order_details.length > 0) {
-            const detailIds = order_details.map(d => d.order_details_number);
-            const orderDetailsList = await OrderDetails.find({ order_details_number: { $in: detailIds } });
-            const orderDetailMap = Object.fromEntries(orderDetailsList.map(od => [od.order_details_number, od]));
+        // if (Array.isArray(order_details) && order_details.length > 0) {
+        //     const detailIds = order_details.map(d => d.order_details_number);
+        //     const orderDetailsList = await OrderDetails.find({ order_details_number: { $in: detailIds } });
+        //     const orderDetailMap = Object.fromEntries(orderDetailsList.map(od => [od.order_details_number, od]));
 
-            for (const dto of order_details) {
-                const od = orderDetailMap[dto.order_details_number];
-                if (od) await orderService.updateOrderDetailStatus(od.order_details_number, dto);
-            }
+        //     for (const dto of order_details) {
+        //         const od = orderDetailMap[dto.order_details_number];
+        //         if (od) await orderService.updateOrderDetailStatus(od.order_details_number, dto);
+        //     }
+        // }
+
+        if (Array.isArray(order_details) && order_details.length) {
+            await updateAllOrderDetails(order_details);
         }
 
-        const updatedOrderDetails = await OrderDetails.find({ order_number: orderNumber });
+        const updatedDetails = await OrderDetails.find({ order_number: orderNumber });
 
         if (status) {
-            const normalized = String(status).toUpperCase();
-            if (!Object.values(ORDER_STATUSES).includes(normalized)) throw new BadRequestException(`Invalid order status: ${normalized}`);
-
-            const prev = order.status;
-
-            if (prev === normalized) {
-                logger.info(`Order ${orderNumber} is already in status '${prev}'. No update needed.`);
-            } else if ([ORDER_STATUSES.DELIVERED, ORDER_STATUSES.CANCELLED].includes(prev)) {
-                throw new BadRequestException(`Order ${orderNumber} is already '${prev}' and cannot be updated.`);
-            } else if (normalized === ORDER_STATUSES.REJECTED) {
-                if (prev !== ORDER_STATUSES.PENDING) throw new BadRequestException("REJECTED is only allowed from PENDING.");
-                order.status = ORDER_STATUSES.REJECTED;
-                await order.save();
-                return transformOrderToResponse(order, null, updatedOrderDetails);
-            } else if (normalized === ORDER_STATUSES.CANCELLED) {
-                if (!CANCELLABLE_STATUSES.has(prev)) throw new BadRequestException(`Cannot cancel order at status '${prev}'. Cancellation allowed only before INVOICE.`);
-                for (const d of updatedOrderDetails) {
-                    await returnStockForDetail({ d, employeeId, employeeRole, orderNumber });
-                    d.status = ORDER_STATUSES.CANCELLED;
-                    await d.save();
-                }
-                order.order_total_discount = 0;
-                order.order_total_price = 0;
-                order.status = ORDER_STATUSES.CANCELLED;
-                await order.save();
-                return transformOrderToResponse(order, null, updatedOrderDetails);
-            } else {
-                if ([ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(normalized)) {
-                    if (!canMoveOrderToInvoice(updatedOrderDetails)) {
-                        throw new BadRequestException(`Cannot move order to '${normalized}' while one or more details are in PRODUCTION or PACKING.`);
-                    }
-                }
-                if (!isValidTransition(prev, normalized)) throw new BadRequestException(`Invalid order status transition: ${prev} → ${normalized}`);
-                order.status = normalized;
-            }
+            await applyOrderStatusChange({
+                order,
+                updatedDetails,
+                status,
+                employeeId,
+                employeeRole,
+                orderNumber
+            });
         } else {
-            let derived = deriveOrderStatusFromDetails(updatedOrderDetails);
-            if (derived === ORDER_STATUSES.INVOICE && !canMoveOrderToInvoice(updatedOrderDetails)) {
-                derived = deriveOrderStatusFromDetails(updatedOrderDetails);
+            const derived = deriveOrderStatusFromDetails(updatedDetails);
+            if (canMoveOrderToTargetStatus(updatedDetails, derived)) {
+                order.status = derived;
             }
-            order.status = derived;
         }
 
-        if (allDetailsDelivered(updatedOrderDetails)) order.status = ORDER_STATUSES.COMPLETED;
+        if (allDetailsDelivered(updatedDetails)) {
+            order.status = ORDER_STATUSES.COMPLETED;
+        }
 
-        if (typeof amount_paid !== "undefined" && order.status !== ORDER_STATUSES.CANCELLED && order.status !== ORDER_STATUSES.REJECTED) {
-            const paidAmount = Number(amount_paid) || 0;
-            await order.addPayment(paidAmount, payment_method || "CASH");
+        if (
+            typeof amount_paid !== "undefined" &&
+            ![ORDER_STATUSES.CANCELLED, ORDER_STATUSES.REJECTED].includes(order.status)
+        ) {
+            await order.addPayment(Number(amount_paid) || 0, payment_method || "CASH");
         }
 
         await order.save();
-        return transformOrderToResponse(order, null, updatedOrderDetails);
+        return transformOrderToResponse(order, null, updatedDetails);
+
+        // if (status) {
+        //     const normalized = String(status).toUpperCase();
+        //     if (!Object.values(ORDER_STATUSES).includes(normalized)) throw new BadRequestException(`Invalid order status: ${normalized}`);
+
+        //     const prev = order.status;
+
+        //     if (prev === normalized) {
+        //         logger.info(`Order ${orderNumber} is already in status '${prev}'. No update needed.`);
+        //     } else if ([ORDER_STATUSES.DELIVERED, ORDER_STATUSES.CANCELLED].includes(prev)) {
+        //         throw new BadRequestException(`Order ${orderNumber} is already '${prev}' and cannot be updated.`);
+        //     } else if (normalized === ORDER_STATUSES.REJECTED) {
+        //         if (prev !== ORDER_STATUSES.PENDING) throw new BadRequestException("REJECTED is only allowed from PENDING.");
+        //         order.status = ORDER_STATUSES.REJECTED;
+        //         await order.save();
+        //         return transformOrderToResponse(order, null, updatedOrderDetails);
+        //     } else if (normalized === ORDER_STATUSES.CANCELLED) {
+        //         if (!CANCELLABLE_STATUSES.has(prev)) throw new BadRequestException(`Cannot cancel order at status '${prev}'. Cancellation allowed only before INVOICE.`);
+        //         for (const d of updatedOrderDetails) {
+        //             await returnStockForDetail({ d, employeeId, employeeRole, orderNumber });
+        //             d.status = ORDER_STATUSES.CANCELLED;
+        //             await d.save();
+        //         }
+        //         order.order_total_discount = 0;
+        //         order.order_total_price = 0;
+        //         order.status = ORDER_STATUSES.CANCELLED;
+        //         await order.save();
+        //         return transformOrderToResponse(order, null, updatedOrderDetails);
+        //     } else {
+        //         if ([ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(normalized)) {
+        //             if (!canMoveOrderToTargetStatus(updatedOrderDetails, normalized)) {
+        //                 throw new BadRequestException(`Order cannot move to '${normalized}' because one or more details are not ready for that stage.`);
+        //             }
+        //         }
+        //         if (!isValidTransition(prev, normalized)) throw new BadRequestException(`Invalid order status transition: ${prev} → ${normalized}`);
+        //         order.status = normalized;
+        //     }
+        // } else {
+        //     let derived = deriveOrderStatusFromDetails(updatedOrderDetails);
+        //     if (!canMoveOrderToTargetStatus(updatedOrderDetails, derived)) {
+        //         derived = order.status;
+        //     }
+        //     order.status = derived;
+        // }
+
+        // if (allDetailsDelivered(updatedOrderDetails)) order.status = ORDER_STATUSES.COMPLETED;
+
+        // if (typeof amount_paid !== "undefined" && order.status !== ORDER_STATUSES.CANCELLED && order.status !== ORDER_STATUSES.REJECTED) {
+        //     const paidAmount = Number(amount_paid) || 0;
+        //     await order.addPayment(paidAmount, payment_method || "CASH");
+        // }
+
+        // await order.save();
+        // return transformOrderToResponse(order, null, updatedOrderDetails);
+    }),
+
+    updateAllOrderDetails: asyncHandler(async (order_details) => {
+        const ids = order_details.map((d) => d.order_details_number);
+
+        const existing = await OrderDetails.find({
+            order_details_number: { $in: ids }
+        });
+
+        const map = Object.fromEntries(existing.map((od) => [od.order_details_number, od]));
+
+        for (const dto of order_details) {
+            const od = map[dto.order_details_number];
+            if (od) await orderService.updateOrderDetailStatus(od.order_details_number, dto);
+        }
+    }),
+
+    applyOrderStatusChange: asyncHandler(async ({
+        order,
+        updatedDetails,
+        status,
+        employeeId,
+        employeeRole,
+        orderNumber
+    }) => {
+        const next = normalizeStatus(status);
+        const prev = order.status;
+
+        if (!isValidStatus(next))
+            throw new BadRequestException(`Invalid order status: ${next}`);
+
+        if (prev === next) return;
+
+        if ([ORDER_STATUSES.DELIVERED, ORDER_STATUSES.CANCELLED].includes(prev)) {
+            throw new BadRequestException(
+                `Order ${order.order_number} is already '${prev}' and cannot be updated.`
+            );
+        }
+
+        if (next === ORDER_STATUSES.REJECTED) {
+            assertRejectAllowed(prev);
+            order.status = next;
+            await order.save();
+            return;
+        }
+
+        if (next === ORDER_STATUSES.CANCELLED) {
+            assertCancellable(prev);
+            await cancelOrderAndReturnStock({
+                order,
+                updatedDetails,
+                employeeId,
+                employeeRole,
+                orderNumber
+            });
+            return;
+        }
+
+        if (
+            [ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(next)
+        ) {
+            if (!canMoveOrderToTargetStatus(updatedDetails, next)) {
+                throw new BadRequestException(
+                    `Order cannot move to '${next}' because one or more details are not ready.`
+                );
+            }
+        }
+
+        assertTransition(prev, next);
+
+        order.status = next;
+    }),
+
+    cancelOrderAndReturnStock: asyncHandler(async ({
+        order,
+        updatedDetails,
+        employeeId,
+        employeeRole,
+        orderNumber
+    }) => {
+        for (const d of updatedDetails) {
+            await returnStockForDetail({ d, employeeId, employeeRole, orderNumber });
+            d.status = ORDER_STATUSES.CANCELLED;
+            await d.save();
+        }
+
+        order.order_total_discount = 0;
+        order.order_total_price = 0;
+        order.status = ORDER_STATUSES.CANCELLED;
+
+        await order.save();
     }),
 
     updateOrderStatus: asyncHandler(async (orderNumber, newStatus) => {
@@ -768,16 +908,14 @@ const orderService = {
         const details = await OrderDetails.find({ order_number: orderNumber });
 
         if ([ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(normalized)) {
-            if (!canMoveOrderToInvoice(details)) {
-                throw new BadRequestException(
-                    `Cannot move order to '${normalized}' because one or more items are still in PRODUCTION or PACKING.`
-                );
+            if (!canMoveOrderToTargetStatus(updatedOrderDetails, normalized)) {
+                throw new BadRequestException(`Order cannot move to '${normalized}' because one or more details are not ready for that stage.`);
             }
         }
 
         if (normalized === ORDER_STATUSES.CONFIRMED) {
             if (![ROLES.ADMIN, ROLES.SUPER_ADMIN].includes(employeeRole)) {
-                throw new BadRequestException(`You are not authorized to set status to '${normalized}'.`);
+                throw new ForbiddenException(`You are not authorized to set status to '${normalized}'.`);
             }
         }
 
