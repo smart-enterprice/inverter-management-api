@@ -32,6 +32,13 @@ import { requestContextMiddleware } from "./middleware/requestContextMiddleware.
 import { connectToDatabase, closeDatabaseConnection } from "./config/dbConfig.js";
 import { employeeService } from "./service/employeeService.js";
 
+import chalk from "chalk";
+
+// Generates a clickable hyperlink in supported terminals
+function hyperlink(text, url) {
+    return `\u001b]8;;${url}\u0007${text}\u001b]8;;\u0007`;
+}
+
 const app = express();
 const port = PORT || 3000;
 
@@ -47,9 +54,8 @@ const globalLimiter = rateLimit({
 
 const corsOptions = {
     origin(origin, callback) {
-        const allowedOrigins = ALLOWED_ORIGINS
-            ? ALLOWED_ORIGINS.split(',').map(o => o.trim())
-            : ['http://localhost:5173'];
+        const allowedOrigins = ALLOWED_ORIGINS ?
+            ALLOWED_ORIGINS.split(',').map(o => o.trim()) : ['http://localhost:5173'];
 
         allowedOrigins.push('http://localhost:3000');
         allowedOrigins.push('https://editor.swagger.io');
@@ -110,9 +116,10 @@ const startServer = async () => {
         const server = app.listen(port, () => {
             employeeService.defaultSuperAdminSetup();
 
-            logger.info(`Server started on ${APPLICATION_URL || 'http://localhost:' + port}`, {
-                environment: ENVIRONMENT || 'development',
-            });
+            const url = APPLICATION_URL || `http://localhost:${port}`;
+            const clickableUrl = hyperlink(APPLICATION_NAME, url);
+
+            logger.info(`${chalk.green("🚀 Server running:")} ${chalk.blueBright(clickableUrl)}`);
         });
 
         const gracefulShutdown = (signal) => {
@@ -142,9 +149,14 @@ app.get("/", (req, res) => {
     });
 });
 
+// Ignore favicon requests to prevent NotFoundException spam
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 // Health check endpoint
 app.get("/health", async (req, res) => {
-    const state = mongoose.connection?.readyState ?? 0;
+    const state = mongoose.connection && mongoose.connection.readyState ?
+        mongoose.connection.readyState :
+        0;
     const dbStatus = {
         0: "disconnected",
         1: "connected",
@@ -161,7 +173,7 @@ app.get("/health", async (req, res) => {
         timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
         db: {
             status: dbStatus,
-            name: mongoose.connection?.name || "unknown",
+            name: mongoose.connection ? mongoose.connection.name || "unknown" : "unknown",
         },
     });
 });
@@ -183,7 +195,7 @@ app.use(globalErrorHandler);
 startServer();
 
 process.on("unhandledRejection", reason => {
-    if (reason?.isOperational) {
+    if (reason && reason.isOperational) {
         logger.warn(`Operational rejection: ${reason.message}`);
     } else {
         logger.error("Unhandled Rejection:", reason);
