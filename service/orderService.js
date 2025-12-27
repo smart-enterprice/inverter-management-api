@@ -28,8 +28,8 @@ function deriveOrderStatusFromDetails(details = []) {
 
     const statuses = new Set(details.map(d => d.status));
 
-    if (statuses.has(ORDER_STATUSES.CANCELLED)) return ORDER_STATUSES.CANCELLED;
     if (statuses.has(ORDER_STATUSES.REJECTED)) return ORDER_STATUSES.REJECTED;
+    if (statuses.has(ORDER_STATUSES.CANCELLED)) return ORDER_STATUSES.CANCELLED;
     if (statuses.has(ORDER_STATUSES.PRODUCTION)) return ORDER_STATUSES.PRODUCTION;
     if (statuses.has(ORDER_STATUSES.PACKED)) return ORDER_STATUSES.PACKED;
     if (statuses.has(ORDER_STATUSES.INVOICE)) return ORDER_STATUSES.INVOICE;

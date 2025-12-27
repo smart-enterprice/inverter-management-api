@@ -101,15 +101,13 @@ const orderDetailsSchema = new mongoose.Schema({
         default: "PENDING",
     },
 
-    cancellation_history: [
-        {
-            cancelled_qty: { type: Number, required: true },
-            cancelled_by: { type: String, required: true },
-            cancelled_by_role: { type: String, required: true },
-            cancelled_at: { type: Date, default: Date.now },
-            reason: { type: String }
-        }
-    ],
+    cancellation_history: [{
+        cancelled_qty: { type: Number, required: true },
+        cancelled_by: { type: String, required: true },
+        cancelled_by_role: { type: String, required: true },
+        cancelled_at: { type: Date, default: Date.now },
+        reason: { type: String }
+    }],
     total_cancelled_qty: { type: Number, default: 0 },
 }, {
     timestamps: {
@@ -129,6 +127,28 @@ orderDetailsSchema.pre("findOneAndUpdate", function(next) {
     this._update.updated_at = getISTDate();
     next();
 });
+
+// change to service function
+// orderDetailsSchema.methods.markDelivered = async function(deliveredQty) {
+
+//     if (deliveredQty <= 0)
+//         throw new BadRequestException("Delivered qty must be > 0");
+
+//     if (this.qty_delivered + deliveredQty > this.qty_ordered)
+//         throw new BadRequestException("Delivered exceeds ordered");
+
+//     this.qty_delivered += deliveredQty;
+
+//     this.status =
+//         this.qty_delivered === this.qty_ordered ?
+//         "DELIVERED" :
+//         "DISPATCHED";
+
+//     this.delivery_date = getISTDate();
+//     await this.save();
+
+//     return this;
+// };
 
 const OrderDetailsModel = mongoose.model("OrderDetails", orderDetailsSchema);
 
