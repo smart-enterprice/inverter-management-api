@@ -72,7 +72,7 @@ const orderSchema = new mongoose.Schema({
     },
     amount_due: {
         type: Number,
-        default: function() {
+        default () {
             return this.order_total_price;
         },
         min: [0, "Amount due cannot be negative."],
@@ -93,20 +93,18 @@ const orderSchema = new mongoose.Schema({
 });
 
 orderSchema.pre("save", function(next) {
-    const istNow = getISTDate();
-    if (this.isNew) this.created_at = istNow;
-    this.updated_at = istNow;
+    const now = getISTDate();
+    this.updated_at = now;
 
     if (this.amount_paid === 0) {
         this.payment_status = PAYMENT_STATUSES.DUE;
-    } else if (this.amount_paid > 0 && this.amount_paid < this.order_total_price) {
+    } else if (this.amount_paid < this.order_total_price) {
         this.payment_status = PAYMENT_STATUSES.PARTIAL;
-    } else if (this.amount_paid >= this.order_total_price) {
+    } else {
         this.payment_status = PAYMENT_STATUSES.PAID;
     }
 
     this.amount_due = Math.max(this.order_total_price - this.amount_paid, 0);
-
     next();
 });
 
