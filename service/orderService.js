@@ -697,7 +697,7 @@ const orderService = {
         }
 
         if (Array.isArray(order_details) && order_details.length) {
-            await orderService.updateAllOrderDetails(order_details);
+            await orderService.updateOrderDetailsBatch(order_details);
         }
 
         let updatedDetails = await OrderDetails.find({ order_number: orderNumber });
@@ -746,22 +746,28 @@ const orderService = {
         return transformOrderToResponse(order, null, updatedDetails);
     }),
 
-    updateAllOrderDetails: asyncHandler(async (order_details) => {
-        const ids = order_details.map(d => d.order_details_number);
+    updateOrderDetailsBatch: async (orderDetails = []) => {
+        if (!orderDetails.length) return;
+
+        const ids = orderDetails.map(d => d.order_details_number);
 
         const existing = await OrderDetails.find({
             order_details_number: { $in: ids }
         });
 
-        const detailMap = Object.fromEntries(existing.map(od => [od.order_details_number, od]));
+        const detailMap = new Map(
+            existing.map(d => [d.order_details_number, d])
+        );
 
-        for (const dto of order_details) {
-            const od = detailMap[dto.order_details_number];
-            if (od) {
-                await orderService.updateOrderDetailStatus(od.order_details_number, dto);
-            }
+        for (const dto of orderDetails) {
+            if (!detailMap.has(dto.order_details_number)) continue;
+
+            await orderService.updateOrderDetailStatus(
+                dto.order_details_number,
+                dto
+            );
         }
-    }),
+    },
 
     applyOrderStatusChange: asyncHandler(async ({
         order,
@@ -902,6 +908,102 @@ const orderService = {
         const refreshedDetails = await OrderDetails.find({ order_number: orderNumber });
 
         return transformOrderToResponse(order, dealer, refreshedDetails);
+    }),
+
+    updateOrderAndDetails: asyncHandler(async (orderNumber, payload) => {
+        const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+
+        if (!payload || typeof payload !== "object") {
+            throw new BadRequestException("Invalid request body");
+        }
+
+        const {
+            order_number,
+            priority,
+            order_note,
+            status,
+            amount_paid,
+            payment_method,
+            order_details = []
+        } = payload;
+
+        if (order_number && order_number !== orderNumber) {
+            throw new BadRequestException(`Order number mismatch: path(${orderNumber}) ≠ body(${order_number})`);
+        }
+
+        const order = await Order.findByOrderNumber(orderNumber);
+        if (!order) {
+            throw new BadRequestException(`No order found for: ${orderNumber}`);
+        }
+
+        if (priority && priority !== order.priority) {
+            order.priority = priority;
+        }
+
+        if (order_note?.trim()) {
+            order.order_note = [order.order_note, order_note.trim()]
+                .filter(Boolean)
+                .join(" | ");
+        }
+
+        await updateOrderDetailsBatch(order_details);
+
+        let updatedDetails = await OrderDetails.find({
+            order_number: orderNumber
+        });
+
+        if (status) {
+            await orderService.applyOrderStatusChange({
+                order,
+                updatedDetails,
+                status,
+                employeeId,
+                employeeRole,
+                orderNumber
+            });
+
+            // If status updated without item updates
+            if (!order_details.length) {
+                const normalized = normalizeStatus(status);
+                for (const detail of updatedDetails) {
+                    await orderService.updateOrderDetailStatus(
+                        detail.order_details_number,
+                        { status: normalized }
+                    );
+                }
+
+                updatedDetails = await OrderDetails.find({
+                    order_number: orderNumber
+                });
+            }
+        } else {
+            // 6️⃣ Auto-derive order status
+            let derived = deriveOrderStatusFromDetails(updatedDetails);
+
+            if (!canMoveOrderToTargetStatus(updatedDetails, derived)) {
+                derived = order.status;
+            }
+
+            order.status = derived;
+        }
+
+        if (allDetailsDelivered(updatedDetails)) {
+            order.status = ORDER_STATUSES.COMPLETED;
+        }
+
+        if (
+            typeof amount_paid !== "undefined" &&
+            ![ORDER_STATUSES.CANCELLED, ORDER_STATUSES.REJECTED].includes(order.status)
+        ) {
+            await order.addPayment(
+                Number(amount_paid) || 0,
+                payment_method || "CASH"
+            );
+        }
+
+        await order.save();
+
+        return transformOrderToResponse(order, null, updatedDetails);
     }),
 
 };
