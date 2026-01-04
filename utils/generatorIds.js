@@ -118,3 +118,18 @@ export const generateUniqueDealerDiscountId = async () => {
 
     return discount_id;
 };
+
+export const generateUniqueInvoiceId = async () => {
+    let invoice_id;
+    let exists;
+
+    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+
+    do {
+        const randomPart = Math.floor(1000 + Math.random() * 9000);
+        invoice_id = `INV-${datePart}-${randomPart}`;
+        exists = await Invoice.findOne({ invoice_id });
+    } while (exists);
+
+    return invoice_id;
+};
