@@ -73,10 +73,13 @@ export const validateEmployeeData = (data, isUpdate = false) => {
 
 export const validateMainRoleAccess = () => {
     const employee_id = CurrentRequestContext.getEmployeeId();
-    const role = CurrentRequestContext.getRole();
+    const rawRole = CurrentRequestContext.getRole();
+    const role = (rawRole || "").toUpperCase();
 
-    if (!employee_id || !role || !Object.values(ADMIN_PRIVILEGED_ROLES).includes(role.toUpperCase())) {
-        throw new ForbiddenException(`You do not have permission to perform this action. Allowed roles: ${Object.values(ADMIN_PRIVILEGED_ROLES).join(', ')}`);
+    if (!employee_id || !role || !ADMIN_PRIVILEGED_ROLES.includes(role)) {
+        throw new ForbiddenException(
+            `Access denied. Your role (${role}) does not have permission to perform this action.`
+        );
     }
     return { employee_id, role };
 };
@@ -130,8 +133,7 @@ export const isValidTransition = (from, to) => {
 };
 
 export const isRoleAllowedForApproval = (role) => {
-    if (!role) return false;
-    return ADMIN_PRIVILEGED_ROLES.includes(role.toUpperCase());
+    return ADMIN_PRIVILEGED_ROLES.includes((role || "").toUpperCase());
 };
 
 export function normalizePrice(value) {

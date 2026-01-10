@@ -1,5 +1,5 @@
 // swaggerConfig.js
-        
+
 import swaggerAutogen from 'swagger-autogen';
 import path from 'path';
 import fs from 'fs';
@@ -139,7 +139,8 @@ const REQUEST_BODY_PATTERNS = {
                         "schema": {
                             "type": "array",
                             "items": {
-                                type: 'object', properties: {}
+                                type: 'object',
+                                properties: {}
                             }
                         }
                     }
@@ -247,8 +248,6 @@ const detectRequestBodySchema = (path, method) => {
             }
         };
     }
-
-    console.log("abscsd with path", path, method);
     return null;
 };
 

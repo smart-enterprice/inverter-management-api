@@ -29,7 +29,7 @@ const companyAddressService = {
     },
 
     async getActive() {
-        return CompanyAddress.findOne({ is_active: true }).lean();
+        return CompanyAddress.find({ is_active: true });
     }
 };
 

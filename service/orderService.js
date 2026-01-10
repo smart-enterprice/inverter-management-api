@@ -443,9 +443,11 @@ const orderService = {
            3️⃣ Helper validations
         -------------------------------------------------- */
         const assertAdminCancelAccess = () => {
-            if (!Object.values(ADMIN_PRIVILEGED_ROLES).includes(employeeRole)) {
+            const role = (employeeRole || "").toUpperCase();
+
+            if (!ADMIN_PRIVILEGED_ROLES.includes(role)) {
                 throw new ForbiddenException(
-                    `Access denied. Allowed roles: ${Object.values(ADMIN_PRIVILEGED_ROLES).join(", ")}`
+                    `Access denied. Your role (${role}) is not permitted. Allowed roles: ${ADMIN_PRIVILEGED_ROLES.join(", ")}.`
                 );
             }
         };
