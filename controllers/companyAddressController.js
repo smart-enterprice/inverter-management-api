@@ -1,6 +1,6 @@
 import { ForbiddenException } from "../middleware/CustomError.js";
 import companyAddressService from "../service/companyAddressService.js";
-import { getAuthenticatedEmployeeContext } from "../utils/validationUtils.js";
+import { getAuthenticatedEmployeeContext, isRoleAllowedForApproval } from "../utils/validationUtils.js";
 
 const companyAddressController = {
 

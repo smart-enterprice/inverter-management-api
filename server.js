@@ -23,6 +23,7 @@ import orderRoute from "./routes/orderRoute.js";
 import productRoute from "./routes/productRoute.js";
 import publicRoute from "./routes/publicRoute.js";
 import locationRoute from "./routes/locationRoute.js";
+import companyRoute from "./routes/companyAddressRoute.js";
 
 import { PATH_ROUTES, APPLICATION_NAME, ENVIRONMENT, PORT, APPLICATION_URL, ALLOWED_ORIGINS } from "./utils/constants.js";
 
@@ -185,6 +186,9 @@ app.use(PATH_ROUTES.BASIC_ROUTE, publicRoute);
 app.use(PATH_ROUTES.EMPLOYEE_ROUTE, employeeRoute);
 app.use(PATH_ROUTES.PRODUCT_ROUTE, productRoute);
 app.use(PATH_ROUTES.ORDER_ROUTE, orderRoute);
+
+app.use(PATH_ROUTES.COMPANY_ROUTE, companyRoute);
+
 
 app.use((req, res, next) => {
     next(new NotFoundException(`Endpoint '${req.method} ${req.originalUrl}' not found.`));
