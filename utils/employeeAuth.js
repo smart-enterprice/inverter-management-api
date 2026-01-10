@@ -21,9 +21,7 @@ export const hashPassword = async(password) => encryptText(password);
 export const revealPassword = async(encryptedPassword) => decryptText(encryptedPassword);
 
 export const generateToken = (employeeId, role, status) => {
-    return jwt.sign(
-        { employee_id: employeeId, role, status },
-        JWT_SECRET,
-        { expiresIn: JWT_EXPIRES_IN }
+    return jwt.sign({ employee_id: employeeId, role, status },
+        JWT_SECRET, { expiresIn: JWT_EXPIRES_IN }
     );
 };

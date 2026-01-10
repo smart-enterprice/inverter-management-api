@@ -87,6 +87,7 @@ export const getAuthenticatedEmployeeContext = () => {
     const employeeRole = (employee_role || "").toUpperCase();
 
     console.log(`roles : ${employeeId} :: ${employeeRole}`);
+
     if (!employeeId || !employeeRole || !Object.values(ROLES).includes(employeeRole)) {
         throw new ForbiddenException(`Access denied: only users with roles ${Object.values(ROLES).join(", ")} are authorized.`);
     }
@@ -128,13 +129,9 @@ export const isValidTransition = (from, to) => {
     return allowed.includes(to);
 };
 
-export const isRoleAllowedForApproval = (employeeRole) => {
-    const role = (employeeRole || "").toUpperCase();
-    return [
-        ROLES.ADMIN,
-        ROLES.SUPER_ADMIN,
-        ROLES.MANAGER,
-    ].includes(role);
+export const isRoleAllowedForApproval = (role) => {
+    if (!role) return false;
+    return ADMIN_PRIVILEGED_ROLES.includes(role.toUpperCase());
 };
 
 export function normalizePrice(value) {

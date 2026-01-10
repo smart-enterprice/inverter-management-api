@@ -19,12 +19,23 @@ const invoiceSchema = new mongoose.Schema({
         default: {}
     },
 
+    total_items: {
+        type: Number,
+        default: 0
+    },
+
     created_at: {
         type: Date,
         default: Date.now
     }
 }, {
     timestamps: true
+});
+
+invoiceSchema.pre("save", function(next) {
+    this.total_items = [...this.order_items.values()]
+        .reduce((sum, qty) => sum + qty, 0);
+    next();
 });
 
 export default mongoose.model("Invoice", invoiceSchema);
