@@ -3,32 +3,36 @@ import OrderDetails from "../models/orderDetails.js";
 import { ORDER_STATUSES } from "../utils/constants.js";
 import { generateUniqueInvoiceId } from "../utils/generatorIds.js";
 
+const createInvoiceInstance = async(orderNumber) => {
+    return new Invoice({
+        invoice_id: await generateUniqueInvoiceId(),
+        order_number: orderNumber,
+        order_items: new Map()
+    });
+};
+
 const invoiceService = {
 
     async generateOrUpdateInvoice(order) {
         if (!order || order.status !== ORDER_STATUSES.INVOICE) return null;
 
-        const invoiceDetails = await OrderDetails.find({
+        const orderDetails = await OrderDetails.find({
             order_number: order.order_number,
             status: ORDER_STATUSES.INVOICE
-        });
+        }).lean();
 
-        if (!invoiceDetails.length) return null;
+        if (!orderDetails.length) return null;
 
         let invoice = await Invoice.findOne({ order_number: order.order_number });
-
         if (!invoice) {
-            invoice = new Invoice({
-                invoice_id: await generateUniqueInvoiceId(),
-                order_number: order.order_number,
-                order_items: new Map()
-            });
+            invoice = await createInvoiceInstance(order.order_number);
         }
 
-        for (const detail of invoiceDetails) {
+        for (const detail of orderDetails) {
+            const existingQty = invoice.order_items.get(detail.order_details_number) || 0;
             invoice.order_items.set(
                 detail.order_details_number,
-                detail.qty_ordered
+                existingQty + detail.qty_ordered
             );
         }
 
@@ -36,26 +40,19 @@ const invoiceService = {
         return invoice;
     },
 
-    async generateOrUpdateInvoiceByOrderDetail(orderDetail, invoiceQuantity = 0) {
+    async generateOrUpdateInvoiceByOrderDetail(orderDetail, invoiceQty = null) {
         if (!orderDetail || orderDetail.status !== ORDER_STATUSES.INVOICE) return null;
-        if (invoiceQuantity < 0) return null;
 
-        let invoice = await Invoice.findOne({
-            order_number: orderDetail.order_number
-        });
-
+        let invoice = await Invoice.findOne({ order_number: orderDetail.order_number });
         if (!invoice) {
-            invoice = new Invoice({
-                invoice_id: await generateUniqueInvoiceId(),
-                order_number: orderDetail.order_number,
-                order_items: new Map()
-            });
+            invoice = await createInvoiceInstance(orderDetail.order_number);
         }
 
         const key = orderDetail.order_details_number;
-        const qtyToAdd = invoiceQuantity === 0 ?
-            orderDetail.qty_ordered :
-            invoiceQuantity;
+        const qtyToAdd = invoiceQty !== null && invoiceQty !== undefined ?
+            invoiceQty : orderDetail.qty_ordered;
+
+        if (qtyToAdd < 0) return null;
 
         const existingQty = invoice.order_items.get(key) || 0;
         invoice.order_items.set(key, existingQty + qtyToAdd);
