@@ -433,8 +433,10 @@ const orderService = {
         let returnPacked = 0;
         let returnUnpacked = 0;
 
-        const appendNote = (text) => {
-            orderDetail.notes = [orderDetail.notes, text].filter(Boolean).join(" | ");
+        const appendNote = (note) => {
+            orderDetail.notes = [orderDetail.notes, note]
+                .filter(Boolean)
+                .join(" | ");
         };
 
         /* --------------------------------------------------
@@ -586,12 +588,17 @@ const orderService = {
         /* --------------------------------------------------
            9️⃣ Invoice trigger (clean & correct)
         -------------------------------------------------- */
-        if (orderDetail.status === ORDER_STATUSES.INVOICE) {
-            const invoiceQty = toNumber(updateDto.invoice_qty);
-            await invoiceService.generateOrUpdateInvoiceByOrderDetail(
-                orderDetail,
-                invoiceQty
-            );
+        if (updateDto.status) {
+            const normalized = normalizeStatus(updateDto.status);
+            orderDetail.status = normalized;
+
+            if (normalized === ORDER_STATUSES.INVOICE) {
+                const invoiceQty = toNumber(updateDto.invoice_qty);
+                await invoiceService.generateOrUpdateInvoiceByOrderDetail(
+                    orderDetail,
+                    invoiceQty
+                );
+            }
         }
 
         await orderDetail.save();
@@ -611,10 +618,9 @@ const orderService = {
 
         const refreshedDetails = await OrderDetails.find({ order_number: order.order_number });
 
-        const derivedStatus = deriveOrderStatusFromDetails(refreshedDetails);
         order.status = allDetailsDelivered(refreshedDetails) ?
             ORDER_STATUSES.COMPLETED :
-            derivedStatus;
+            deriveOrderStatusFromDetails(refreshedDetails);
 
         await order.save();
 
@@ -906,28 +912,29 @@ const orderService = {
         });
 
         if (status) {
-            await orderService.applyOrderStatusChange({
-                order,
-                updatedDetails,
-                status,
-                employeeId,
-                employeeRole,
-                orderNumber
-            });
+            const normalized = normalizeStatus(status);
 
-            // If status updated without item updates
             if (!order_details.length) {
-                const normalized = normalizeStatus(status);
                 for (const detail of updatedDetails) {
                     await orderService.updateOrderDetailStatus(
                         detail.order_details_number, { status: normalized }
                     );
                 }
 
+                // Refresh after cascading
                 updatedDetails = await OrderDetails.find({
                     order_number: orderNumber
                 });
             }
+
+            await orderService.applyOrderStatusChange({
+                order,
+                updatedDetails,
+                status: normalized,
+                employeeId,
+                employeeRole,
+                orderNumber
+            });
         } else {
             // 6️⃣ Auto-derive order status
             let derived = deriveOrderStatusFromDetails(updatedDetails);
