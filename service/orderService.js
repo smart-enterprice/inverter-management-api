@@ -916,7 +916,7 @@ const orderService = {
         if (status) {
             const normalized = normalizeStatus(status);
 
-            if (!order_details.length) {
+            if (!updatedDetails.length) {
                 for (const detail of updatedDetails) {
                     await orderService.updateOrderDetailStatus(
                         detail.order_details_number, { status: normalized }
