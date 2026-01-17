@@ -9,6 +9,7 @@ import Stock from '../models/stock.js';
 import { v4 as uuidv4 } from 'uuid';
 import StockHistory from '../models/stockHistory.js';
 import companyAddress from '../models/companyAddress.js';
+import invoice from '../models/invoice.js';
 
 const generateRandomString = (length) => {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -129,7 +130,7 @@ export const generateUniqueInvoiceId = async() => {
     do {
         const randomPart = Math.floor(1000 + Math.random() * 9000);
         invoice_id = `INV-${datePart}-${randomPart}`;
-        exists = await Invoice.findOne({ invoice_id });
+        exists = await invoice.findOne({ invoice_id });
     } while (exists);
 
     return invoice_id;
