@@ -131,6 +131,39 @@ const validateOrderDTO = async(dto) => {
     return dealer;
 };
 
+const resolveOrderDetailStatus = ({
+    qtyOrdered,
+    qtyDelivered,
+    packedQty,
+    hasProduction,
+    hasUnpacked,
+    currentStatus
+}) => {
+    if (qtyOrdered === 0) {
+        return ORDER_STATUSES.CANCELLED;
+    }
+
+    if (qtyOrdered === qtyDelivered) {
+        return ORDER_STATUSES.DELIVERED;
+    }
+
+    if (hasProduction) {
+        return ORDER_STATUSES.PRODUCTION;
+    }
+
+    if (hasUnpacked) {
+        return ORDER_STATUSES.UNPACKED;
+    }
+
+    if (
+        packedQty > 0 && [ORDER_STATUSES.CONFIRMED].includes(currentStatus)
+    ) {
+        return ORDER_STATUSES.PACKED;
+    }
+
+    return currentStatus;
+};
+
 export const fetchDealerAndOrderDetails = async(orders) => {
     const dealerIds = [...new Set(orders.map((o) => o.dealer_id))];
     const orderNumbers = orders.map((o) => o.order_number);
@@ -576,16 +609,14 @@ const orderService = {
             hasProduction: productionQty > 0
         };
 
-        if (orderDetail.qty_ordered === 0) {
-            orderDetail.status = ORDER_STATUSES.CANCELLED;
-        } else if (orderDetail.qty_ordered === orderDetail.qty_delivered) {
-            orderDetail.status = ORDER_STATUSES.DELIVERED;
-            orderDetail.delivery_date = nowIST();
-        } else if (orderDetail.stock_flags.hasProduction || orderDetail.stock_flags.hasUnpacked) {
-            orderDetail.status = ORDER_STATUSES.PRODUCTION;
-        } else if (packedQty > 0) {
-            orderDetail.status = ORDER_STATUSES.PACKED;
-        }
+        orderDetail.status = resolveOrderDetailStatus({
+            qtyOrdered: orderDetail.qty_ordered,
+            qtyDelivered: orderDetail.qty_delivered,
+            packedQty,
+            hasProduction: orderDetail.stock_flags.hasProduction,
+            hasUnpacked: orderDetail.stock_flags.hasUnpacked,
+            currentStatus: orderDetail.status
+        });
 
         /* --------------------------------------------------
            9️⃣ Invoice trigger (clean & correct)
@@ -595,10 +626,9 @@ const orderService = {
             orderDetail.status = normalized;
 
             if (normalized === ORDER_STATUSES.INVOICE) {
-                const invoiceQty = toNumber(updateDto.invoice_qty);
                 await invoiceService.generateOrUpdateInvoiceByOrderDetail(
                     orderDetail,
-                    invoiceQty
+                    toNumber(updateDto.invoice_qty)
                 );
             }
         }
