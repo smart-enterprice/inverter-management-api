@@ -6,25 +6,22 @@ import { sanitizeInputBody } from '../utils/validationUtils.js';
 
 const router = express.Router();
 
+/* -------------------- Global Middlewares -------------------- */
 router.use(verifyToken);
 router.use(sanitizeInputBody);
 
-// @route   POST
+/* -------------------- Create -------------------- */
 router.post('/create-order', orderController.createOrder);
 
-// @route   GET
-router.get('/', orderController.getAll);
-router.get('/date-filter', orderController.fetchOrdersByDateFilter);
-router.get('/:orderId', orderController.getByOrderId);
-router.get('/status/:orderStatus', orderController.getByOrderStatus);
+/* -------------------- Read -------------------- */
+router.get("/", orderController.getAll);
+router.get("/date-filter", orderController.fetchOrdersByDateFilter);
+router.get("/status/:orderStatus", orderController.getByOrderStatus);
+router.get("/:orderId", orderController.getByOrderId);
 
-// @route   PUT
-router.put('/:orderDetailsId', orderController.updateOrderDetailStatus);
-router.put('/order/:orderNumber', orderController.updateMultipleOrderDetailsStatus);
-
-// Update order + one or many order details - new
+/* -------------------- Update -------------------- */
+router.put("/:orderDetailsId", orderController.updateOrderDetailStatus);
+router.put("/order/:orderNumber", orderController.updateMultipleOrderDetailsStatus);
 router.put("/status/:orderNumber", orderController.updateOrderStatusUnified);
-
-// router.put('/:orderId', orderController.updateProduct);
 
 export default router;

@@ -4,165 +4,35 @@ import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc.js";
 import timezone from "dayjs/plugin/timezone.js";
 
-import logger from "../utils/logger.js";
-import Employee from "../models/employees.js";
-import Order from "../models/order.js";
-import OrderDetails from "../models/orderDetails.js";
-import DealerDiscount from "../models/dealerDiscount.js";
+import logger from "../../utils/logger.js";
+import Employee from "../../models/employees.js";
+import Order from "../../models/order.js";
+import OrderDetails from "../../models/orderDetails.js";
+import DealerDiscount from "../../models/dealerDiscount.js";
 
-import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../utils/generatorIds.js";
-import { BadRequestException, ForbiddenException, UnauthorizedException } from "../middleware/CustomError.js";
-import { getAuthenticatedEmployeeContext, isValidTransition, normalizePrice, sanitizeInput } from "../utils/validationUtils.js";
+import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../../utils/generatorIds.js";
+import { BadRequestException, ForbiddenException } from "../../middleware/CustomError.js";
+import { getAuthenticatedEmployeeContext, isValidTransition, normalizePrice, sanitizeInput } from "../../utils/validationUtils.js";
 
-import { APPROVAL_GRANTED_ROLES, getISTDate, ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIELDS, ORDER_REQUIRED_FIELDS, ROLES, STOCK_ACTIONS, STOCK_TYPES, ORDER_STATUSES, PAYMENT_STATUSES, CANCELLABLE_STATUSES, ADMIN_PRIVILEGED_ROLES } from "../utils/constants.js";
-import { mapOrderDetailEntityToResponse, transformOrderToResponse } from "../utils/modelMapper.js";
-import { productService, saveOrUpdateStockTransaction } from "./productService.js";
-import Product from "../models/product.js";
-import { assertCancellable, assertRejectAllowed, assertTransitionAllowed, isValidStatus, normalizeStatus } from "../utils/orderStatusUtils.js";
-import invoiceService from "./invoiceService.js";
+import { getISTDate, ROLES, STOCK_TYPES, ORDER_STATUSES, CANCELLABLE_STATUSES, ADMIN_PRIVILEGED_ROLES } from "../../utils/constants.js";
+import { mapOrderDetailEntityToResponse, transformOrderToResponse } from "../../utils/modelMapper.js";
+import { productService } from "../productService.js";
+import Product from "../../models/product.js";
+import { assertCancellable, assertRejectAllowed, assertTransitionAllowed, isValidStatus, normalizeStatus } from "../../utils/orderStatusUtils.js";
+import invoiceService from "../invoiceService.js";
+import { allDetailsDelivered, canMoveOrderToTargetStatus, deriveOrderStatusFromDetails, resolveOrderDetailStatus } from "./orderStatus.js";
+import { validateOrderCreator, validateOrderDTO } from "./orderValidation.js";
+import { persistStockReturns, returnStockForDetail } from "./orderStock.js";
+import { fetchDealerAndOrderDetails } from "./orderHelpers.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-function deriveOrderStatusFromDetails(details = []) {
-    if (!Array.isArray(details) || details.length === 0) return ORDER_STATUSES.PENDING;
-
-    const statuses = new Set(details.map(d => d.status));
-
-    if (statuses.has(ORDER_STATUSES.REJECTED)) return ORDER_STATUSES.REJECTED;
-    if (statuses.has(ORDER_STATUSES.CANCELLED)) return ORDER_STATUSES.CANCELLED;
-    if (statuses.has(ORDER_STATUSES.PRODUCTION)) return ORDER_STATUSES.PRODUCTION;
-    if (statuses.has(ORDER_STATUSES.PACKED)) return ORDER_STATUSES.PACKED;
-    if (statuses.has(ORDER_STATUSES.INVOICE)) return ORDER_STATUSES.INVOICE;
-    if (statuses.has(ORDER_STATUSES.SHIPPED)) return ORDER_STATUSES.SHIPPED;
-
-    // all delivered -> COMPLETED
-    const allDelivered = details.length > 0 && details.every(d => d.status === ORDER_STATUSES.DELIVERED);
-    if (allDelivered) return ORDER_STATUSES.COMPLETED;
-
-    return ORDER_STATUSES.CONFIRMED;
-}
-
-function allDetailsDelivered(details = []) {
-    return Array.isArray(details) && details.length > 0 && details.every(d => d.status === ORDER_STATUSES.DELIVERED);
-}
-
-function canMoveOrderToTargetStatus(details = [], targetStatus) {
-    if (!Array.isArray(details)) return false;
-
-    const allowedDetailStatusByOrderStatus = {
-        PENDING: ["PENDING", "CONFIRMED"],
-        CONFIRMED: ["PENDING", "CONFIRMED"],
-        PRODUCTION: ["CONFIRMED", "PRODUCTION"],
-        PACKED: ["PRODUCTION", "PACKED"],
-        INVOICE: ["PACKED", "INVOICE"],
-        SHIPPED: ["INVOICE", "SHIPPED"],
-        DELIVERED: ["SHIPPED", "DELIVERED"],
-        COMPLETED: ["DELIVERED"]
-    };
-
-    const allowedStatuses = allowedDetailStatusByOrderStatus[targetStatus];
-    if (!allowedStatuses) return false;
-
-    return details.every(d => allowedStatuses.includes(d.status));
-}
-
-async function persistStockReturns({ product, returns, employeeId, role, orderNumber, orderDetailsNumber }) {
-    for (const { qty, type }
-        of returns) {
-        if (!qty || qty <= 0) continue;
-        await saveOrUpdateStockTransaction({
-            product,
-            quantity: qty,
-            action: STOCK_ACTIONS.STOCK_RETURN,
-            stockType: type,
-            employeeId,
-            role,
-            orderNumber,
-            orderDetailsNumber
-        });
-    }
-}
-
-async function returnStockForDetail({ d, employeeId, employeeRole, orderNumber }) {
-    const { PACKED = 0, UNPACKED = 0, PRODUCTION = 0 } = d.stock_usage || {};
-    if (PACKED || UNPACKED || PRODUCTION) {
-        await productService.returnStock({
-            product_id: d.product_id,
-            quantity: d.qty_ordered,
-            employeeId,
-            employeeRole,
-            orderNumber,
-            stock_usage: { PACKED, UNPACKED, PRODUCTION }
-        });
-    }
-}
-
-const validateOrderDTO = async(dto) => {
-    for (const field of ORDER_REQUIRED_FIELDS) {
-        if (!dto[field]) throw new BadRequestException(`'${field}' is required.`);
-    }
-
-    const dealer = await Employee.findOne({ employee_id: dto.dealer_id, role: ROLES.DEALER });
-    if (!dealer) throw new BadRequestException(`Invalid dealer ID: ${dto.dealer_id}. Dealer not found or not a dealer role.`);
-
-    if (!Array.isArray(dto.order_details) || dto.order_details.length === 0) {
-        throw new BadRequestException('At least one valid order detail is required.');
-    }
-
-    dto.order_details.forEach((detail, idx) => {
-        if (!detail || Object.keys(detail).length === 0) return;
-
-        for (const field of ORDER_DETAILS_REQUIRED_FIELDS) {
-            if (detail[field] === undefined || detail[field] === null || detail[field] === '') {
-                throw new BadRequestException(`order_details[${idx}]: '${field}' is required.`);
-            }
-        }
-
-        if (typeof detail.qty_ordered !== 'number' || detail.qty_ordered <= 0) {
-            throw new BadRequestException(`order_details[${idx}]: 'qty_ordered' must be a number greater than 0.`);
-        }
-
-        if (isNaN(Date.parse(detail.delivery_date))) {
-            throw new BadRequestException(`order_details[${idx}]: 'delivery_date' must be a valid date.`);
-        }
-    });
-
-    return dealer;
-};
-
-export const fetchDealerAndOrderDetails = async(orders) => {
-    const dealerIds = [...new Set(orders.map((o) => o.dealer_id))];
-    const orderNumbers = orders.map((o) => o.order_number);
-
-    const [dealers, orderDetails] = await Promise.all([
-        Employee.find({ employee_id: { $in: dealerIds }, role: ROLES.DEALER }),
-        OrderDetails.find({ order_number: { $in: orderNumbers } }),
-    ]);
-
-    const dealerMap = Object.fromEntries(dealers.map((d) => [d.employee_id, d]));
-    const detailsMap = orderDetails.reduce((acc, d) => {
-        acc[d.order_number] = acc[d.order_number] || [];
-        acc[d.order_number].push(d);
-        return acc;
-    }, {});
-
-    return { dealerMap, detailsMap };
-};
-
 const orderService = {
-    createOrder: asyncHandler(async(dto) => {
+    createOrder: asyncHandler(async (dto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
-        if (!employeeId || !employeeRole || !Object.values(ORDER_CREATOR_ROLES).includes(employeeRole.toUpperCase())) {
-            throw new ForbiddenException(`Access denied: only users with roles ${Object.values(ORDER_CREATOR_ROLES).join(', ')} are authorized to create orders.`);
-        }
-
-        const salesmanId = employeeRole === ROLES.SALESMAN ? employeeId : sanitizeInput(dto.salesman_id);
-
-        if ((Object.values(APPROVAL_GRANTED_ROLES).includes(employeeRole.toUpperCase())) && !salesmanId) {
-            throw new BadRequestException("salesman_id is required when ADMIN or SUPER_ADMIN creates the order.");
-        }
+        validateOrderCreator(employeeId, employeeRole, dto);
 
         const dealer = await validateOrderDTO(dto);
         const orderNumber = await generateUniqueOrderId();
@@ -292,17 +162,28 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetailsList);
     }),
 
-    getByOrderId: asyncHandler(async(orderNumber) => {
-        const order = await Order.findByOrderNumber(orderNumber);
-        if (!order) throw new BadRequestException(`No order found for: ${orderNumber}`);
+    getByOrderId: asyncHandler(async (orderNumber) => {
+        if (!orderNumber) {
+            throw new BadRequestException("Order number is required.");
+        }
 
-        const dealer = await Employee.findOne({ employee_id: order.dealer_id, role: ROLES.DEALER });
-        const orderDetails = await OrderDetails.find({ order_number: orderNumber });
+        const order = await Order.findByOrderNumber(orderNumber);
+        if (!order) {
+            throw new BadRequestException(`No order found for: ${orderNumber}`);
+        }
+
+        const [dealer, orderDetails] = await Promise.all([
+            Employee.findOne({
+                employee_id: order.dealer_id,
+                role: ROLES.DEALER
+            }),
+            OrderDetails.find({ order_number: orderNumber })
+        ]);
 
         return transformOrderToResponse(order, dealer, orderDetails);
     }),
 
-    getAllOrders: asyncHandler(async({ includeRejected = false, page = 1, limit = 10 }) => {
+    getAllOrders: asyncHandler(async ({ includeRejected = false, page = 1, limit = 10 }) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         const filter = {};
@@ -311,87 +192,135 @@ const orderService = {
             filter.status = { $ne: ORDER_STATUSES.REJECTED };
         }
 
-        if (![ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(employeeRole)) {
+        // Restrict non-admin roles
+        if (!ADMIN_PRIVILEGED_ROLES.includes(employeeRole)) {
             filter.created_by = employeeId;
         }
 
-        const skip = (page - 1) * limit;
+        const skip = (Number(page) - 1) * Number(limit);
 
         const [orders, total] = await Promise.all([
             Order.find(filter)
-            .sort({ created_at: -1 })
-            .skip(skip)
-            .limit(limit),
-
+                .sort({ created_at: -1 })
+                .skip(skip)
+                .limit(Number(limit)),
             Order.countDocuments(filter)
         ]);
 
+        if (!orders.length) {
+            return { orders: [], total: 0 };
+        }
+
         const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
 
-        const transformed = orders.map(order =>
+        const transformedOrders = orders.map(order =>
             transformOrderToResponse(
                 order,
                 dealerMap[order.dealer_id],
-                detailsMap[order.order_number]
+                detailsMap[order.order_number] || []
             )
         );
 
-        return { orders: transformed, total };
+        return {
+            orders: transformedOrders,
+            total,
+            page: Number(page),
+            limit: Number(limit)
+        };
     }),
 
-    getByOrderStatus: asyncHandler(async(orderStatus) => {
-        if (!Object.values(ORDER_STATUSES).includes(orderStatus)) {
+    getByOrderStatus: asyncHandler(async (orderStatus) => {
+        if (!orderStatus || !Object.values(ORDER_STATUSES).includes(orderStatus)) {
             throw new BadRequestException(`Invalid order status: ${orderStatus}`);
         }
 
         const orders = await Order.findByOrderStatus(orderStatus);
-        const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
-        return orders.map((order) => transformOrderToResponse(order, dealerMap[order.dealer_id], detailsMap[order.order_number]));
-    }),
 
-    getOrdersByDateFilter: asyncHandler(async({ year, month, start_date, end_date }) => {
-        const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
-
-        let startDate, endDate;
-
-        if (year && month) {
-            const safeDate = `${year}-${String(month).padStart(2, "0")}-01`;
-
-            startDate = dayjs(safeDate).startOf("month").toDate();
-            endDate = dayjs(safeDate).endOf("month").toDate();
-        } else if (start_date && end_date) {
-            if (!dayjs(start_date).isValid() || !dayjs(end_date).isValid()) {
-                throw new BadRequestException("Invalid 'start_date' or 'end_date'. Use 'YYYY-MM-DD'.");
-            }
-            startDate = dayjs(start_date).toDate();
-            endDate = dayjs(end_date).toDate();
-        } else {
-            const now = dayjs().tz("Asia/Kolkata");
-            startDate = now.startOf("month").toDate();
-            endDate = now.endOf("month").toDate();
+        if (!orders.length) {
+            return [];
         }
 
-        logger.debug("🕒 Filtered Date Range", {
-            start: dayjs(startDate).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss"),
-            end: dayjs(endDate).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss"),
+        const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
+
+        return orders.map(order =>
+            transformOrderToResponse(
+                order,
+                dealerMap[order.dealer_id],
+                detailsMap[order.order_number] || []
+            )
+        );
+    }),
+
+    getOrdersByDateFilter: asyncHandler(async (query) => {
+        const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+        const { year, month, start_date, end_date } = query;
+
+        /* --------------------------------------------------
+           1️⃣ Resolve date range (IST aware)
+        -------------------------------------------------- */
+        let startDate;
+        let endDate;
+
+        if (year && month) {
+            const base = `${year}-${String(month).padStart(2, "0")}-01`;
+            startDate = dayjs(base).startOf("month").toDate();
+            endDate = dayjs(base).endOf("month").toDate();
+
+        } else if (start_date && end_date) {
+            if (!dayjs(start_date).isValid() || !dayjs(end_date).isValid()) {
+                throw new BadRequestException(
+                    "Invalid start_date or end_date. Expected format: YYYY-MM-DD"
+                );
+            }
+
+            startDate = dayjs(start_date).startOf("day").toDate();
+            endDate = dayjs(end_date).endOf("day").toDate();
+
+        } else {
+            const nowIST = dayjs().tz("Asia/Kolkata");
+            startDate = nowIST.startOf("month").toDate();
+            endDate = nowIST.endOf("month").toDate();
+        }
+
+        /* --------------------------------------------------
+           2️⃣ Build Mongo filter (EXPLICIT TYPE)
+        -------------------------------------------------- */
+        const filter = /** @type {Record<string, any>} */ ({
+            created_at: {
+                $gte: startDate,
+                $lte: endDate
+            }
         });
 
-        const filter = {
-            created_at: { $gte: startDate, $lte: endDate }
-        };
-
-        // Restrict salesman
-        if (![ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.MANAGER].includes(employeeRole)) {
+        if (!ADMIN_PRIVILEGED_ROLES.includes(employeeRole)) {
             filter.created_by = employeeId;
         }
 
-        const orders = await Order.find(filter).sort({ created_at: -1 });
-        const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
+        /* --------------------------------------------------
+           3️⃣ Query
+        -------------------------------------------------- */
+        const orders = await Order
+            .find(filter)
+            .sort({ created_at: -1 });
 
-        return orders.map((order) => transformOrderToResponse(order, dealerMap[order.dealer_id], detailsMap[order.order_number]));
+        if (!orders.length) return [];
+
+        /* --------------------------------------------------
+           4️⃣ Attach dealer & details
+        -------------------------------------------------- */
+        const { dealerMap, detailsMap } =
+            await fetchDealerAndOrderDetails(orders);
+
+        return orders.map(order =>
+            transformOrderToResponse(
+                order,
+                dealerMap[order.dealer_id],
+                detailsMap[order.order_number] || []
+            )
+        );
     }),
 
-    updateOrderDetailStatus: asyncHandler(async(orderDetailsId, updateDto) => {
+    updateOrderDetailStatus: asyncHandler(async (orderDetailsId, updateDto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         const toNumber = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
@@ -576,16 +505,14 @@ const orderService = {
             hasProduction: productionQty > 0
         };
 
-        if (orderDetail.qty_ordered === 0) {
-            orderDetail.status = ORDER_STATUSES.CANCELLED;
-        } else if (orderDetail.qty_ordered === orderDetail.qty_delivered) {
-            orderDetail.status = ORDER_STATUSES.DELIVERED;
-            orderDetail.delivery_date = nowIST();
-        } else if (orderDetail.stock_flags.hasProduction || orderDetail.stock_flags.hasUnpacked) {
-            orderDetail.status = ORDER_STATUSES.PRODUCTION;
-        } else if (packedQty > 0) {
-            orderDetail.status = ORDER_STATUSES.PACKED;
-        }
+        orderDetail.status = resolveOrderDetailStatus({
+            qtyOrdered: orderDetail.qty_ordered,
+            qtyDelivered: orderDetail.qty_delivered,
+            packedQty,
+            hasProduction: orderDetail.stock_flags.hasProduction,
+            hasUnpacked: orderDetail.stock_flags.hasUnpacked,
+            currentStatus: orderDetail.status
+        });
 
         /* --------------------------------------------------
            9️⃣ Invoice trigger (clean & correct)
@@ -595,10 +522,9 @@ const orderService = {
             orderDetail.status = normalized;
 
             if (normalized === ORDER_STATUSES.INVOICE) {
-                const invoiceQty = toNumber(updateDto.invoice_qty);
                 await invoiceService.generateOrUpdateInvoiceByOrderDetail(
                     orderDetail,
-                    invoiceQty
+                    toNumber(updateDto.invoice_qty)
                 );
             }
         }
@@ -629,7 +555,7 @@ const orderService = {
         return mapOrderDetailEntityToResponse(orderDetail);
     }),
 
-    updateMultipleOrderDetailsStatus: asyncHandler(async(orderNumber, updates) => {
+    updateMultipleOrderDetailsStatus: asyncHandler(async (orderNumber, updates) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!updates || typeof updates !== "object") throw new BadRequestException("Invalid request body.");
@@ -707,7 +633,7 @@ const orderService = {
         return transformOrderToResponse(order, null, updatedDetails);
     }),
 
-    updateOrderDetailsBatch: async(orderDetails = []) => {
+    updateOrderDetailsBatch: async (orderDetails = []) => {
         if (!orderDetails.length) return;
 
         const ids = orderDetails.map(d => d.order_details_number);
@@ -730,7 +656,7 @@ const orderService = {
         }
     },
 
-    applyOrderStatusChange: asyncHandler(async({
+    applyOrderStatusChange: asyncHandler(async ({
         order,
         updatedDetails,
         status,
@@ -782,7 +708,7 @@ const orderService = {
         order.status = next;
     }),
 
-    cancelOrderAndReturnStock: asyncHandler(async({
+    cancelOrderAndReturnStock: asyncHandler(async ({
         order,
         updatedDetails,
         employeeId,
@@ -802,7 +728,7 @@ const orderService = {
         await order.save();
     }),
 
-    updateOrderStatus: asyncHandler(async(orderNumber, newStatus) => {
+    updateOrderStatus: asyncHandler(async (orderNumber, newStatus) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!newStatus || typeof newStatus !== "string") throw new BadRequestException("Invalid newStatus provided.");
@@ -871,7 +797,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, refreshedDetails);
     }),
 
-    updateOrderAndDetails: asyncHandler(async(orderNumber, payload) => {
+    updateOrderAndDetails: asyncHandler(async (orderNumber, payload) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!payload || typeof payload !== "object") {
