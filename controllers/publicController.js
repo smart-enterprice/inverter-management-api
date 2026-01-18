@@ -10,9 +10,9 @@ import Brand from "../models/brand.js";
 import Order from "../models/order.js";
 
 import { mapEmployeeEntityToResponse, mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse, transformOrderToResponse } from "../utils/modelMapper.js";
-import { fetchDealerAndOrderDetails } from "../service/orderService.js";
 import Stock from "../models/stock.js";
 import OrderDetails from "../models/orderDetails.js";
+import { fetchDealerAndOrderDetails } from "../service/order/orderHelpers.js";
 
 const getPaginationParams = (query) => {
     const page = parseInt(query.page || "1", 10);
@@ -26,7 +26,7 @@ const publicController = {
 
     search: [
         sanitizeInputBody,
-        asyncHandler(async(req, res) => {
+        asyncHandler(async (req, res) => {
             const { searchContent } = req.params;
             if (!searchContent || !searchContent.trim()) {
                 throw new BadRequestException("Search content is missing or invalid.");

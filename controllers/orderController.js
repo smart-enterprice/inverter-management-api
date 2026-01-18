@@ -1,122 +1,104 @@
 // controllers/orderController.js
 
 import asyncHandler from "express-async-handler";
-import xss from "xss";
-
-import { orderService } from "../service/orderService.js";
-import logger from "../utils/logger.js";
-import { sanitizeInputBody } from "../utils/validationUtils.js";
+import { buildResponse } from "../utils/responseUtils.js";
+import { orderService } from "../service/order/orderService.js";
 
 const orderController = {
-    sanitizeInputBody,
-    createOrder: asyncHandler(async(req, res) => {
-        const orderData = await orderService.createOrder(req.body);
-
-        res.status(201).json({
-            success: true,
+    createOrder: asyncHandler(async (req, res) => {
+        const data = await orderService.createOrder(req.body);
+        buildResponse({
+            res,
             status: 201,
             message: "🎉 Order created successfully!",
-            data: orderData,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+            data
         });
     }),
 
-    getByOrderId: asyncHandler(async(req, res) => {
-        const { orderId } = req.params;
-        const orderData = await orderService.getByOrderId(orderId);
-
-        res.status(200).json({
-            success: true,
-            status: 200,
+    getByOrderId: asyncHandler(async (req, res) => {
+        const data = await orderService.getByOrderId(req.params.orderId);
+        buildResponse({
+            res,
             message: "✅ Order fetched successfully!",
-            data: orderData,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+            data
         });
     }),
 
-    getAll: asyncHandler(async(req, res) => {
-        const includeRejected = req.query.includeRejected === "true" ? true : false;
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
+    getAll: asyncHandler(async (req, res) => {
+        const includeRejected = req.query.includeRejected === "true";
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 10;
 
-        const { orders, total } = await orderService.getAllOrders(includeRejected, page, limit);
+        const { orders, total } =
+            await orderService.getAllOrders({ includeRejected, page, limit });
 
-        res.status(200).json({
-            success: true,
-            status: 200,
+        buildResponse({
+            res,
             message: "Order list fetched successfully",
             data: orders,
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages: Math.ceil(total / limit)
-            },
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+            extra: {
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    totalPages: Math.ceil(total / limit)
+                }
+            }
         });
     }),
 
-    getByOrderStatus: asyncHandler(async(req, res) => {
-        const { orderStatus } = req.params;
-        const orderData = await orderService.getByOrderStatus(orderStatus);
+    getByOrderStatus: asyncHandler(async (req, res) => {
+        const data =
+            await orderService.getByOrderStatus(req.params.orderStatus);
 
-        res.status(200).json({
-            success: true,
-            status: 200,
+        buildResponse({
+            res,
             message: "✅ Order fetched successfully!",
-            data: orderData,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+            data
         });
     }),
 
-    fetchOrdersByDateFilter: asyncHandler(async(req, res) => {
-        const { year, month, start_date, end_date } = req.query;
+    fetchOrdersByDateFilter: asyncHandler(async (req, res) => {
+        const data =
+            await orderService.getOrdersByDateFilter(req.query);
 
-        const orders = await orderService.getOrdersByDateFilter({
-            year,
-            month,
-            start_date,
-            end_date
-        });
-
-        res.status(200).json({
-            success: true,
-            count: orders.length,
-            data: orders,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        buildResponse({
+            res,
+            message: "Orders fetched successfully",
+            data,
+            extra: { count: data.length }
         });
     }),
 
-    updateOrderDetailStatus: asyncHandler(async(req, res) => {
-        const { orderDetailsId } = req.params;
-        const updateDto = req.body;
+    updateOrderDetailStatus: asyncHandler(async (req, res) => {
+        const data =
+            await orderService.updateOrderDetailStatus(
+                req.params.orderDetailsId,
+                req.body
+            );
 
-        const updatedOrderDetail = await orderService.updateOrderDetailStatus(orderDetailsId, updateDto);
-
-        res.status(200).json({
-            success: true,
-            message: `✅ Order detail ${orderDetailsId} updated successfully.`,
-            data: updatedOrderDetail,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        buildResponse({
+            res,
+            message: `✅ Order detail ${req.params.orderDetailsId} updated successfully.`,
+            data
         });
     }),
 
-    updateMultipleOrderDetailsStatus: asyncHandler(async(req, res) => {
-        const { orderNumber } = req.params;
-        const updates = req.body;
+    updateMultipleOrderDetailsStatus: asyncHandler(async (req, res) => {
+        const data =
+            await orderService.updateMultipleOrderDetailsStatus(
+                req.params.orderNumber,
+                req.body
+            );
 
-        const updatedOrderDetails = await orderService.updateMultipleOrderDetailsStatus(orderNumber, updates);
-
-        res.status(200).json({
-            success: true,
-            message: `✅ Order ${orderNumber} details updated successfully.`,
-            count: updatedOrderDetails.length,
-            data: updatedOrderDetails,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        buildResponse({
+            res,
+            message: `✅ Order ${req.params.orderNumber} details updated successfully.`,
+            data
         });
     }),
 
-    updateOrderStatus: asyncHandler(async(req, res) => {
+    updateOrderStatus: asyncHandler(async (req, res) => {
         const { orderNumber } = req.params;
         const { status } = req.body;
 
@@ -130,21 +112,19 @@ const orderController = {
         });
     }),
 
-    updateOrderStatusUnified: asyncHandler(async(req, res) => {
-        const { orderNumber } = req.params;
-        const payload = req.body;
+    updateOrderStatusUnified: asyncHandler(async (req, res) => {
+        const data =
+            await orderService.updateOrderAndDetails(
+                req.params.orderNumber,
+                req.body
+            );
 
-        const response = await orderService.updateOrderAndDetails(orderNumber, payload);
-
-        res.status(200).json({
-            success: true,
-            message: `✅ Order ${orderNumber} updated successfully.`,
-            data: response,
-            timestamp: new Date().toLocaleString("en-IN", {
-                timeZone: "Asia/Kolkata"
-            })
+        buildResponse({
+            res,
+            message: `✅ Order ${req.params.orderNumber} updated successfully.`,
+            data
         });
-    }),
+    })
 
     // You can uncomment and implement updateOrder if needed in the future
     /*
