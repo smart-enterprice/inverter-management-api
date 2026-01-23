@@ -31,6 +31,11 @@ dayjs.extend(timezone);
 const orderService = {
     createOrder: asyncHandler(async (dto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+        console.log("[CREATE_ORDER]", {
+            employeeId,
+            employeeRole,
+            timestamp: new Date().toISOString()
+        });
 
         validateOrderCreator(employeeId, employeeRole, dto);
 
