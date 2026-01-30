@@ -5,7 +5,7 @@ import Employee from "../../models/employees.js";
 import { APPROVAL_GRANTED_ROLES, ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIELDS, ORDER_REQUIRED_FIELDS, ROLES } from "../../utils/constants.js";
 import { sanitizeInput } from "../../utils/validationUtils.js";
 
-export const validateOrderCreator = ({ employeeId, employeeRole, dto }) => {
+export const validateOrderCreator = (employeeId, employeeRole, dto) => {
     console.log("employeeRole received: ", employeeRole);
 
     if (!employeeId ||
