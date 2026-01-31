@@ -29,7 +29,7 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 
 const orderService = {
-    createOrder: asyncHandler(async(dto) => {
+    createOrder: asyncHandler(async (dto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
         console.log("[CREATE_ORDER]", {
             employeeId,
@@ -167,7 +167,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetailsList);
     }),
 
-    getByOrderId: asyncHandler(async(orderNumber) => {
+    getByOrderId: asyncHandler(async (orderNumber) => {
         if (!orderNumber) {
             throw new BadRequestException("Order number is required.");
         }
@@ -188,7 +188,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetails);
     }),
 
-    getAllOrders: asyncHandler(async({ includeRejected = false, page = 1, limit = 10 }) => {
+    getAllOrders: asyncHandler(async ({ includeRejected = false, page = 1, limit = 10 }) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         const filter = {};
@@ -206,9 +206,9 @@ const orderService = {
 
         const [orders, total] = await Promise.all([
             Order.find(filter)
-            .sort({ created_at: -1 })
-            .skip(skip)
-            .limit(Number(limit)),
+                .sort({ created_at: -1 })
+                .skip(skip)
+                .limit(Number(limit)),
             Order.countDocuments(filter)
         ]);
 
@@ -234,7 +234,7 @@ const orderService = {
         };
     }),
 
-    getByOrderStatus: asyncHandler(async(orderStatus) => {
+    getByOrderStatus: asyncHandler(async (orderStatus) => {
         if (!orderStatus || !Object.values(ORDER_STATUSES).includes(orderStatus)) {
             throw new BadRequestException(`Invalid order status: ${orderStatus}`);
         }
@@ -256,7 +256,7 @@ const orderService = {
         );
     }),
 
-    getOrdersByDateFilter: asyncHandler(async(query) => {
+    getOrdersByDateFilter: asyncHandler(async (query) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
         const { year, month, start_date, end_date } = query;
 
@@ -314,7 +314,7 @@ const orderService = {
            4️⃣ Attach dealer & details
         -------------------------------------------------- */
         const { dealerMap, detailsMap } =
-        await fetchDealerAndOrderDetails(orders);
+            await fetchDealerAndOrderDetails(orders);
 
         return orders.map(order =>
             transformOrderToResponse(
@@ -325,8 +325,13 @@ const orderService = {
         );
     }),
 
-    updateOrderDetailStatus: asyncHandler(async(orderDetailsId, updateDto) => {
+    updateOrderDetailStatus: asyncHandler(async (orderDetailsId, updateDto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+
+        console.info("[OrderDetail][DTO][Incoming]", {
+            dtoKeys: Object.keys(updateDto),
+            dtoValues: updateDto
+        });
 
         const toNumber = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
         const nowIST = getISTDate;
@@ -508,7 +513,12 @@ const orderService = {
         console.info("[OrderDetail][Stock Flags Updated]", {
             orderDetailsNo: orderDetail.order_details_number,
             planned_stock_usage: orderDetail.stock_usage, // immutable
-            live_stock_flags: orderDetail.stock_flags // mutable
+            live_stock_flags: orderDetail.stock_flags, // mutable
+            computed: {
+                packedQty,
+                unpackedQty,
+                productionQty
+            }
         });
 
         /* --------------------------------------------------
@@ -535,6 +545,11 @@ const orderService = {
            9️⃣ Invoice trigger (clean & correct)
         -------------------------------------------------- */
         if (updateDto.status) {
+            console.info("[OrderDetail][DTO][Status Override Requested]", {
+                orderDetailsNo: orderDetail.order_details_number,
+                rawStatus: updateDto.status
+            });
+
             const normalized = normalizeStatus(updateDto.status);
             orderDetail.status = normalized;
 
@@ -545,6 +560,11 @@ const orderService = {
                 );
             }
         }
+
+        console.info("[OrderDetail][DB][Saving]", {
+            orderDetailsNo: orderDetail.order_details_number,
+            finalStatus: orderDetail.status
+        });
 
         await orderDetail.save();
 
@@ -563,16 +583,35 @@ const orderService = {
 
         const refreshedDetails = await OrderDetails.find({ order_number: order.order_number });
 
+        const previousOrderStatus = order.status;
+
         order.status = allDetailsDelivered(refreshedDetails) ?
             ORDER_STATUSES.COMPLETED :
             deriveOrderStatusFromDetails(refreshedDetails);
 
+        console.info("[Order][Status Resolution]", {
+            orderNumber: order.order_number,
+            from: previousOrderStatus,
+            to: order.status,
+            detailStatuses: refreshedDetails.map(d => ({
+                orderDetailsNo: d.order_details_number,
+                status: d.status,
+                qtyOrdered: d.qty_ordered,
+                qtyDelivered: d.qty_delivered
+            }))
+        });
+
         await order.save();
+
+        console.info("[OrderDetail][Response Ready]", {
+            orderDetailsNo: orderDetail.order_details_number,
+            status: orderDetail.status
+        });
 
         return mapOrderDetailEntityToResponse(orderDetail);
     }),
 
-    updateMultipleOrderDetailsStatus: asyncHandler(async(orderNumber, updates) => {
+    updateMultipleOrderDetailsStatus: asyncHandler(async (orderNumber, updates) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!updates || typeof updates !== "object") throw new BadRequestException("Invalid request body.");
@@ -650,7 +689,7 @@ const orderService = {
         return transformOrderToResponse(order, null, updatedDetails);
     }),
 
-    updateOrderDetailsBatch: async(orderDetails = []) => {
+    updateOrderDetailsBatch: async (orderDetails = []) => {
         if (!orderDetails.length) return;
 
         const ids = orderDetails.map(d => d.order_details_number);
@@ -673,7 +712,7 @@ const orderService = {
         }
     },
 
-    applyOrderStatusChange: asyncHandler(async({
+    applyOrderStatusChange: asyncHandler(async ({
         order,
         updatedDetails,
         status,
@@ -725,7 +764,7 @@ const orderService = {
         order.status = next;
     }),
 
-    cancelOrderAndReturnStock: asyncHandler(async({
+    cancelOrderAndReturnStock: asyncHandler(async ({
         order,
         updatedDetails,
         employeeId,
@@ -745,7 +784,7 @@ const orderService = {
         await order.save();
     }),
 
-    updateOrderStatus: asyncHandler(async(orderNumber, newStatus) => {
+    updateOrderStatus: asyncHandler(async (orderNumber, newStatus) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!newStatus || typeof newStatus !== "string") throw new BadRequestException("Invalid newStatus provided.");
@@ -814,7 +853,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, refreshedDetails);
     }),
 
-    updateOrderAndDetails: asyncHandler(async(orderNumber, payload) => {
+    updateOrderAndDetails: asyncHandler(async (orderNumber, payload) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!payload || typeof payload !== "object") {
