@@ -46,7 +46,7 @@ const orderService = {
             order_number: orderNumber,
             dealer_id: sanitizeInput(dealer.employee_id),
             created_by: employeeId,
-            salesman_id: salesmanId,
+            salesman_id: sanitizeInput(dto.salesman_id),
             priority: sanitizeInput(dto.priority || "LOW"),
             order_note: sanitizeInput(dto.order_note || ""),
             amount_paid: Number(dto.amount_paid) || 0,
