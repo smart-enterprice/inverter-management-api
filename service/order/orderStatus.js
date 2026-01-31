@@ -52,11 +52,15 @@ export const resolveOrderDetailStatus = ({
     hasUnpacked,
     currentStatus
 }) => {
-    if (qtyOrdered === 0) return ORDER_STATUSES.CANCELLED;
-    if (qtyOrdered === qtyDelivered) return ORDER_STATUSES.DELIVERED;
-    if (hasProduction) return ORDER_STATUSES.PRODUCTION;
-    if (hasUnpacked) return ORDER_STATUSES.PRODUCTION;
-
+    if (qtyOrdered === 0) {
+        return ORDER_STATUSES.CANCELLED;
+    }
+    if (qtyDelivered >= qtyOrdered) {
+        return ORDER_STATUSES.DELIVERED;
+    }
+    if (hasProduction || hasUnpacked) {
+        return ORDER_STATUSES.PRODUCTION;
+    }
     if (packedQty > 0 && currentStatus === ORDER_STATUSES.CONFIRMED) {
         return ORDER_STATUSES.PACKED;
     }
