@@ -357,7 +357,6 @@ const orderService = {
         /* --------------------------------------------------
            2️⃣ Stock state initialization
         -------------------------------------------------- */
-        let { PACKED = 0, UNPACKED = 0, PRODUCTION = 0 } = orderDetail.stock_usage || {};
         let {
             PACKED: packedQty = 0,
             UNPACKED: unpackedQty = 0,
@@ -510,16 +509,30 @@ const orderService = {
             hasProduction: productionQty > 0
         };
 
+        console.info("[OrderDetail][Stock Flags Updated]", {
+            orderDetailsNo: orderDetail.order_details_number,
+            planned_stock_usage: orderDetail.stock_usage, // immutable
+            live_stock_flags: orderDetail.stock_flags // mutable
+        });
+
         /* --------------------------------------------------
                Resolve Order Detail Status
         -------------------------------------------------- */
+        const previousStatus = orderDetail.status;
+
         orderDetail.status = resolveOrderDetailStatus({
             qtyOrdered: orderDetail.qty_ordered,
             qtyDelivered: orderDetail.qty_delivered,
             packedQty,
-            hasProduction: productionQty > 0,
-            hasUnpacked: unpackedQty > 0,
+            hasProduction: orderDetail.stock_flags.hasProduction,
+            hasUnpacked: orderDetail.stock_flags.hasUnpacked,
             currentStatus: orderDetail.status
+        });
+
+        console.info("[OrderDetail][Status Transition]", {
+            orderDetailsNo: orderDetail.order_details_number,
+            from: previousStatus,
+            to: orderDetail.status
         });
 
         /* --------------------------------------------------
