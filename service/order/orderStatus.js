@@ -52,6 +52,25 @@ export const resolveOrderDetailStatus = ({
     hasUnpacked,
     currentStatus
 }) => {
+    console.debug(
+        "[resolveOrderDetailStatus] Evaluating order detail status", {
+            input: {
+                qtyOrdered,
+                qtyDelivered,
+                packedQty,
+                hasProduction,
+                hasUnpacked,
+                currentStatus
+            },
+            derivedChecks: {
+                isCancelled: qtyOrdered === 0,
+                isDelivered: qtyDelivered >= qtyOrdered,
+                isInProduction: hasProduction || hasUnpacked,
+                isPackedCandidate: packedQty > 0 && [ORDER_STATUSES.CONFIRMED, ORDER_STATUSES.PRODUCTION].includes(currentStatus)
+            }
+        }
+    );
+
     if (qtyOrdered === 0) {
         return ORDER_STATUSES.CANCELLED;
     }
@@ -61,7 +80,8 @@ export const resolveOrderDetailStatus = ({
     if (hasProduction || hasUnpacked) {
         return ORDER_STATUSES.PRODUCTION;
     }
-    if (packedQty > 0 && currentStatus === ORDER_STATUSES.CONFIRMED) {
+
+    if (packedQty > 0 && [ORDER_STATUSES.CONFIRMED, ORDER_STATUSES.PRODUCTION].includes(currentStatus)) {
         return ORDER_STATUSES.PACKED;
     }
 
