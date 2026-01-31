@@ -27,7 +27,7 @@ export const validateOrderCreator = (employeeId, employeeRole, dto) => {
     }
 };
 
-export const validateOrderDTO = async (dto) => {
+export const validateOrderDTO = async(dto) => {
     for (const field of ORDER_REQUIRED_FIELDS) {
         if (!dto[field]) {
             throw new BadRequestException(`'${field}' is required.`);
