@@ -391,7 +391,6 @@ const orderService = {
             if (productionQty > 0 && remaining > 0) {
                 const used = Math.min(productionQty, remaining);
                 productionQty -= used;
-                PRODUCTION -= used;
                 remaining -= used;
             }
 
@@ -399,7 +398,6 @@ const orderService = {
                 const used = Math.min(unpackedQty, remaining);
                 unpackedQty -= used;
                 returnUnpacked += used;
-                UNPACKED -= used;
                 remaining -= used;
             }
 
@@ -407,7 +405,7 @@ const orderService = {
                 const used = Math.min(packedQty, remaining);
                 packedQty -= used;
                 returnPacked += used;
-                PACKED -= used;
+                remaining -= used;
             }
         };
 
@@ -417,13 +415,11 @@ const orderService = {
         if (updateDto.has_production_completed && productionQty > 0) {
             unpackedQty += productionQty;
             productionQty = 0;
-            PRODUCTION = 0;
         }
 
         if (updateDto.has_unPacked_completed && unpackedQty > 0) {
             packedQty += unpackedQty;
             unpackedQty = 0;
-            UNPACKED = 0;
         }
 
         /* --------------------------------------------------
