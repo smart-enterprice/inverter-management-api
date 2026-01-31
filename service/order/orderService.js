@@ -860,6 +860,12 @@ const orderService = {
             throw new BadRequestException("Invalid request body");
         }
 
+        console.info("[updateOrderAndDetails][DTO][Incoming]", {
+            orderNumber: orderNumber,
+            dtoKeys: Object.keys(updateDto),
+            dtoValues: updateDto
+        });
+
         const {
             order_number,
             priority,
