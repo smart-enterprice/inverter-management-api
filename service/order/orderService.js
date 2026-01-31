@@ -862,8 +862,8 @@ const orderService = {
 
         console.info("[updateOrderAndDetails][DTO][Incoming]", {
             orderNumber: orderNumber,
-            dtoKeys: Object.keys(updateDto),
-            dtoValues: updateDto
+            dtoKeys: Object.keys(payload),
+            dtoValues: payload
         });
 
         const {
