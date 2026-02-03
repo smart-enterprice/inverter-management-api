@@ -159,6 +159,17 @@ const orderService = {
         order.sales_target_updated = false;
         order.order_total_price = totalOrderAmount;
         order.order_total_discount = totalOrderDiscount;
+
+        if (dto.delivery_date != null) {
+            const parsedDate = new Date(dto.delivery_date);
+
+            if (Number.isNaN(parsedDate.getTime())) {
+                throw new BadRequestException("Invalid delivery_date format");
+            }
+
+            order.promised_delivery_date = parsedDate;
+        }
+
         await order.save();
 
         const orderDetailsList = await OrderDetails.insertMany(orderDetailsPayload);
@@ -545,11 +556,6 @@ const orderService = {
            9️⃣ Invoice trigger (clean & correct)
         -------------------------------------------------- */
         if (updateDto.status) {
-            console.info("[OrderDetail][DTO][Status Override Requested]", {
-                orderDetailsNo: orderDetail.order_details_number,
-                rawStatus: updateDto.status
-            });
-
             const normalized = normalizeStatus(updateDto.status);
             orderDetail.status = normalized;
 
@@ -560,11 +566,6 @@ const orderService = {
                 );
             }
         }
-
-        console.info("[OrderDetail][DB][Saving]", {
-            orderDetailsNo: orderDetail.order_details_number,
-            finalStatus: orderDetail.status
-        });
 
         await orderDetail.save();
 
@@ -588,18 +589,6 @@ const orderService = {
         order.status = allDetailsDelivered(refreshedDetails) ?
             ORDER_STATUSES.COMPLETED :
             deriveOrderStatusFromDetails(refreshedDetails);
-
-        console.info("[Order][Status Resolution]", {
-            orderNumber: order.order_number,
-            from: previousOrderStatus,
-            to: order.status,
-            detailStatuses: refreshedDetails.map(d => ({
-                orderDetailsNo: d.order_details_number,
-                status: d.status,
-                qtyOrdered: d.qty_ordered,
-                qtyDelivered: d.qty_delivered
-            }))
-        });
 
         await order.save();
 
@@ -861,7 +850,10 @@ const orderService = {
         }
 
         console.info("[updateOrderAndDetails][DTO][Incoming]", {
-            orderNumber: orderNumber,
+            orderNumber,
+            requestedBy: {
+                employeeRole
+            },
             dtoKeys: Object.keys(payload),
             dtoValues: payload
         });
@@ -871,6 +863,7 @@ const orderService = {
             priority,
             order_note,
             status,
+            delivery_date,
             amount_paid,
             payment_method,
             order_details = []
@@ -947,6 +940,16 @@ const orderService = {
                 Number(amount_paid) || 0,
                 payment_method || "CASH"
             );
+        }
+
+        if (delivery_date != null) {
+            const parsedDate = new Date(delivery_date);
+
+            if (Number.isNaN(parsedDate.getTime())) {
+                throw new BadRequestException("Invalid delivery_date format");
+            }
+
+            order.promised_delivery_date = parsedDate;
         }
 
         await order.save();
