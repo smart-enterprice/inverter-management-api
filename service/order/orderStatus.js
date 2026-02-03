@@ -24,8 +24,12 @@ export const deriveOrderStatusFromDetails = (details = []) => {
 };
 
 export const allDetailsDelivered = (details = []) =>
-    details.length &&
-    details.every(d => d.status === ORDER_STATUSES.DELIVERED);
+    details.length > 0 &&
+    details.every(
+        d =>
+            d.status === ORDER_STATUSES.DELIVERED ||
+            d.status === ORDER_STATUSES.COMPLETED
+    );
 
 export const canMoveOrderToTargetStatus = (details, targetStatus) => {
     const map = {
@@ -54,21 +58,21 @@ export const resolveOrderDetailStatus = ({
 }) => {
     console.debug(
         "[resolveOrderDetailStatus] Evaluating order detail status", {
-            input: {
-                qtyOrdered,
-                qtyDelivered,
-                packedQty,
-                hasProduction,
-                hasUnpacked,
-                currentStatus
-            },
-            derivedChecks: {
-                isCancelled: qtyOrdered === 0,
-                isDelivered: qtyDelivered >= qtyOrdered,
-                isInProduction: hasProduction || hasUnpacked,
-                isPackedCandidate: packedQty > 0 && !hasProduction && !hasUnpacked
-            }
+        input: {
+            qtyOrdered,
+            qtyDelivered,
+            packedQty,
+            hasProduction,
+            hasUnpacked,
+            currentStatus
+        },
+        derivedChecks: {
+            isCancelled: qtyOrdered === 0,
+            isDelivered: qtyDelivered >= qtyOrdered,
+            isInProduction: hasProduction || hasUnpacked,
+            isPackedCandidate: packedQty > 0 && !hasProduction && !hasUnpacked
         }
+    }
     );
 
     if (qtyOrdered === 0) {
