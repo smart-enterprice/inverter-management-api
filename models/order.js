@@ -118,13 +118,18 @@ orderSchema.methods.addPayment = async function (amount, method = "CASH") {
         throw new BadRequestException("Payment amount must be greater than zero.");
     }
 
+    const payableAmount = Number(this.order_total_price);
+    const remainingAmount = payableAmount - Number(this.amount_paid || 0);
+
+    if (amount > remainingAmount) {
+        throw new BadRequestException(`Payment exceeds outstanding amount. Remaining payable: ${remainingAmount}`);
+    }
+
     this.amount_paid += amount;
     this.payment_type = method;
     this.last_payment_date = getISTDate();
 
-    this.payment_notes.push(
-        `💰 ${amount} received via ${method} on ${this.last_payment_date.toLocaleString()}`
-    );
+    this.payment_notes.push(`💰 ${amount} received via ${method} on ${this.last_payment_date.toLocaleString()}`);
 
     return this;
 };
