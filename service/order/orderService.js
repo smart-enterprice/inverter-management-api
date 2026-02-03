@@ -159,6 +159,17 @@ const orderService = {
         order.sales_target_updated = false;
         order.order_total_price = totalOrderAmount;
         order.order_total_discount = totalOrderDiscount;
+
+        if (dto.delivery_date != null) {
+            const parsedDate = new Date(dto.delivery_date);
+
+            if (Number.isNaN(parsedDate.getTime())) {
+                throw new BadRequestException("Invalid delivery_date format");
+            }
+
+            order.promised_delivery_date = parsedDate;
+        }
+
         await order.save();
 
         const orderDetailsList = await OrderDetails.insertMany(orderDetailsPayload);
