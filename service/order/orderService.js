@@ -839,7 +839,10 @@ const orderService = {
         }
 
         console.info("[updateOrderAndDetails][DTO][Incoming]", {
-            orderNumber: orderNumber,
+            orderNumber,
+            requestedBy: {
+                employeeRole
+            },
             dtoKeys: Object.keys(payload),
             dtoValues: payload
         });
@@ -849,6 +852,7 @@ const orderService = {
             priority,
             order_note,
             status,
+            delivery_date,
             amount_paid,
             payment_method,
             order_details = []
@@ -925,6 +929,16 @@ const orderService = {
                 Number(amount_paid) || 0,
                 payment_method || "CASH"
             );
+        }
+
+        if (delivery_date != null) {
+            const parsedDate = new Date(delivery_date);
+
+            if (Number.isNaN(parsedDate.getTime())) {
+                throw new BadRequestException("Invalid delivery_date format");
+            }
+
+            order.promised_delivery_date = parsedDate;
         }
 
         await order.save();

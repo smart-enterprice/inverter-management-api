@@ -72,7 +72,7 @@ const orderSchema = new mongoose.Schema({
     },
     amount_due: {
         type: Number,
-        default () {
+        default() {
             return this.order_total_price;
         },
         min: [0, "Amount due cannot be negative."],
@@ -92,7 +92,7 @@ const orderSchema = new mongoose.Schema({
     },
 });
 
-orderSchema.pre("save", function(next) {
+orderSchema.pre("save", function (next) {
     const now = getISTDate();
     this.updated_at = now;
 
@@ -108,12 +108,12 @@ orderSchema.pre("save", function(next) {
     next();
 });
 
-orderSchema.pre('findOneAndUpdate', function(next) {
+orderSchema.pre('findOneAndUpdate', function (next) {
     this._update.updated_at = getISTDate();
     next();
 });
 
-orderSchema.methods.addPayment = async function(amount, method = "CASH") {
+orderSchema.methods.addPayment = async function (amount, method = "CASH") {
     if (amount <= 0) {
         throw new BadRequestException("Payment amount must be greater than zero.");
     }
