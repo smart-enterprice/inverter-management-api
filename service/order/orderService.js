@@ -168,6 +168,17 @@ const orderService = {
             }
 
             order.promised_delivery_date = parsedDate;
+        } else {
+            if (orderDetailsPayload.length > 0) {
+                const maxDeliveryDate = orderDetailsPayload
+                    .map(d => new Date(d.delivery_date))
+                    .filter(d => !Number.isNaN(d.getTime()))
+                    .reduce((latest, current) =>
+                        current > latest ? current : latest
+                    );
+
+                order.promised_delivery_date = maxDeliveryDate;
+            }
         }
 
         await order.save();

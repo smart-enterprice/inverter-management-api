@@ -32,7 +32,7 @@ const invoiceSchema = new mongoose.Schema({
     timestamps: true
 });
 
-invoiceSchema.pre("save", function(next) {
+invoiceSchema.pre("save", function (next) {
     this.total_items = [...this.order_items.values()]
         .reduce((sum, qty) => sum + qty, 0);
     next();
