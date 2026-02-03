@@ -545,11 +545,6 @@ const orderService = {
            9️⃣ Invoice trigger (clean & correct)
         -------------------------------------------------- */
         if (updateDto.status) {
-            console.info("[OrderDetail][DTO][Status Override Requested]", {
-                orderDetailsNo: orderDetail.order_details_number,
-                rawStatus: updateDto.status
-            });
-
             const normalized = normalizeStatus(updateDto.status);
             orderDetail.status = normalized;
 
@@ -560,11 +555,6 @@ const orderService = {
                 );
             }
         }
-
-        console.info("[OrderDetail][DB][Saving]", {
-            orderDetailsNo: orderDetail.order_details_number,
-            finalStatus: orderDetail.status
-        });
 
         await orderDetail.save();
 
@@ -588,18 +578,6 @@ const orderService = {
         order.status = allDetailsDelivered(refreshedDetails) ?
             ORDER_STATUSES.COMPLETED :
             deriveOrderStatusFromDetails(refreshedDetails);
-
-        console.info("[Order][Status Resolution]", {
-            orderNumber: order.order_number,
-            from: previousOrderStatus,
-            to: order.status,
-            detailStatuses: refreshedDetails.map(d => ({
-                orderDetailsNo: d.order_details_number,
-                status: d.status,
-                qtyOrdered: d.qty_ordered,
-                qtyDelivered: d.qty_delivered
-            }))
-        });
 
         await order.save();
 
