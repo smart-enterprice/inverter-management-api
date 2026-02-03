@@ -498,16 +498,19 @@ const orderService = {
             const deliveredQty = toNumber(updateDto.delivered_qty);
             if (deliveredQty <= 0) throw new BadRequestException("Invalid delivered quantity.");
 
-            if (deliveredQty > (orderDetail.qty_ordered - orderDetail.qty_delivered)) {
+            const remainingQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
+            if (deliveredQty > remainingQty) {
                 throw new BadRequestException("Delivered quantity exceeds remaining quantity.");
             }
 
-            orderDetail.qty_delivered += deliveredQty;
-            orderDetail.delivery_date = updateDto.delivered_date ?
+            const deliveredAt = updateDto.delivered_date ?
                 new Date(updateDto.delivered_date) :
                 nowIST();
 
-            appendNote(`Delivered ${deliveredQty} unit(s)`);
+            orderDetail.qty_delivered += deliveredQty;
+            orderDetail.delivery_date = deliveredAt;
+
+            appendNote(`Delivered ${deliveredQty} unit(s) on ${deliveredAt.toISOString()}`);
         }
 
         /* --------------------------------------------------
