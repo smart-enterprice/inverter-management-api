@@ -1,13 +1,12 @@
 // employeeController.js
 import asyncHandler from "express-async-handler";
 import helmet from "helmet";
-import xss from "xss";
 
-import { employeeService } from "../service/employeeService.js";
-import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";
-import logger from "../utils/logger.js";
 import employeeSchema from "../models/employees.js";
-import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
+import { employeeService } from "../service/employeeService.js";
+import { BadRequestException } from "../middleware/CustomError.js";
+import logger from "../utils/logger.js";
+
 import { mapEmployeeEntityToResponse } from "../utils/modelMapper.js";
 import { revealPassword } from "../utils/employeeAuth.js";
 import { sanitizeInputBody, validateMainRoleAccess } from "../utils/validationUtils.js";
@@ -251,6 +250,78 @@ const employeeController = {
                     pages: Math.ceil(total / limit)
                 },
                 timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+            });
+        })
+    ],
+
+    getEmployeeCounts: [
+        asyncHandler(async (req, res) => {
+            const { role } = req.query;
+
+            const baseFilter = { status: "active" };
+
+            // ✅ Validate role only if provided
+            if (role) {
+                const normalizedRole = role.toUpperCase();
+
+                if (!Object.values(ROLES).includes(normalizedRole)) {
+                    throw new BadRequestException(
+                        `Invalid role. Allowed roles: ${Object.values(ROLES).join(", ")}`
+                    );
+                }
+
+                baseFilter.role = normalizedRole;
+            }
+
+            // ✅ Role-wise count (aggregation)
+            const roleWiseCounts = await employeeSchema.aggregate([
+                { $match: baseFilter },
+                {
+                    $group: {
+                        _id: "$role",
+                        count: { $sum: 1 }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        role: "$_id",
+                        count: 1
+                    }
+                }
+            ]);
+
+            const roleCounts = {};
+            roleWiseCounts.forEach(({ role, count }) => {
+                roleCounts[role] = count;
+            });
+
+            // ✅ Totals (parallel execution)
+            const [totalUsers, totalDealers, grandTotal] = await Promise.all([
+                employeeSchema.countDocuments({
+                    status: "active",
+                    role: { $ne: ROLES.DEALER }
+                }),
+                employeeSchema.countDocuments({
+                    status: "active",
+                    role: ROLES.DEALER
+                }),
+                employeeSchema.countDocuments({ status: "active" })
+            ]);
+
+            return res.status(200).json({
+                success: true,
+                status: 200,
+                message: "Employee counts retrieved successfully",
+                data: {
+                    roleCounts,
+                    totalUsers,
+                    totalDealers,
+                    grandTotal
+                },
+                timestamp: new Date().toLocaleString("en-IN", {
+                    timeZone: "Asia/Kolkata"
+                })
             });
         })
     ],
