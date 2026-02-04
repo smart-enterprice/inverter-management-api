@@ -473,6 +473,67 @@ const productService = {
         return { productMap, productStockMap, productAvailableStockMap };
     }),
 
+    getLowStockProducts: asyncHandler(async ({ page, limit, threshold }) => {
+        const skip = (page - 1) * limit;
+
+        // 🔍 Find low-stock products
+        const filter = {
+            status: "active",
+            available_stock: { $lte: threshold }
+        };
+
+        const [products, total] = await Promise.all([
+            Product.find(filter)
+                .sort({ available_stock: 1, created_at: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+
+            Product.countDocuments(filter)
+        ]);
+
+        if (!products.length) {
+            return {
+                data: [],
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    pages: 0
+                }
+            };
+        }
+
+        const productIds = products.map(p => p.product_id);
+
+        const stocks = await Stock.find({
+            product_id: { $in: productIds }
+        }).lean();
+
+        const stockMap = stocks.reduce((acc, s) => {
+            if (!acc[s.product_id]) acc[s.product_id] = [];
+            acc[s.product_id].push(mapStockEntityToResponse(s));
+            return acc;
+        }, {});
+
+        const result = products.map(product =>
+            mapProductEntityToResponse(
+                product,
+                stockMap[product.product_id] || []
+            )
+        );
+
+        return {
+            data: result,
+            pagination: {
+                page,
+                limit,
+                total,
+                pages: Math.ceil(total / limit)
+            }
+        };
+    }),
+
     checkAndReserveStock: asyncHandler(async (product, stockDoc, requiredQty, employeeId, role, orderNumber) => {
         if (requiredQty <= 0) throw new BadRequestException('Ordered quantity must be greater than 0.');
         if (!stockDoc) {

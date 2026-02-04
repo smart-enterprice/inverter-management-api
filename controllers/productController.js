@@ -1,6 +1,5 @@
 // controller/productController.js
 import asyncHandler from "express-async-handler";
-import xss from "xss";
 import { productService } from "../service/productService.js";
 import { sanitizeInputBody } from "../utils/validationUtils.js";
 import { BadRequestException } from "../middleware/CustomError.js";
@@ -10,7 +9,7 @@ const productController = {
 
     createProduct: asyncHandler(async (req, res) => {
         const productData = await productService.createProduct(req.body);
-        
+
         res.status(201).json({
             success: true,
             status: 201,
@@ -119,6 +118,29 @@ const productController = {
             message: `📦 Product Brand list fetched successfully!`,
             data: brandListData,
             timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+        });
+    }),
+
+    getLowStockProducts: asyncHandler(async (req, res) => {
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.max(parseInt(req.query.limit) || 10, 1);
+        const threshold = Math.max(parseInt(req.query.threshold) || 10, 0);
+
+        const response = await productService.getLowStockProducts({
+            page,
+            limit,
+            threshold
+        });
+
+        return res.status(200).json({
+            success: true,
+            status: 200,
+            message: "⚠️ Low stock products fetched successfully",
+            data: response.data,
+            pagination: response.pagination,
+            timestamp: new Date().toLocaleString("en-IN", {
+                timeZone: "Asia/Kolkata"
+            })
         });
     }),
 
