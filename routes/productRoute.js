@@ -10,29 +10,29 @@ router.use(verifyToken);
 router.use(sanitizeInputBody);
 
 // PRODUCT ROUTES
-// @route   POST
-router.post('/create-product', productController.createProduct);
-router.post('/getAllProductsByBrand', productController.getAllProductsByBrands);
+// CREATE
+router.post("/create-product", productController.createProduct);
+router.post("/getAllProductsByBrand", productController.getAllProductsByBrands);
 
-// @route   GET
-router.get('/', productController.getAllActiveProducts);
-router.get('/get/all', productController.getAll);
-router.get('/:productId', productController.getByProductId);
+// READ
+router.get("/", productController.getAllActiveProducts);
+router.get("/get/all", productController.getAll);
+router.get("/low-stock", productController.getLowStockProducts); // ✅ Low Stock API
+router.get("/:productId", productController.getByProductId);
 
-// @route   PUT
-router.put('/:productId', productController.updateProduct);
-router.put('/createOrUpdate/product-stocks', productController.createOrUpdateProductStocks);
+// UPDATE
+router.put("/:productId", productController.updateProduct);
+router.put("/createOrUpdate/product-stocks", productController.createOrUpdateProductStocks);
 
 // BRAND ROUTES
-// @route   POST
-router.post('/create/brands', productController.createProductBrands);
+// CREATE
+router.post("/create/brands", productController.createProductBrands);
 
-// @route   GET
-router.get('/getAll/brands', productController.getAllBrands);
-router.get('/product-brand/:brandId', productController.getByBrandId);
+// READ
+router.get("/getAll/brands", productController.getAllBrands);
+router.get("/product-brand/:brandId", productController.getByBrandId);
 
-// @route   PUT
-router.put('/brand/:brandName', productController.statusChangeByBrandName);
-
+// UPDATE
+router.put("/brand/:brandName", productController.statusChangeByBrandName);
 
 export default router;
