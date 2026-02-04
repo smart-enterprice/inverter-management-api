@@ -77,25 +77,28 @@ const invoiceService = {
         }
 
         // 2. Fetch full order details (order + dealer + order_details)
-        const order = await orderService.getByOrderId(orderNumber);
+        const orderResponse = await orderService.getByOrderId(orderNumber);
+
+        const order = orderResponse && orderResponse.order;
+        if (!order) {
+            throw new BadRequestException("Order data not found");
+        }
+
+        const orderDetails = Array.isArray(order.order_details) ?
+            order.order_details : [];
 
         // 3. Merge invoice item counts into order_details
         const invoiceItemsMap = invoice.order_items || {};
-        const orderDetailsWithInvoiceQty = order.order_details.map(detail => {
+
+        const orderDetailsWithInvoiceQty = orderDetails.map(detail => {
             const invoiceQty = Number(invoiceItemsMap[detail.order_details_number] || 0);
 
-            // include only invoice-related qty & price calculations
             return {
                 ...detail,
                 invoice_qty: invoiceQty,
-                invoice_total_price: invoiceQty * detail.unit_product_price
+                invoice_total_price: invoiceQty * Number(detail.unit_product_price || 0)
             };
         });
-
-        // OPTIONAL: only items with invoice_qty > 0
-        const filteredOrderDetails = orderDetailsWithInvoiceQty.filter(
-            d => d.invoice_qty > 0
-        );
 
         return {
             invoice: {
@@ -106,7 +109,7 @@ const invoiceService = {
                 created_at: invoice.created_at,
                 order: {
                     ...order,
-                    order_details: filteredOrderDetails // or orderDetailsWithInvoiceQty
+                    order_details: orderDetailsWithInvoiceQty.filter(d => d.invoice_qty > 0)
                 }
             }
         };
