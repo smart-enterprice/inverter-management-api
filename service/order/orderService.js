@@ -49,8 +49,6 @@ const orderService = {
             salesman_id: sanitizeInput(dto.salesman_id),
             priority: sanitizeInput(dto.priority || "LOW"),
             order_note: sanitizeInput(dto.order_note || ""),
-            amount_paid: Number(dto.amount_paid) || 0,
-            payment_type: (Number(dto.amount_paid) > 0) ? sanitizeInput(dto.payment_method || "CASH") : null
         });
 
         const productIds = dto.order_details.map((detail) => detail.product_id);
@@ -179,6 +177,13 @@ const orderService = {
 
                 order.promised_delivery_date = maxDeliveryDate;
             }
+        }
+
+        if (Number(dto.amount_paid) > 0) {
+            await order.addPayment(
+                Number(dto.amount_paid),
+                sanitizeInput(dto.payment_method || "CASH")
+            );
         }
 
         await order.save();
