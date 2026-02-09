@@ -5,6 +5,11 @@ import helmet from "helmet";
 import { employeeService } from "../service/employeeService.js";
 import { BadRequestException } from "../middleware/CustomError.js";
 import { sanitizeInputBody } from "../utils/validationUtils.js";
+import Employee from "../models/employees.js";
+import jwt from "jsonwebtoken";
+import logger from "../utils/logger.js";
+import { JWT_SECRET } from "../utils/constants.js";
+import { tokenBlacklistService } from "../service/tokenBlacklistService.js";
 
 const authController = {
     employeeSecurityMiddleware: [
@@ -68,8 +73,59 @@ const authController = {
                 timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
-    ]
+    ],
 
+    checkTokenActive: [
+        asyncHandler(async(req, res) => {
+            const authHeader = req.headers.authorization;
+            let isActive = true;
+
+            try {
+                if (!authHeader || !authHeader.startsWith("Bearer ")) {
+                    throw new BadRequestException("Missing token");
+                }
+
+                const token = authHeader.split(" ")[1];
+                if (!token || token === "null" || token === "undefined") {
+                    throw new BadRequestException("Invalid token");
+                }
+
+                const decoded = jwt.verify(token, JWT_SECRET);
+                logger.debug("[AUTH] JWT verified");
+
+                const { employee_id } = decoded;
+                if (!employee_id) {
+                    throw new BadRequestException("Invalid payload");
+                }
+
+                if (tokenBlacklistService.isBlacklisted(token)) {
+                    throw new BadRequestException("Blacklisted token");
+                }
+
+                const employee = await Employee.findOne({
+                    employee_id,
+                    status: "active",
+                });
+
+                if (!employee) {
+                    throw new BadRequestException("Inactive user");
+                }
+
+                logger.info("[AUTH] Token is active");
+            } catch (err) {
+                isActive = false;
+                logger.error("[AUTH] Token validation failed", {
+                    reason: err.message
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                active: isActive,
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+            });
+        })
+    ]
 };
 
 export default authController;
