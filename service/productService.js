@@ -352,7 +352,7 @@ const productService = {
     }),
 
     getAllProductsByBrands: asyncHandler(async (dto) => {
-        const { employee_id, role } = validateMainRoleAccess();
+        const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
         const { brands } = dto;
 
         if (!Array.isArray(brands) || brands.length === 0) {
@@ -360,7 +360,7 @@ const productService = {
         }
 
         const brandInputs = brands.map((b) => sanitizeInput(b).toUpperCase());
-        logger.info('product by brands | request', { employee_id, role, brands: brandInputs });
+        logger.info('product by brands | request', { employeeId, employeeRole, brands: brandInputs });
 
         const activeBrands = await Brand.find({
             $or: [
@@ -377,7 +377,7 @@ const productService = {
         }
 
         const validBrandNames = activeBrands.map((b) => b.brand_name.toUpperCase());
-        logger.info('product by brands | activeBrands', { employee_id, role, activeBrands: validBrandNames });
+        logger.info('product by brands | activeBrands', { employeeId, employeeRole, activeBrands: validBrandNames });
 
         const products = await Product.find({
             brand: { $in: validBrandNames },
@@ -408,7 +408,7 @@ const productService = {
             const mappedStocks = stockMap[product.product_id] || [];
             return mapProductEntityToResponse(product, mappedStocks);
         });
-        logger.info('product by brands | result ready', { employee_id, totalProducts: result.length });
+        logger.info('product by brands | result ready', { employeeId, totalProducts: result.length });
 
         return result;
     }),
