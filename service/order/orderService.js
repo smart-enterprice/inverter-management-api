@@ -29,7 +29,7 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 
 const orderService = {
-    createOrder: asyncHandler(async(dto) => {
+    createOrder: asyncHandler(async (dto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
         console.log("[CREATE_ORDER]", {
             employeeId,
@@ -194,7 +194,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetailsList);
     }),
 
-    getByOrderId: asyncHandler(async(orderNumber) => {
+    getByOrderId: asyncHandler(async (orderNumber) => {
         if (!orderNumber) {
             throw new BadRequestException("Order number is required.");
         }
@@ -215,7 +215,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetails);
     }),
 
-    getAllOrders: asyncHandler(async({ includeRejected = false, page = 1, limit = 10 }) => {
+    getAllOrders: asyncHandler(async ({ includeRejected = false, page = 1, limit = 10 }) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         const filter = {
@@ -235,9 +235,9 @@ const orderService = {
 
         const [orders, total] = await Promise.all([
             Order.find(filter)
-            .sort({ created_at: -1 })
-            .skip(skip)
-            .limit(Number(limit)),
+                .sort({ created_at: -1 })
+                .skip(skip)
+                .limit(Number(limit)),
             Order.countDocuments(filter)
         ]);
 
@@ -263,7 +263,7 @@ const orderService = {
         };
     }),
 
-    getByOrderStatus: asyncHandler(async(orderStatus) => {
+    getByOrderStatus: asyncHandler(async (orderStatus) => {
         if (!orderStatus || !Object.values(ORDER_STATUSES).includes(orderStatus)) {
             throw new BadRequestException(`Invalid order status: ${orderStatus}`);
         }
@@ -285,7 +285,7 @@ const orderService = {
         );
     }),
 
-    getOrdersByDateFilter: asyncHandler(async(query) => {
+    getOrdersByDateFilter: asyncHandler(async (query) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
         const { year, month, start_date, end_date } = query;
 
@@ -343,7 +343,7 @@ const orderService = {
            4️⃣ Attach dealer & details
         -------------------------------------------------- */
         const { dealerMap, detailsMap } =
-        await fetchDealerAndOrderDetails(orders);
+            await fetchDealerAndOrderDetails(orders);
 
         return orders.map(order =>
             transformOrderToResponse(
@@ -354,7 +354,7 @@ const orderService = {
         );
     }),
 
-    updateOrderDetailStatus: asyncHandler(async(orderDetailsId, updateDto) => {
+    updateOrderDetailStatus: asyncHandler(async (orderDetailsId, updateDto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         console.info("[OrderDetail][DTO][Incoming]", {
@@ -510,25 +510,35 @@ const orderService = {
         }
 
         /* --------------------------------------------------
-           7️⃣ Delivery update
+            7️⃣ Delivery Update (Qty + Date)
         -------------------------------------------------- */
-        if (updateDto.delivered_qty !== undefined) {
-            const deliveredQty = toNumber(updateDto.delivered_qty);
-            if (deliveredQty <= 0) throw new BadRequestException("Invalid delivered quantity.");
-
-            const remainingQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
-            if (deliveredQty > remainingQty) {
-                throw new BadRequestException("Delivered quantity exceeds remaining quantity.");
-            }
-
-            const deliveredAt = updateDto.delivered_date ?
+        if (updateDto.delivered_qty !== undefined || updateDto.delivered_date !== undefined) {
+            let deliveredAt = updateDto.delivered_date ?
                 new Date(updateDto.delivered_date) :
                 nowIST();
 
-            orderDetail.qty_delivered += deliveredQty;
-            orderDetail.delivery_date = deliveredAt;
+            if (updateDto.delivered_qty !== undefined) {
+                const deliveredQty = toNumber(updateDto.delivered_qty);
 
-            appendNote(`Delivered ${deliveredQty} unit(s) on ${deliveredAt.toISOString()}`);
+                if (deliveredQty <= 0) {
+                    throw new BadRequestException("Invalid delivered quantity.");
+                }
+
+                const remainingQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
+
+                if (deliveredQty > remainingQty) {
+                    throw new BadRequestException("Delivered quantity exceeds remaining quantity.");
+                }
+
+                orderDetail.qty_delivered += deliveredQty;
+
+                appendNote(
+                    `Delivered ${deliveredQty} unit(s) on ${deliveredAt.toISOString()}`
+                );
+            }
+
+            // Always update delivery date if provided or qty updated
+            orderDetail.delivery_date = deliveredAt;
         }
 
         /* --------------------------------------------------
@@ -621,7 +631,7 @@ const orderService = {
         return mapOrderDetailEntityToResponse(orderDetail);
     }),
 
-    updateMultipleOrderDetailsStatus: asyncHandler(async(orderNumber, updates) => {
+    updateMultipleOrderDetailsStatus: asyncHandler(async (orderNumber, updates) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!updates || typeof updates !== "object") throw new BadRequestException("Invalid request body.");
@@ -699,7 +709,7 @@ const orderService = {
         return transformOrderToResponse(order, null, updatedDetails);
     }),
 
-    updateOrderDetailsBatch: async(orderDetails = []) => {
+    updateOrderDetailsBatch: async (orderDetails = []) => {
         if (!orderDetails.length) return;
 
         const ids = orderDetails.map(d => d.order_details_number);
@@ -722,7 +732,7 @@ const orderService = {
         }
     },
 
-    applyOrderStatusChange: asyncHandler(async({
+    applyOrderStatusChange: asyncHandler(async ({
         order,
         updatedDetails,
         status,
@@ -774,7 +784,7 @@ const orderService = {
         order.status = next;
     }),
 
-    cancelOrderAndReturnStock: asyncHandler(async({
+    cancelOrderAndReturnStock: asyncHandler(async ({
         order,
         updatedDetails,
         employeeId,
@@ -794,7 +804,7 @@ const orderService = {
         await order.save();
     }),
 
-    updateOrderStatus: asyncHandler(async(orderNumber, newStatus) => {
+    updateOrderStatus: asyncHandler(async (orderNumber, newStatus) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!newStatus || typeof newStatus !== "string") throw new BadRequestException("Invalid newStatus provided.");
@@ -863,7 +873,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, refreshedDetails);
     }),
 
-    updateOrderAndDetails: asyncHandler(async(orderNumber, payload) => {
+    updateOrderAndDetails: asyncHandler(async (orderNumber, payload) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!payload || typeof payload !== "object") {
@@ -963,15 +973,37 @@ const orderService = {
             );
         }
 
+        let finalDeliveryDate;
         if (delivery_date != null) {
             const parsedDate = new Date(delivery_date);
 
             if (Number.isNaN(parsedDate.getTime())) {
-                throw new BadRequestException("Invalid delivery_date format");
+                throw new BadRequestException("Invalid delivery_date format.");
             }
 
-            order.promised_delivery_date = parsedDate;
+            finalDeliveryDate = parsedDate;
+
+        } else {
+            if (!updatedDetails || updatedDetails.length === 0) {
+                throw new BadRequestException("No order details found to calculate delivery date.");
+            }
+
+            // Get the maximum (latest) delivery_date
+            const deliveryDates = updatedDetails
+                .map(detail => detail.delivery_date)
+                .filter(date => date instanceof Date && !Number.isNaN(date.getTime()));
+
+            if (deliveryDates.length === 0) {
+                throw new BadRequestException("No valid delivery dates found in order details.");
+            }
+
+            finalDeliveryDate = new Date(
+                Math.max(...deliveryDates.map(date => date.getTime()))
+            );
         }
+
+        // Update order promised delivery date
+        order.promised_delivery_date = finalDeliveryDate;
 
         await order.save();
 

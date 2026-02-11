@@ -116,14 +116,14 @@ const orderDetailsSchema = new mongoose.Schema({
     },
 });
 
-orderDetailsSchema.pre("save", function(next) {
+orderDetailsSchema.pre("save", function (next) {
     const istNow = getISTDate();
     if (this.isNew) this.created_at = istNow;
     this.updated_at = istNow;
     next();
 });
 
-orderDetailsSchema.pre("findOneAndUpdate", function(next) {
+orderDetailsSchema.pre("findOneAndUpdate", function (next) {
     this._update.updated_at = getISTDate();
     next();
 });
