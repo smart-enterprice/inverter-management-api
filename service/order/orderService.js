@@ -14,7 +14,7 @@ import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../../utils
 import { BadRequestException, ForbiddenException } from "../../middleware/CustomError.js";
 import { getAuthenticatedEmployeeContext, isValidTransition, normalizePrice, sanitizeInput } from "../../utils/validationUtils.js";
 
-import { getISTDate, ROLES, STOCK_TYPES, ORDER_STATUSES, CANCELLABLE_STATUSES, ADMIN_PRIVILEGED_ROLES } from "../../utils/constants.js";
+import { getISTDate, ROLES, STOCK_TYPES, ORDER_STATUSES, CANCELLABLE_STATUSES, ADMIN_PRIVILEGED_ROLES, STATUSES_REQUIRING_DETAIL_VALIDATION, IMMUTABLE_ORDER_STATUSES } from "../../utils/constants.js";
 import { mapOrderDetailEntityToResponse, transformOrderToResponse } from "../../utils/modelMapper.js";
 import { productService } from "../productService.js";
 import Product from "../../models/product.js";
@@ -564,31 +564,46 @@ const orderService = {
         });
 
         /* --------------------------------------------------
-               Resolve Order Detail Status
+            🧠 Status Resolution (Manual + Auto Controlled)
         -------------------------------------------------- */
         const previousStatus = orderDetail.status;
 
-        orderDetail.status = resolveOrderDetailStatus({
-            qtyOrdered: orderDetail.qty_ordered,
-            qtyDelivered: orderDetail.qty_delivered,
-            packedQty,
-            hasProduction: orderDetail.stock_flags.hasProduction,
-            hasUnpacked: orderDetail.stock_flags.hasUnpacked,
-            currentStatus: orderDetail.status
-        });
+        // Prevent update if order detail already CANCELLED
+        if (previousStatus === ORDER_STATUSES.CANCELLED) {
+            throw new BadRequestException(`Order Detail ${orderDetail.order_details_number} is already CANCELLED and cannot be modified.`);
+        }
 
-        console.info("[OrderDetail][Status Transition]", {
-            orderDetailsNo: orderDetail.order_details_number,
-            from: previousStatus,
-            to: orderDetail.status
-        });
+        // Prevent update if parent order is CANCELLED
+        if (order.status === ORDER_STATUSES.CANCELLED) {
+            throw new BadRequestException(`Parent Order ${order.order_number} is CANCELLED. Detail cannot be modified.`);
+        }
 
         /* --------------------------------------------------
-           9️⃣ Invoice trigger (clean & correct)
+            🧠 Intelligent Status Resolution
         -------------------------------------------------- */
+
+        const hasProduction = orderDetail.stock_flags.hasProduction;
+        const hasUnpacked = orderDetail.stock_flags.hasUnpacked;
+        const hasPacked = packedQty > 0;
+
+        // If manual status provided → validate & apply
         if (updateDto.status) {
             const normalized = normalizeStatus(updateDto.status);
-            orderDetail.status = normalized;
+
+            if (!isValidStatus(normalized)) {
+                throw new BadRequestException(`Invalid order detail status: ${normalized}`);
+            }
+
+            // CONFIRMED → intelligent forward movement
+            if (normalized === ORDER_STATUSES.CONFIRMED) {
+                orderDetail.status = (hasProduction || hasUnpacked) ?
+                    ORDER_STATUSES.PRODUCTION :
+                    hasPacked ?
+                        ORDER_STATUSES.PACKED :
+                        ORDER_STATUSES.CONFIRMED;
+            } else {
+                orderDetail.status = normalized;
+            }
 
             if (normalized === ORDER_STATUSES.INVOICE) {
                 await invoiceService.generateOrUpdateInvoiceByOrderDetail(
@@ -596,7 +611,23 @@ const orderService = {
                     toNumber(updateDto.invoice_qty)
                 );
             }
+        } else {
+            // Auto lifecycle movement
+            orderDetail.status = resolveOrderDetailStatus({
+                qtyOrdered: orderDetail.qty_ordered,
+                qtyDelivered: orderDetail.qty_delivered,
+                packedQty,
+                hasProduction,
+                hasUnpacked,
+                currentStatus: previousStatus
+            });
         }
+
+        console.info("[OrderDetail][Status Transition]", {
+            orderDetailsNo: orderDetail.order_details_number,
+            from: previousStatus,
+            to: orderDetail.status
+        });
 
         await orderDetail.save();
 
@@ -748,16 +779,13 @@ const orderService = {
 
         if (prev === next) return;
 
-        if ([ORDER_STATUSES.DELIVERED, ORDER_STATUSES.CANCELLED].includes(prev)) {
-            throw new BadRequestException(
-                `Order ${order.order_number} is already '${prev}' and cannot be updated.`
-            );
+        if (IMMUTABLE_ORDER_STATUSES.includes(prev)) {
+            throw new BadRequestException(`Order ${order.order_number} is already '${prev}' and cannot be updated.`);
         }
 
         if (next === ORDER_STATUSES.REJECTED) {
             assertRejectAllowed(prev);
             order.status = next;
-            await order.save();
             return;
         }
 
@@ -773,14 +801,26 @@ const orderService = {
             return;
         }
 
-        if ([ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(next)) {
-            if (!canMoveOrderToTargetStatus(updatedDetails, next)) {
-                throw new BadRequestException(`Order cannot move to '${next}' because one or more details are not ready.`);
-            }
+        if (next === ORDER_STATUSES.CONFIRMED) {
+            const detailStatuses = new Set(updatedDetails.map(d => d.status));
+
+            order.status =
+                detailStatuses.has(ORDER_STATUSES.PRODUCTION) ?
+                    ORDER_STATUSES.PRODUCTION :
+                    detailStatuses.has(ORDER_STATUSES.PACKED) ?
+                        ORDER_STATUSES.PACKED :
+                        ORDER_STATUSES.CONFIRMED;
+
+            return;
+        }
+
+        if (STATUSES_REQUIRING_DETAIL_VALIDATION.includes(next) &&
+            !canMoveOrderToTargetStatus(updatedDetails, next)) {
+
+            throw new BadRequestException(`Order cannot move to '${next}' because one or more details are not ready.`);
         }
 
         assertTransitionAllowed(prev, next);
-
         order.status = next;
     }),
 
@@ -924,6 +964,13 @@ const orderService = {
         }
 
         let updatedDetails = await OrderDetails.find({ order_number: orderNumber });
+
+        // 🚫 Prevent update if order already CANCELLED
+        if (order.status === ORDER_STATUSES.CANCELLED) {
+            throw new BadRequestException(
+                `Order ${order.order_number} is already CANCELLED and cannot be modified.`
+            );
+        }
 
         if (status) {
             const normalizedStatus = normalizeStatus(status);

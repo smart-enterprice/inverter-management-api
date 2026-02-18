@@ -159,3 +159,14 @@ export const getISTDate = () => {
     const istOffset = 330;
     return new Date(now.getTime() + istOffset * 60 * 1000);
 };
+
+export const STATUSES_REQUIRING_DETAIL_VALIDATION = [
+    ORDER_STATUSES.INVOICE,
+    ORDER_STATUSES.SHIPPED,
+    ORDER_STATUSES.DELIVERED
+];
+
+export const IMMUTABLE_ORDER_STATUSES = [
+    ORDER_STATUSES.DELIVERED,
+    ORDER_STATUSES.CANCELLED
+];

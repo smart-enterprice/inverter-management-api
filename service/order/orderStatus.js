@@ -83,6 +83,20 @@ export const resolveOrderDetailStatus = ({
         return ORDER_STATUSES.DELIVERED;
     }
 
+    // 3️⃣ Auto move from CONFIRMED
+    if (currentStatus === ORDER_STATUSES.CONFIRMED) {
+
+        if (hasProduction || hasUnpacked) {
+            return ORDER_STATUSES.PRODUCTION;
+        }
+
+        if (packedQty > 0) {
+            return ORDER_STATUSES.PACKED;
+        }
+
+        return ORDER_STATUSES.CONFIRMED;
+    }
+
     if (hasProduction || hasUnpacked) {
         return ORDER_STATUSES.PRODUCTION;
     }
