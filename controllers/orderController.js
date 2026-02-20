@@ -3,6 +3,7 @@
 import asyncHandler from "express-async-handler";
 import { buildResponse } from "../utils/responseUtils.js";
 import { orderService } from "../service/order/orderService.js";
+import { sanitizeInput } from "../utils/validationUtils.js";
 
 const orderController = {
     createOrder: asyncHandler(async (req, res) => {
@@ -28,20 +29,25 @@ const orderController = {
         const includeRejected = req.query.includeRejected === "true";
         const page = Number(req.query.page) || 1;
         const limit = Number(req.query.limit) || 10;
+        const status = sanitizeInput(req.query.status);
 
-        const { orders, total } =
-            await orderService.getAllOrders({ includeRejected, page, limit });
+        const result = await orderService.getAllOrders({
+            includeRejected,
+            page,
+            limit,
+            status
+        });
 
         buildResponse({
             res,
             message: "Order list fetched successfully",
-            data: orders,
+            data: result.orders,
             extra: {
                 pagination: {
-                    page,
-                    limit,
-                    total,
-                    totalPages: Math.ceil(total / limit)
+                    page: result.page,
+                    limit: result.limit,
+                    total: result.total,
+                    totalPages: Math.ceil(result.total / result.limit)
                 }
             }
         });

@@ -215,37 +215,68 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetails);
     }),
 
-    getAllOrders: asyncHandler(async ({ includeRejected = false, page = 1, limit = 10 }) => {
+    getAllOrders: asyncHandler(async ({
+        includeRejected = false,
+        page = 1,
+        limit = 10,
+        status
+    }) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
-        const filter = {
-            ...(includeRejected ? {} : { status: { $ne: ORDER_STATUSES.REJECTED } }),
+        const numericPage = Math.max(1, Number(page));
+        const numericLimit = Math.max(1, Number(limit));
+        const skip = (numericPage - 1) * numericLimit;
 
-            // Salesman → assigned orders only
-            ...(employeeRole === ROLES.SALESMAN ? { salesman_id: employeeId } : {}),
+        /* ------------------------------------------
+            1️⃣ Build Filter Cleanly
+        ------------------------------------------- */
+        const filter = {};
 
-            // Non-admin & non-salesman → own orders only
-            ...(!ADMIN_PRIVILEGED_ROLES.includes(employeeRole) &&
-                employeeRole !== ROLES.SALESMAN) ? { created_by: employeeId } : {}
-        };
+        // Exclude rejected unless explicitly requested
+        if (!includeRejected) {
+            filter.status = { $ne: ORDER_STATUSES.REJECTED };
+        }
 
-        logger.info("filter is : ", filter);
+        // Role-based filtering
+        if (employeeRole === ROLES.SALESMAN) {
+            filter.salesman_id = employeeId;
+        } else if (!ADMIN_PRIVILEGED_ROLES.includes(employeeRole)) {
+            filter.created_by = employeeId;
+        }
 
-        const skip = (Number(page) - 1) * Number(limit);
+        // Status filtering
+        if (status && Object.values(ORDER_STATUSES).includes(status)) {
+            filter.status = status;
+        }
 
+        logger.info("📦 Order Filter:", filter);
+
+        /* ------------------------------------------
+            2️⃣ Query with Pagination
+        ------------------------------------------- */
         const [orders, total] = await Promise.all([
             Order.find(filter)
                 .sort({ created_at: -1 })
                 .skip(skip)
-                .limit(Number(limit)),
+                .limit(numericLimit)
+                .lean(), // 🚀 Performance boost
             Order.countDocuments(filter)
         ]);
 
         if (!orders.length) {
-            return { orders: [], total: 0 };
+            return {
+                orders: [],
+                total: 0,
+                page: numericPage,
+                limit: numericLimit
+            };
         }
 
-        const { dealerMap, detailsMap } = await fetchDealerAndOrderDetails(orders);
+        /* ------------------------------------------
+           3️⃣ Fetch Related Data
+        ------------------------------------------- */
+        const { dealerMap, detailsMap } =
+            await fetchDealerAndOrderDetails(orders);
 
         const transformedOrders = orders.map(order =>
             transformOrderToResponse(
@@ -258,8 +289,8 @@ const orderService = {
         return {
             orders: transformedOrders,
             total,
-            page: Number(page),
-            limit: Number(limit)
+            page: numericPage,
+            limit: numericLimit
         };
     }),
 
