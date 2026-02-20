@@ -9,8 +9,8 @@ export const buildResponse = ({
         success: true,
         status,
         message,
-        ...extra,
         data,
+        ...extra,
         timestamp: new Date().toLocaleString("en-IN", {
             timeZone: "Asia/Kolkata"
         })
