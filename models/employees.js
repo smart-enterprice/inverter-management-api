@@ -86,14 +86,14 @@ const employeeSchema = new mongoose.Schema({
     },
 });
 
-employeeSchema.pre('save', function(next) {
+employeeSchema.pre('save', function (next) {
     const istNow = getISTDate();
     if (this.isNew) this.created_at = istNow;
     this.updated_at = istNow;
     next();
 });
 
-employeeSchema.pre('findOneAndUpdate', function(next) {
+employeeSchema.pre('findOneAndUpdate', function (next) {
     this._update.updated_at = getISTDate();
     next();
 });

@@ -29,13 +29,18 @@ const orderController = {
         const includeRejected = req.query.includeRejected === "true";
         const page = Number(req.query.page) || 1;
         const limit = Number(req.query.limit) || 10;
+
         const status = sanitizeInput(req.query.status);
+        const priority = sanitizeInput(req.query.priority);
+        const search = sanitizeInput(req.query.search);
 
         const result = await orderService.getAllOrders({
             includeRejected,
             page,
             limit,
-            status
+            status,
+            priority,
+            search,
         });
 
         buildResponse({
