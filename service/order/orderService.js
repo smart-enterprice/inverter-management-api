@@ -219,7 +219,9 @@ const orderService = {
         includeRejected = false,
         page = 1,
         limit = 10,
-        status
+        status,
+        priority,
+        search,
     }) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
@@ -249,6 +251,35 @@ const orderService = {
             filter.status = status;
         }
 
+        // Priority filter
+        if (priority) {
+            filter.priority = priority;
+        }
+
+        // Search filter (order_number / dealer_id / customer_name)
+        if (search && search.trim() !== "") {
+            const searchRegex = new RegExp(search.trim(), "i");
+
+            // 1️⃣ Find matching dealers first (lean for performance)
+            const matchedDealers = await Employee.find({
+                $or: [
+                    { employee_name: searchRegex },
+                    { shop_name: searchRegex },
+                ],
+            })
+                .select("employee_id")
+                .lean();
+
+            const dealerIds = matchedDealers.map((d) => d.employee_id);
+
+            // 2️⃣ Apply combined search filter
+            filter.$or = [
+                { order_number: searchRegex },
+                { dealer_id: searchRegex }, // direct dealer_id search
+                ...(dealerIds.length ? [{ dealer_id: { $in: dealerIds } }] : []),
+            ];
+        }
+
         logger.info("📦 Order Filter:", filter);
 
         /* ------------------------------------------
@@ -256,7 +287,7 @@ const orderService = {
         ------------------------------------------- */
         const [orders, total] = await Promise.all([
             Order.find(filter)
-                .sort({ created_at: -1 })
+                .sort({ updated_at: -1 })
                 .skip(skip)
                 .limit(numericLimit)
                 .lean(), // 🚀 Performance boost
