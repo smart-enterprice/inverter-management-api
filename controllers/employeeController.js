@@ -237,12 +237,34 @@ const employeeController = {
                 employeeSchema.countDocuments(filter)
             ]);
 
+            let mappedEmployees;
+
+            if (shouldIncludePassword) {
+                mappedEmployees = await Promise.all(
+                    employees.map(async(emp) => {
+                        if (!emp.password) {
+                            throw new BadRequestException(
+                                `Missing password for employee ID: ${emp.employee_id}`
+                            );
+                        }
+
+                        const decryptedPassword = await revealPassword(emp.password);
+
+                        return mapEmployeeEntityToResponse(emp, decryptedPassword);
+                    })
+                );
+            } else {
+                mappedEmployees = employees.map((emp) =>
+                    mapEmployeeEntityToResponse(emp)
+                );
+            }
+
             res.status(200).json({
                 success: true,
                 status: 200,
                 message: "Employees retrieved successfully",
                 data: {
-                    employees: employees.map(mapEmployeeEntityToResponse),
+                    employees: mappedEmployees,
                     pagination: page,
                     limit,
                     total,
