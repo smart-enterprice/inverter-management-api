@@ -9,7 +9,7 @@ import logger from "../utils/logger.js";
 
 import { mapEmployeeEntityToResponse } from "../utils/modelMapper.js";
 import { revealPassword } from "../utils/employeeAuth.js";
-import { sanitizeInputBody, validateMainRoleAccess } from "../utils/validationUtils.js";
+import { getAuthenticatedEmployeeContext, sanitizeInputBody, validateMainRoleAccess } from "../utils/validationUtils.js";
 import { ROLES } from "../utils/constants.js";
 
 const getPaginationParams = (query) => {
@@ -46,7 +46,7 @@ const employeeController = {
     signup: [
         employeeService.createAccountLimiter,
         sanitizeInputBody,
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { employee_id } = validateMainRoleAccess();
 
             if (!req.body || Object.keys(req.body).length === 0) {
@@ -66,7 +66,7 @@ const employeeController = {
     ],
 
     getProfileByEmployeeId: [
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { employeeId } = req.params;
 
             if (!employeeId) {
@@ -86,7 +86,7 @@ const employeeController = {
     ],
 
     getAllProfileByEmployeeRole: [
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { employeeRole } = req.params;
 
             if (!employeeRole) {
@@ -108,7 +108,7 @@ const employeeController = {
 
     updateProfile: [
         sanitizeInputBody,
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { employeeId } = req.params;
 
             if (!employeeId) {
@@ -134,7 +134,7 @@ const employeeController = {
     ],
 
     getProfile: [
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const employee = await employeeService.getProfile();
 
             return res.status(200).json({
@@ -148,20 +148,91 @@ const employeeController = {
     ],
 
     getAllEmployees: [
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { page, limit, skip } = getPaginationParams(req.query);
+            const {
+                role,
+                search,
+                status,
+                includeDealers,
+                includePassword
+            } = req.query;
 
-            const filter = {
-                status: "active",
-                role: { $ne: ROLES.DEALER }
-            };
+            const { employeeRole } = getAuthenticatedEmployeeContext();
 
+            const isAll = (value) =>
+                typeof value === "string" && value.toLowerCase() === "all";
+
+            const parseBoolean = (value) =>
+                String(value).toLowerCase() === "true";
+
+            const filter = {};
+
+            // Status Filter
+            if (status && !isAll(status)) {
+                filter.status = status;
+            }
+
+            // Dealer Inclusion Control
+            const shouldIncludeDealers = parseBoolean(includeDealers);
+
+            if (!shouldIncludeDealers) {
+                filter.role = { $ne: ROLES.DEALER };
+            }
+
+            // Role Filter (overrides dealer exclusion if explicitly provided)
+            if (role && !isAll(role)) {
+                filter.role = role;
+            }
+
+            // Search Filter
+            if (search) {
+                const regex = { $regex: search, $options: "i" };
+                const isNumericSearch = !isNaN(search);
+
+                const orConditions = [
+                    { employee_id: regex },
+                    { employee_name: regex },
+                    { employee_email: regex },
+                    { role: regex },
+                    { status: regex },
+                    { shop_name: regex },
+                    { district: regex },
+                    { town: regex },
+                    { brand: regex }
+                ];
+
+                // Only add phone if numeric
+                if (isNumericSearch) {
+                    orConditions.push({ employee_phone: Number(search) });
+                }
+
+                filter.$or = orConditions;
+            }
+
+            /* --------------------------------------------------
+               Password Visibility Control
+            -------------------------------------------------- */
+
+            const canViewPasswordByRole = [
+                ROLES.SUPER_ADMIN,
+                ROLES.ADMIN,
+                ROLES.MANAGER
+            ].includes(employeeRole);
+
+            const shouldIncludePassword =
+                canViewPasswordByRole && parseBoolean(includePassword);
+
+            const selectFields = shouldIncludePassword ? "" : "-password";
+
+            //  Execute Query
             const [employees, total] = await Promise.all([
-                employeeSchema.find(filter)
-                    .select("-password")
-                    .skip(skip)
-                    .limit(limit)
-                    .sort({ created_at: -1 }),
+                employeeSchema
+                .find(filter)
+                .select(selectFields)
+                .skip(skip)
+                .limit(limit)
+                .sort({ created_at: -1 }),
 
                 employeeSchema.countDocuments(filter)
             ]);
@@ -183,7 +254,7 @@ const employeeController = {
     ],
 
     getAllDealerEmployees: [
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { page, limit, skip } = getPaginationParams(req.query);
 
             const filter = {
@@ -193,10 +264,10 @@ const employeeController = {
 
             const [employees, total] = await Promise.all([
                 employeeSchema.find(filter)
-                    .select("-password")
-                    .skip(skip)
-                    .limit(limit)
-                    .sort({ created_at: -1 }),
+                .select("-password")
+                .skip(skip)
+                .limit(limit)
+                .sort({ created_at: -1 }),
 
                 employeeSchema.countDocuments(filter)
             ]);
@@ -218,19 +289,19 @@ const employeeController = {
     ],
 
     getAllEmployeesWithPassword: [
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { page, limit, skip } = getPaginationParams(req.query);
 
             const [employees, total] = await Promise.all([
                 employeeSchema.find({ status: "active" })
-                    .skip(skip)
-                    .limit(limit)
-                    .sort({ created_at: -1 }),
+                .skip(skip)
+                .limit(limit)
+                .sort({ created_at: -1 }),
 
                 employeeSchema.countDocuments({ status: "active" })
             ]);
 
-            const mappedEmployees = await Promise.all(employees.map(async (emp) => {
+            const mappedEmployees = await Promise.all(employees.map(async(emp) => {
                 if (!emp.password) {
                     throw new BadRequestException(`Missing password for employee ID: ${emp._id}`);
                 }
@@ -255,7 +326,7 @@ const employeeController = {
     ],
 
     getEmployeeCounts: [
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { role } = req.query;
 
             const baseFilter = { status: "active" };
@@ -328,7 +399,7 @@ const employeeController = {
 
     resetPassword: [
         sanitizeInputBody,
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const employee = await employeeService.resetPassword(req.body);
 
             return res.status(200).json({
@@ -343,7 +414,7 @@ const employeeController = {
 
     resetPasswordById: [
         sanitizeInputBody,
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { employeeId } = req.params;
 
             if (!employeeId) {
@@ -368,7 +439,7 @@ const employeeController = {
 
     deleteEmployee: [
         sanitizeInputBody,
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { employeeId } = req.body;
 
             if (!employeeId) {
@@ -388,7 +459,7 @@ const employeeController = {
     ],
 
     getAllDeletedEmployees: [
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { employee_id } = validateMainRoleAccess();
 
             const page = parseInt(req.query.page || "1", 10);
@@ -399,10 +470,10 @@ const employeeController = {
 
             const [deletedEmployees, totalDeleted] = await Promise.all([
                 employeeSchema.find(filter)
-                    .select("-password")
-                    .skip(skip)
-                    .limit(limit)
-                    .sort({ created_at: -1 }),
+                .select("-password")
+                .skip(skip)
+                .limit(limit)
+                .sort({ created_at: -1 }),
 
                 employeeSchema.countDocuments(filter)
             ]);
@@ -426,7 +497,7 @@ const employeeController = {
     ],
 
     getAllDeletedDealerEmployees: [
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { employee_id } = validateMainRoleAccess();
 
             const page = parseInt(req.query.page || "1", 10);
@@ -437,11 +508,11 @@ const employeeController = {
 
             const [deletedEmployees, totalDeleted] = await Promise.all([
                 employeeSchema
-                    .find(filter)
-                    .select("-password")
-                    .skip(skip)
-                    .limit(limit)
-                    .sort({ created_at: -1 }),
+                .find(filter)
+                .select("-password")
+                .skip(skip)
+                .limit(limit)
+                .sort({ created_at: -1 }),
 
                 employeeSchema.countDocuments(filter)
             ]);
@@ -466,7 +537,7 @@ const employeeController = {
 
     createDealerDiscount: [
         sanitizeInputBody,
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             if (!req.body || Object.keys(req.body).length === 0) {
                 throw new BadRequestException("Request body is required");
             }
@@ -484,7 +555,7 @@ const employeeController = {
 
     createDealerDiscountList: [
         sanitizeInputBody,
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             if (!Array.isArray(req.body) || req.body.length === 0) {
                 throw new BadRequestException("Request body must be a non-empty array of dealer discounts.");
             }
@@ -505,7 +576,7 @@ const employeeController = {
 
     updateDealerDiscount: [
         sanitizeInputBody,
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const discountData = req.body;
 
             if (!discountData || !discountData.dealer_discount_id) {
@@ -526,7 +597,7 @@ const employeeController = {
 
     getDealerDiscounts: [
         sanitizeInputBody,
-        asyncHandler(async (req, res) => {
+        asyncHandler(async(req, res) => {
             const { page, limit } = req.query;
             const response = await employeeService.getDealerDiscounts(req.body || {}, { page, limit });
 
