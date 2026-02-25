@@ -6,7 +6,7 @@ import { orderService } from "../service/order/orderService.js";
 import { sanitizeInput } from "../utils/validationUtils.js";
 
 const orderController = {
-    createOrder: asyncHandler(async(req, res) => {
+    createOrder: asyncHandler(async (req, res) => {
         const data = await orderService.createOrder(req.body);
         buildResponse({
             res,
@@ -16,7 +16,7 @@ const orderController = {
         });
     }),
 
-    getByOrderId: asyncHandler(async(req, res) => {
+    getByOrderId: asyncHandler(async (req, res) => {
         const data = await orderService.getByOrderId(req.params.orderId);
         buildResponse({
             res,
@@ -25,7 +25,7 @@ const orderController = {
         });
     }),
 
-    getAll: asyncHandler(async(req, res) => {
+    getAll: asyncHandler(async (req, res) => {
         const includeRejected = req.query.includeRejected === "true";
         const page = Number(req.query.page) || 1;
         const limit = Number(req.query.limit) || 10;
@@ -61,7 +61,7 @@ const orderController = {
         });
     }),
 
-    getByOrderStatus: asyncHandler(async(req, res) => {
+    getByOrderStatus: asyncHandler(async (req, res) => {
         const data =
             await orderService.getByOrderStatus(req.params.orderStatus);
 
@@ -72,7 +72,7 @@ const orderController = {
         });
     }),
 
-    fetchOrdersByDateFilter: asyncHandler(async(req, res) => {
+    fetchOrdersByDateFilter: asyncHandler(async (req, res) => {
         const data =
             await orderService.getOrdersByDateFilter(req.query);
 
@@ -84,7 +84,7 @@ const orderController = {
         });
     }),
 
-    updateOrderDetailStatus: asyncHandler(async(req, res) => {
+    updateOrderDetailStatus: asyncHandler(async (req, res) => {
         const data =
             await orderService.updateOrderDetailStatus(
                 req.params.orderDetailsId,
@@ -98,7 +98,7 @@ const orderController = {
         });
     }),
 
-    updateMultipleOrderDetailsStatus: asyncHandler(async(req, res) => {
+    updateMultipleOrderDetailsStatus: asyncHandler(async (req, res) => {
         const data =
             await orderService.updateMultipleOrderDetailsStatus(
                 req.params.orderNumber,
@@ -112,7 +112,7 @@ const orderController = {
         });
     }),
 
-    updateOrderStatus: asyncHandler(async(req, res) => {
+    updateOrderStatus: asyncHandler(async (req, res) => {
         const { orderNumber } = req.params;
         const { status } = req.body;
 
@@ -126,7 +126,7 @@ const orderController = {
         });
     }),
 
-    updateOrderStatusUnified: asyncHandler(async(req, res) => {
+    updateOrderStatusUnified: asyncHandler(async (req, res) => {
         const data =
             await orderService.updateOrderAndDetails(
                 req.params.orderNumber,
