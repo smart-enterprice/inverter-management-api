@@ -29,7 +29,7 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 
 const orderService = {
-    createOrder: asyncHandler(async(dto) => {
+    createOrder: asyncHandler(async (dto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
         console.log("[CREATE_ORDER]", {
             employeeId,
@@ -194,7 +194,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetailsList);
     }),
 
-    getByOrderId: asyncHandler(async(orderNumber) => {
+    getByOrderId: asyncHandler(async (orderNumber) => {
         if (!orderNumber) {
             throw new BadRequestException("Order number is required.");
         }
@@ -215,7 +215,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetails);
     }),
 
-    getAllOrders: asyncHandler(async({
+    getAllOrders: asyncHandler(async ({
         includeRejected = false,
         page = 1,
         limit = 10,
@@ -268,11 +268,11 @@ const orderService = {
 
             // 1️⃣ Find matching dealers first (lean for performance)
             const matchedDealers = await Employee.find({
-                    $or: [
-                        { employee_name: searchRegex },
-                        { shop_name: searchRegex },
-                    ],
-                })
+                $or: [
+                    { employee_name: searchRegex },
+                    { shop_name: searchRegex },
+                ],
+            })
                 .select("employee_id")
                 .lean();
 
@@ -293,10 +293,10 @@ const orderService = {
         ------------------------------------------- */
         const [orders, total] = await Promise.all([
             Order.find(filter)
-            .sort({ updated_at: -1 })
-            .skip(skip)
-            .limit(numericLimit)
-            .lean(), // 🚀 Performance boost
+                .sort({ updated_at: -1 })
+                .skip(skip)
+                .limit(numericLimit)
+                .lean(), // 🚀 Performance boost
 
             Order.countDocuments(filter)
         ]);
@@ -314,7 +314,7 @@ const orderService = {
            3️⃣ Fetch Related Data
         ------------------------------------------- */
         const { dealerMap, detailsMap } =
-        await fetchDealerAndOrderDetails(orders);
+            await fetchDealerAndOrderDetails(orders);
 
         const transformedOrders = orders.map(order =>
             transformOrderToResponse(
@@ -332,7 +332,7 @@ const orderService = {
         };
     }),
 
-    getByOrderStatus: asyncHandler(async(orderStatus) => {
+    getByOrderStatus: asyncHandler(async (orderStatus) => {
         if (!orderStatus || !Object.values(ORDER_STATUSES).includes(orderStatus)) {
             throw new BadRequestException(`Invalid order status: ${orderStatus}`);
         }
@@ -354,7 +354,7 @@ const orderService = {
         );
     }),
 
-    getOrdersByDateFilter: asyncHandler(async(query) => {
+    getOrdersByDateFilter: asyncHandler(async (query) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
         const { year, month, start_date, end_date } = query;
 
@@ -412,7 +412,7 @@ const orderService = {
            4️⃣ Attach dealer & details
         -------------------------------------------------- */
         const { dealerMap, detailsMap } =
-        await fetchDealerAndOrderDetails(orders);
+            await fetchDealerAndOrderDetails(orders);
 
         return orders.map(order =>
             transformOrderToResponse(
@@ -423,43 +423,48 @@ const orderService = {
         );
     }),
 
-    updateOrderDetailStatus: asyncHandler(async(orderDetailsId, updateDto) => {
+    updateOrderDetailStatus: asyncHandler(async (orderDetailsId, updateDto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+        const nowIST = () => getISTDate();
+        const toNumber = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
 
         console.info("[OrderDetail][DTO][Incoming]", {
             dtoKeys: Object.keys(updateDto),
             dtoValues: updateDto
         });
 
-        const toNumber = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
-        const nowIST = getISTDate;
+        /* 1️⃣ Fetch Required Entities (Parallel Optimized) */
 
-        /* --------------------------------------------------
-           1️⃣ Fetch core entities
-        -------------------------------------------------- */
         const orderDetail = await OrderDetails.findOne({ order_details_number: orderDetailsId });
         if (!orderDetail) {
             throw new BadRequestException(`No order detail found for ID: ${orderDetailsId}`);
         }
 
-        const order = await Order.findByOrderNumber(orderDetail.order_number);
-        if (!order) {
+        const [order, product] = await Promise.all([
+            Order.findByOrderNumber(orderDetail.order_number),
+            Product.findOne({ product_id: orderDetail.product_id })
+        ]);
+
+        if (!order)
             throw new BadRequestException(`No order found for: ${orderDetail.order_number}`);
-        }
 
-        const product = await Product.findOne({ product_id: orderDetail.product_id });
-        if (!product) {
+        if (!product)
             throw new BadRequestException(`No product found for ID: ${orderDetail.product_id}`);
-        }
 
-        const otherOrderDetails = await OrderDetails.find({
-            order_number: order.order_number,
-            order_details_number: { $ne: orderDetailsId }
-        });
+        // 2️⃣ Early Guards
 
-        /* --------------------------------------------------
-           2️⃣ Stock state initialization
-        -------------------------------------------------- */
+        if (orderDetail.status === ORDER_STATUSES.CANCELLED)
+            throw new BadRequestException(
+                `Order Detail ${orderDetail.order_details_number} is already CANCELLED`
+            );
+
+        if (order.status === ORDER_STATUSES.CANCELLED)
+            throw new BadRequestException(
+                `Parent Order ${order.order_number} is CANCELLED`
+            );
+
+        // 3️⃣ Stock State Initialization 
+
         let {
             PACKED: packedQty = 0,
             UNPACKED: unpackedQty = 0,
@@ -475,46 +480,8 @@ const orderService = {
                 .join(" | ");
         };
 
-        /* --------------------------------------------------
-           3️⃣ Helper validations
-        -------------------------------------------------- */
-        const assertAdminCancelAccess = () => {
-            const role = (employeeRole || "").toUpperCase();
+        // 4️⃣ Production → Unpacked → Packed Transitions
 
-            if (!ADMIN_PRIVILEGED_ROLES.includes(role)) {
-                throw new ForbiddenException(
-                    `Access denied. Your role (${role}) is not permitted. Allowed roles: ${ADMIN_PRIVILEGED_ROLES.join(", ")}.`
-                );
-            }
-        };
-
-        const consumeStockForCancellation = (qty) => {
-            let remaining = qty;
-
-            if (productionQty > 0 && remaining > 0) {
-                const used = Math.min(productionQty, remaining);
-                productionQty -= used;
-                remaining -= used;
-            }
-
-            if (unpackedQty > 0 && remaining > 0) {
-                const used = Math.min(unpackedQty, remaining);
-                unpackedQty -= used;
-                returnUnpacked += used;
-                remaining -= used;
-            }
-
-            if (packedQty > 0 && remaining > 0) {
-                const used = Math.min(packedQty, remaining);
-                packedQty -= used;
-                returnPacked += used;
-                remaining -= used;
-            }
-        };
-
-        /* --------------------------------------------------
-           4️⃣ Production → Unpacked → Packed transitions
-        -------------------------------------------------- */
         if (updateDto.has_production_completed && productionQty > 0) {
             unpackedQty += productionQty;
             productionQty = 0;
@@ -525,30 +492,34 @@ const orderService = {
             unpackedQty = 0;
         }
 
-        /* --------------------------------------------------
-           5️⃣ Cancellation flow
-        -------------------------------------------------- */
+        // 5️⃣ Cancellation Flow
         if (updateDto.cancel_qty !== undefined) {
             const cancelQty = toNumber(updateDto.cancel_qty);
-            if (cancelQty <= 0) throw new BadRequestException("Cancel quantity must be greater than 0.");
+            if (cancelQty <= 0)
+                throw new BadRequestException("Cancel quantity must be greater than 0.");
 
-            const remainingQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
-            if (cancelQty > remainingQty) {
-                throw new BadRequestException("Cancel quantity exceeds remaining orderable quantity.");
-            }
+            const remainingQty =
+                orderDetail.qty_ordered - orderDetail.qty_delivered;
 
-            assertAdminCancelAccess();
-            consumeStockForCancellation(cancelQty);
+            if (cancelQty > remainingQty)
+                throw new BadRequestException(
+                    "Cancel quantity exceeds remaining orderable quantity."
+                );
+
+            assertAdminAccess(employeeRole);
+
+            ({ packedQty, unpackedQty, productionQty, returnPacked, returnUnpacked } =
+                consumeStockForCancellation({
+                    qty: cancelQty,
+                    packedQty,
+                    unpackedQty,
+                    productionQty
+                }));
 
             orderDetail.qty_ordered -= cancelQty;
             orderDetail.total_cancelled_qty += cancelQty;
 
-            const unitPrice = toNumber(orderDetail.unit_product_price);
-            const unitDiscount = toNumber(orderDetail.dealer_discount);
-
-            orderDetail.total_product_price = unitPrice * orderDetail.qty_ordered;
-            orderDetail.total_dealer_discount = unitDiscount * orderDetail.qty_ordered;
-            orderDetail.total_price = orderDetail.total_product_price - orderDetail.total_dealer_discount;
+            recalculatePricing(orderDetail);
 
             orderDetail.cancellation_history.push({
                 cancelled_qty: cancelQty,
@@ -561,9 +532,96 @@ const orderService = {
             appendNote(`Cancelled ${cancelQty} unit(s)`);
         }
 
-        /* --------------------------------------------------
-           6️⃣ Stock return persistence
-        -------------------------------------------------- */
+        // 6️⃣ Delivery Update (Clean & Unified)
+
+        const isMarkAsDelivered =
+            updateDto.status === ORDER_STATUSES.DELIVERED;
+
+        const hasDeliveredQty =
+            updateDto.delivered_qty !== undefined;
+
+        const hasDeliveredDate =
+            updateDto.delivered_date !== undefined;
+
+        if (isMarkAsDelivered || hasDeliveredQty || hasDeliveredDate) {
+
+            const remainingQty =
+                orderDetail.qty_ordered - orderDetail.qty_delivered;
+
+            let deliveredQty = 0;
+            let deliveredAt = null;
+
+            /* ----------------------------------------------
+               1️⃣ Determine Quantity
+            ---------------------------------------------- */
+
+            if (isMarkAsDelivered) {
+                deliveredQty = remainingQty;
+            } else if (hasDeliveredQty) {
+                deliveredQty = toNumber(updateDto.delivered_qty);
+
+                if (deliveredQty <= 0)
+                    throw new BadRequestException("Invalid delivered quantity.");
+
+                if (deliveredQty > remainingQty)
+                    throw new BadRequestException(
+                        "Delivered quantity exceeds remaining quantity."
+                    );
+            }
+
+            /* ----------------------------------------------
+               2️⃣ Determine Date
+            ---------------------------------------------- */
+
+            if (hasDeliveredDate) {
+                deliveredAt = updateDto.delivered_date ?
+                    new Date(updateDto.delivered_date) :
+                    nowIST();
+            } else if (deliveredQty > 0) {
+                deliveredAt = nowIST();
+            }
+
+            /* ----------------------------------------------
+               3️⃣ Apply Quantity Update
+            ---------------------------------------------- */
+
+            if (deliveredQty > 0) {
+                orderDetail.qty_delivered += deliveredQty;
+
+                appendNote(
+                    `Delivered ${deliveredQty} unit(s) on ${deliveredAt.toISOString()}`
+                );
+            }
+
+            /* ----------------------------------------------
+               4️⃣ Apply Date Update (if only date changed)
+            ---------------------------------------------- */
+
+            if (deliveredAt) {
+                orderDetail.delivery_date = deliveredAt;
+
+                if (!deliveredQty) {
+                    appendNote(
+                        `Delivery date updated to ${deliveredAt.toISOString()}`
+                    );
+                }
+            }
+        }
+
+        if (updateDto.delivered_date !== undefined) {
+            const deliveredAt = updateDto.delivered_date ?
+                new Date(updateDto.delivered_date) :
+                nowIST();
+
+            orderDetail.delivery_date = deliveredAt;
+
+            appendNote(
+                `Delivery date updated ${deliveredAt.toISOString()}`
+            );
+        }
+
+        // 7️⃣ Persist Stock Returns
+
         if (returnPacked || returnUnpacked) {
             await persistStockReturns({
                 product,
@@ -578,41 +636,8 @@ const orderService = {
             });
         }
 
-        /* --------------------------------------------------
-            7️⃣ Delivery Update (Qty + Date)
-        -------------------------------------------------- */
-        if (updateDto.delivered_qty !== undefined || updateDto.delivered_date !== undefined) {
-            let deliveredAt = updateDto.delivered_date ?
-                new Date(updateDto.delivered_date) :
-                nowIST();
+        // 8️⃣ Update Stock Flags
 
-            if (updateDto.delivered_qty !== undefined) {
-                const deliveredQty = toNumber(updateDto.delivered_qty);
-
-                if (deliveredQty <= 0) {
-                    throw new BadRequestException("Invalid delivered quantity.");
-                }
-
-                const remainingQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
-
-                if (deliveredQty > remainingQty) {
-                    throw new BadRequestException("Delivered quantity exceeds remaining quantity.");
-                }
-
-                orderDetail.qty_delivered += deliveredQty;
-
-                appendNote(
-                    `Delivered ${deliveredQty} unit(s) on ${deliveredAt.toISOString()}`
-                );
-            }
-
-            // Always update delivery date if provided or qty updated
-            orderDetail.delivery_date = deliveredAt;
-        }
-
-        /* --------------------------------------------------
-           8️⃣ Final stock flags & status
-        -------------------------------------------------- */
         orderDetail.stock_flags = {
             PACKED: packedQty,
             UNPACKED: unpackedQty,
@@ -621,58 +646,24 @@ const orderService = {
             hasProduction: productionQty > 0
         };
 
-        console.info("[OrderDetail][Stock Flags Updated]", {
-            orderDetailsNo: orderDetail.order_details_number,
-            planned_stock_usage: orderDetail.stock_usage, // immutable
-            live_stock_flags: orderDetail.stock_flags, // mutable
-            computed: {
-                packedQty,
-                unpackedQty,
-                productionQty
-            }
-        });
+        // 9️⃣ Intelligent Status Resolution
 
-        /* --------------------------------------------------
-            🧠 Status Resolution (Manual + Auto Controlled)
-        -------------------------------------------------- */
         const previousStatus = orderDetail.status;
 
-        // Prevent update if order detail already CANCELLED
-        if (previousStatus === ORDER_STATUSES.CANCELLED) {
-            throw new BadRequestException(`Order Detail ${orderDetail.order_details_number} is already CANCELLED and cannot be modified.`);
-        }
-
-        // Prevent update if parent order is CANCELLED
-        if (order.status === ORDER_STATUSES.CANCELLED) {
-            throw new BadRequestException(`Parent Order ${order.order_number} is CANCELLED. Detail cannot be modified.`);
-        }
-
-        /* --------------------------------------------------
-            🧠 Intelligent Status Resolution
-        -------------------------------------------------- */
-
-        const hasProduction = orderDetail.stock_flags.hasProduction;
-        const hasUnpacked = orderDetail.stock_flags.hasUnpacked;
-        const hasPacked = packedQty > 0;
-
-        // If manual status provided → validate & apply
         if (updateDto.status) {
             const normalized = normalizeStatus(updateDto.status);
 
-            if (!isValidStatus(normalized)) {
-                throw new BadRequestException(`Invalid order detail status: ${normalized}`);
-            }
+            if (!isValidStatus(normalized))
+                throw new BadRequestException(
+                    `Invalid order detail status: ${normalized}`
+                );
 
-            // CONFIRMED → intelligent forward movement
-            if (normalized === ORDER_STATUSES.CONFIRMED) {
-                orderDetail.status = (hasProduction || hasUnpacked) ?
-                    ORDER_STATUSES.PRODUCTION :
-                    hasPacked ?
-                    ORDER_STATUSES.PACKED :
-                    ORDER_STATUSES.CONFIRMED;
-            } else {
-                orderDetail.status = normalized;
-            }
+            orderDetail.status = resolveManualStatus({
+                normalized,
+                packedQty,
+                unpackedQty,
+                productionQty
+            });
 
             if (normalized === ORDER_STATUSES.INVOICE) {
                 await invoiceService.generateOrUpdateInvoiceByOrderDetail(
@@ -681,41 +672,31 @@ const orderService = {
                 );
             }
         } else {
-            // Auto lifecycle movement
             orderDetail.status = resolveOrderDetailStatus({
                 qtyOrdered: orderDetail.qty_ordered,
                 qtyDelivered: orderDetail.qty_delivered,
                 packedQty,
-                hasProduction,
-                hasUnpacked,
+                hasProduction: productionQty > 0,
+                hasUnpacked: unpackedQty > 0,
                 currentStatus: previousStatus
             });
         }
 
-        console.info("[OrderDetail][Status Transition]", {
-            orderDetailsNo: orderDetail.order_details_number,
-            from: previousStatus,
-            to: orderDetail.status
-        });
-
         await orderDetail.save();
 
-        /* --------------------------------------------------
-           🔟 Recalculate order totals & status
-        -------------------------------------------------- */
-        const allDetails = [orderDetail, ...otherOrderDetails];
+        // 🔟 Recalculate Parent Order (Optimized)
 
-        order.order_total_price = allDetails
+        const refreshedDetails = await OrderDetails.find({
+            order_number: order.order_number
+        });
+
+        order.order_total_price = refreshedDetails
             .filter(d => !d.is_free)
             .reduce((sum, d) => sum + toNumber(d.total_price), 0);
 
-        order.order_total_discount = allDetails
+        order.order_total_discount = refreshedDetails
             .filter(d => !d.is_free)
             .reduce((sum, d) => sum + toNumber(d.total_dealer_discount), 0);
-
-        const refreshedDetails = await OrderDetails.find({ order_number: order.order_number });
-
-        const previousOrderStatus = order.status;
 
         order.status = allDetailsDelivered(refreshedDetails) ?
             ORDER_STATUSES.COMPLETED :
@@ -723,15 +704,16 @@ const orderService = {
 
         await order.save();
 
-        console.info("[OrderDetail][Response Ready]", {
+        console.info("[OrderDetail][Status Transition]", {
             orderDetailsNo: orderDetail.order_details_number,
-            status: orderDetail.status
+            from: previousStatus,
+            to: orderDetail.status
         });
 
         return mapOrderDetailEntityToResponse(orderDetail);
     }),
 
-    updateMultipleOrderDetailsStatus: asyncHandler(async(orderNumber, updates) => {
+    updateMultipleOrderDetailsStatus: asyncHandler(async (orderNumber, updates) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!updates || typeof updates !== "object") throw new BadRequestException("Invalid request body.");
@@ -809,7 +791,7 @@ const orderService = {
         return transformOrderToResponse(order, null, updatedDetails);
     }),
 
-    updateOrderDetailsBatch: async(orderDetails = []) => {
+    updateOrderDetailsBatch: async (orderDetails = []) => {
         if (!orderDetails.length) return;
 
         const ids = orderDetails.map(d => d.order_details_number);
@@ -832,7 +814,7 @@ const orderService = {
         }
     },
 
-    applyOrderStatusChange: asyncHandler(async({
+    applyOrderStatusChange: asyncHandler(async ({
         order,
         updatedDetails,
         status,
@@ -875,10 +857,10 @@ const orderService = {
 
             order.status =
                 detailStatuses.has(ORDER_STATUSES.PRODUCTION) ?
-                ORDER_STATUSES.PRODUCTION :
-                detailStatuses.has(ORDER_STATUSES.PACKED) ?
-                ORDER_STATUSES.PACKED :
-                ORDER_STATUSES.CONFIRMED;
+                    ORDER_STATUSES.PRODUCTION :
+                    detailStatuses.has(ORDER_STATUSES.PACKED) ?
+                        ORDER_STATUSES.PACKED :
+                        ORDER_STATUSES.CONFIRMED;
 
             return;
         }
@@ -893,7 +875,7 @@ const orderService = {
         order.status = next;
     }),
 
-    cancelOrderAndReturnStock: asyncHandler(async({
+    cancelOrderAndReturnStock: asyncHandler(async ({
         order,
         updatedDetails,
         employeeId,
@@ -913,7 +895,7 @@ const orderService = {
         await order.save();
     }),
 
-    updateOrderStatus: asyncHandler(async(orderNumber, newStatus) => {
+    updateOrderStatus: asyncHandler(async (orderNumber, newStatus) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!newStatus || typeof newStatus !== "string") throw new BadRequestException("Invalid newStatus provided.");
@@ -982,7 +964,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, refreshedDetails);
     }),
 
-    updateOrderAndDetails: asyncHandler(async(orderNumber, payload) => {
+    updateOrderAndDetails: asyncHandler(async (orderNumber, payload) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!payload || typeof payload !== "object") {
