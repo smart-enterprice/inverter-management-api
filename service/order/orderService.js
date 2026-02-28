@@ -433,7 +433,7 @@ const orderService = {
             dtoValues: updateDto
         });
 
-        /* 1️⃣ Fetch Required Entities (Parallel Optimized) */
+        /* 1️⃣ Fetch Required Entities */
 
         const orderDetail = await OrderDetails.findOne({ order_details_number: orderDetailsId });
         if (!orderDetail) {
@@ -478,6 +478,85 @@ const orderService = {
             orderDetail.notes = [orderDetail.notes, note]
                 .filter(Boolean)
                 .join(" | ");
+        };
+
+        /*🔹 Helper Functions */
+
+        const assertAdminAccess = (role) => {
+            const normalized = (role || "").toUpperCase();
+            if (!ADMIN_PRIVILEGED_ROLES.includes(normalized)) {
+                throw new ForbiddenException(
+                    `Access denied. Role (${normalized}) is not allowed.`
+                );
+            }
+        };
+
+        const consumeStockForCancellation = ({
+            qty,
+            packedQty,
+            unpackedQty,
+            productionQty
+        }) => {
+            let remaining = qty;
+            let returnPacked = 0;
+            let returnUnpacked = 0;
+
+            if (productionQty > 0 && remaining > 0) {
+                const used = Math.min(productionQty, remaining);
+                productionQty -= used;
+                remaining -= used;
+            }
+
+            if (unpackedQty > 0 && remaining > 0) {
+                const used = Math.min(unpackedQty, remaining);
+                unpackedQty -= used;
+                returnUnpacked += used;
+                remaining -= used;
+            }
+
+            if (packedQty > 0 && remaining > 0) {
+                const used = Math.min(packedQty, remaining);
+                packedQty -= used;
+                returnPacked += used;
+                remaining -= used;
+            }
+
+            return {
+                packedQty,
+                unpackedQty,
+                productionQty,
+                returnPacked,
+                returnUnpacked
+            };
+        };
+
+        const recalculatePricing = (detail) => {
+            const unitPrice = toNumber(detail.unit_product_price);
+            const unitDiscount = toNumber(detail.dealer_discount);
+
+            detail.total_product_price = unitPrice * detail.qty_ordered;
+            detail.total_dealer_discount = unitDiscount * detail.qty_ordered;
+            detail.total_price =
+                detail.total_product_price - detail.total_dealer_discount;
+        };
+
+        const resolveManualStatus = ({
+            normalized,
+            packedQty,
+            unpackedQty,
+            productionQty
+        }) => {
+            if (normalized === ORDER_STATUSES.CONFIRMED) {
+                if (productionQty > 0 || unpackedQty > 0)
+                    return ORDER_STATUSES.PRODUCTION;
+
+                if (packedQty > 0)
+                    return ORDER_STATUSES.PACKED;
+
+                return ORDER_STATUSES.CONFIRMED;
+            }
+
+            return normalized;
         };
 
         // 4️⃣ Production → Unpacked → Packed Transitions
@@ -551,9 +630,7 @@ const orderService = {
             let deliveredQty = 0;
             let deliveredAt = null;
 
-            /* ----------------------------------------------
-               1️⃣ Determine Quantity
-            ---------------------------------------------- */
+            /* 1️⃣ Determine Quantity */
 
             if (isMarkAsDelivered) {
                 deliveredQty = remainingQty;
@@ -569,9 +646,7 @@ const orderService = {
                     );
             }
 
-            /* ----------------------------------------------
-               2️⃣ Determine Date
-            ---------------------------------------------- */
+            /* 2️⃣ Determine Date */
 
             if (hasDeliveredDate) {
                 deliveredAt = updateDto.delivered_date ?
@@ -581,9 +656,7 @@ const orderService = {
                 deliveredAt = nowIST();
             }
 
-            /* ----------------------------------------------
-               3️⃣ Apply Quantity Update
-            ---------------------------------------------- */
+            /* 3️⃣ Apply Quantity Update */
 
             if (deliveredQty > 0) {
                 orderDetail.qty_delivered += deliveredQty;
@@ -593,9 +666,7 @@ const orderService = {
                 );
             }
 
-            /* ----------------------------------------------
-               4️⃣ Apply Date Update (if only date changed)
-            ---------------------------------------------- */
+            /* 4️⃣ Apply Date Update (if only date changed) */
 
             if (deliveredAt) {
                 orderDetail.delivery_date = deliveredAt;
@@ -606,18 +677,6 @@ const orderService = {
                     );
                 }
             }
-        }
-
-        if (updateDto.delivered_date !== undefined) {
-            const deliveredAt = updateDto.delivered_date ?
-                new Date(updateDto.delivered_date) :
-                nowIST();
-
-            orderDetail.delivery_date = deliveredAt;
-
-            appendNote(
-                `Delivery date updated ${deliveredAt.toISOString()}`
-            );
         }
 
         // 7️⃣ Persist Stock Returns
