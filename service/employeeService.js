@@ -537,8 +537,8 @@ const employeeService = {
 
             products = await Product.find({
                 product_id: { $in: productIds },
-                brand_name: brandName,
-                model_name: modelName
+                brand: brandName,
+                model: modelName
             }).lean();
 
             validProductIds = products.map(p => p.product_id);
@@ -669,8 +669,8 @@ const employeeService = {
 
             products = await Product.find({
                 product_id: { $in: uniqueProductIds },
-                brand_name: brandName,
-                model_name: modelName
+                brand: brandName,
+                model: modelName
             }).lean();
 
             validProductIds = products.map(p => p.product_id);
