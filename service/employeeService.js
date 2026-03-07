@@ -18,7 +18,7 @@ import {
 } from '../middleware/CustomError.js';
 
 import { getAuthenticatedEmployeeContext, validateDealerDiscountRequiredFields, validateEmployeeData } from '../utils/validationUtils.js';
-import { mapEmployeeRequestToEntity, mapEmployeeEntityToResponse, mapDealerDiscountEntityToResponse } from '../utils/modelMapper.js';
+import { mapEmployeeRequestToEntity, mapEmployeeEntityToResponse, mapDealerDiscountEntityToResponse, mapProductEntityToResponse } from '../utils/modelMapper.js';
 import { hashPassword, generateToken, revealPassword, validatePassword } from '../utils/employeeAuth.js';
 import {
     APPROVAL_GRANTED_ROLES,
@@ -34,13 +34,15 @@ import { tokenBlacklistService } from "./tokenBlacklistService.js";
 import Brand from "../models/brand.js";
 import DealerDiscount from "../models/dealerDiscount.js";
 import Product from "../models/product.js";
+import { filter } from "compression";
+import { fetchProductWithStocks } from "./productService.js";
 
-const checkExistingEmployee = async(email, phone, excludeId = null) => {
+const checkExistingEmployee = async (email, phone, excludeId = null) => {
     const query = excludeId ? { _id: { $ne: excludeId } } : {};
 
     const [existingEmail, existingPhone] = await Promise.all([
-        employeeSchema.findOne({...query, employee_email: email }),
-        employeeSchema.findOne({...query, employee_phone: phone })
+        employeeSchema.findOne({ ...query, employee_email: email }),
+        employeeSchema.findOne({ ...query, employee_phone: phone })
     ]);
 
     const errors = [];
@@ -52,7 +54,7 @@ const checkExistingEmployee = async(email, phone, excludeId = null) => {
     }
 };
 
-const findActiveEmployee = async(employeeId, includePassword = false) => {
+const findActiveEmployee = async (employeeId, includePassword = false) => {
     const query = employeeSchema.findOne({ employee_id: employeeId, status: 'active' });
     if (includePassword) query.select('+password');
 
@@ -88,20 +90,50 @@ async function updateEmployeePassword(employee, newPassword, updatedBy, role, re
     await employee.save();
 }
 
-async function checkIfDiscountExists(brand, model, dealerId) {
-    const existingDiscount = await DealerDiscount.findOne({
-        brand_name: brand.toUpperCase(),
-        model_name: model.toUpperCase(),
-        dealer_id: dealerId
-    });
+async function checkIfDiscountExists(
+    brandName,
+    modelName,
+    dealerId,
+    productIds = [],
+    excludeDiscountId = null
+) {
+    const normalizedIncoming = [...new Set(productIds.map(String))]
+        .sort()
+        .join(",");
 
-    if (existingDiscount) {
-        throw new BadRequestException(`A discount for brand ${brand} and model ${model} already exists for this dealer.`);
+    const query = {
+        dealer_id: dealerId,
+        brand_name: brandName,
+        model_name: modelName
+    };
+
+    if (excludeDiscountId) {
+        query.dealer_discount_id = { $ne: excludeDiscountId };
+    }
+
+    const existingDiscounts = await DealerDiscount
+        .find(query)
+        .select("product_ids")
+        .lean();
+
+    for (const discount of existingDiscounts) {
+
+        const existingProducts = Array.isArray(discount.product_ids) ? [...new Set(discount.product_ids.map(String))]
+            .sort()
+            .join(",") :
+            "";
+
+        if (existingProducts === normalizedIncoming) {
+
+            throw new BadRequestException(
+                `A discount already exists for brand ${brandName}, model ${modelName} with the same product combination.`
+            );
+        }
     }
 };
 
 const employeeService = {
-    defaultSuperAdminSetup: asyncHandler(async() => {
+    defaultSuperAdminSetup: asyncHandler(async () => {
         if (!SUPER_ADMIN || !SUPER_ADMIN_PHONE || !SUPER_ADMIN_EMAIL || !SUPER_ADMIN_PASSWORD) {
             throw new BadRequestException("Missing required SUPER_ADMIN environment variables.");
         }
@@ -140,7 +172,7 @@ const employeeService = {
         logger.info("✅ Default Super Admin created successfully.");
     }),
 
-    createEmployee: asyncHandler(async(employeeRequest, createdByEmployeeId) => {
+    createEmployee: asyncHandler(async (employeeRequest, createdByEmployeeId) => {
         if (!createdByEmployeeId) {
             throw new ForbiddenException('You are not authorized to create an employee.');
         }
@@ -191,7 +223,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(newEmployee);
     }),
 
-    loginEmployee: asyncHandler(async(loginRequest) => {
+    loginEmployee: asyncHandler(async (loginRequest) => {
         const { employee_email, password } = loginRequest;
 
         if (!employee_email || !password) {
@@ -235,7 +267,7 @@ const employeeService = {
         };
     }),
 
-    getEmployeeById: asyncHandler(async(employeeId) => {
+    getEmployeeById: asyncHandler(async (employeeId) => {
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
         }
@@ -253,7 +285,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(employee);
     }),
 
-    getAllEmployeeByRole: asyncHandler(async(employeeRole) => {
+    getAllEmployeeByRole: asyncHandler(async (employeeRole) => {
         if (!employeeRole) {
             throw new BadRequestException("Employee role is required");
         }
@@ -272,7 +304,7 @@ const employeeService = {
         return employees.map(mapEmployeeEntityToResponse);
     }),
 
-    getProfile: asyncHandler(async() => {
+    getProfile: asyncHandler(async () => {
         const employeeId = CurrentRequestContext.getEmployeeId();
 
         if (!employeeId) {
@@ -291,7 +323,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(employee);
     }),
 
-    updateEmployee: asyncHandler(async(employeeId, updateData) => {
+    updateEmployee: asyncHandler(async (employeeId, updateData) => {
         if (!employeeId) {
             throw new BadRequestException('Employee ID is required');
         }
@@ -327,7 +359,7 @@ const employeeService = {
 
             const newBrands =
                 Array.isArray(mappedData.brand) && mappedData.brand.length > 0 ?
-                mappedData.brand.map((b) => b.toUpperCase()) : [];
+                    mappedData.brand.map((b) => b.toUpperCase()) : [];
 
             let updatedBrands = [...existingBrands];
             if (Array.isArray(updateData.remove_brands) && updateData.remove_brands.length > 0) {
@@ -369,7 +401,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(updatedEmployee);
     }),
 
-    resetPassword: asyncHandler(async(updateData) => {
+    resetPassword: asyncHandler(async (updateData) => {
         const employeeId = CurrentRequestContext.getEmployeeId();
 
         if (!employeeId) {
@@ -388,7 +420,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(employee);
     }),
 
-    resetPasswordById: asyncHandler(async(employeeId, updateData) => {
+    resetPasswordById: asyncHandler(async (employeeId, updateData) => {
         const requesterId = CurrentRequestContext.getEmployeeId();
 
         if (!requesterId || !employeeId) {
@@ -407,7 +439,7 @@ const employeeService = {
         return mapEmployeeEntityToResponse(targetEmployee);
     }),
 
-    deleteEmployee: asyncHandler(async(updateData) => {
+    deleteEmployee: asyncHandler(async (updateData) => {
         const { employeeId, reason } = updateData;
 
         if (!employeeId) {
@@ -450,20 +482,32 @@ const employeeService = {
         return mapEmployeeEntityToResponse(employeeToDelete);
     }),
 
-    createDealerDiscount: asyncHandler(async(discountData) => {
+    createDealerDiscount: asyncHandler(async (discountData) => {
         const { employeeId } = getAuthenticatedEmployeeContext();
+
         validateDealerDiscountRequiredFields(discountData);
 
         const brandName = discountData.brand_name.toUpperCase();
         const modelName = discountData.model_name.toUpperCase();
 
+        // Remove duplicates from product_ids
+        const productIds = Array.isArray(discountData.product_ids) ? [...new Set(discountData.product_ids)] : [];
+
         const [dealer, brandRecord] = await Promise.all([
-            employeeSchema.findOne({ employee_id: discountData.dealer_id, role: ROLES.DEALER, }).lean(),
-            Brand.findOne({ brand_name: brandName }).lean(),
+            employeeSchema.findOne({
+                employee_id: discountData.dealer_id,
+                role: ROLES.DEALER
+            }).lean(),
+
+            Brand.findOne({
+                brand_name: brandName
+            }).lean()
         ]);
 
         if (!dealer) {
-            throw new BadRequestException(`Invalid dealer ID: ${discountData.dealer_id}. Dealer not found or role mismatch.`);
+            throw new BadRequestException(
+                `Invalid dealer ID: ${discountData.dealer_id}. Dealer not found or role mismatch.`
+            );
         }
 
         if (!brandRecord) {
@@ -485,48 +529,97 @@ const employeeService = {
             );
         }
 
-        await checkIfDiscountExists(brandName, modelName, discountData.dealer_id);
+        // Validate Product IDs(Graceful Filtering)
+        let products = [];
+        let validProductIds = [];
 
+        if (productIds.length > 0) {
+
+            products = await Product.find({
+                product_id: { $in: productIds },
+                brand: brandName,
+                model: modelName
+            }).lean();
+
+            validProductIds = products.map(p => p.product_id);
+        }
+
+        // Prevent duplicate product combinations
+        await checkIfDiscountExists(
+            brandName,
+            modelName,
+            dealer.employee_id,
+            validProductIds
+        );
+
+        // Discount Value Validation
         let discountValue = null;
+
         if (discountData.discount_value != null) {
             const parsedValue = Number(discountData.discount_value);
 
             if (isNaN(parsedValue) || parsedValue < 0) {
-                throw new BadRequestException("Discount value must be a positive number.");
+                throw new BadRequestException(
+                    "Discount value must be a positive number."
+                );
             }
 
             discountValue = Math.round(parsedValue * 100) / 100;
         }
 
-        const isPercentage = !!discountData.is_percentage;
+        const isPercentage = Boolean(discountData.is_percentage);
+
         if (isPercentage && discountValue > 100) {
-            throw new BadRequestException("Percentage discount value cannot exceed 100%.");
+            throw new BadRequestException(
+                "Percentage discount value cannot exceed 100%."
+            );
         }
 
-        let description = "";
-        if (typeof discountData.description === "string" && discountData.description.trim() !== "") {
-            description = discountData.description.trim();
-        }
+        const description =
+            typeof discountData.description === "string" ?
+                discountData.description.trim() :
+                "";
 
+        // Create Discount
         const dealerDiscountId = await generateUniqueDealerDiscountId();
+
         const dealerDiscount = await DealerDiscount.create({
             dealer_discount_id: dealerDiscountId,
             brand_name: brandName,
             model_name: modelName,
             dealer_id: dealer.employee_id,
+            product_ids: validProductIds,
             discount_value: discountValue,
             is_percentage: isPercentage,
             description,
-            created_by: employeeId,
+            created_by: employeeId
         });
 
-        return mapDealerDiscountEntityToResponse(dealerDiscount);
+        // Response Mapping
+        const response = mapDealerDiscountEntityToResponse(dealerDiscount);
+
+        // Build enriched product responses with stocks
+        const productResponses = await Promise.all(
+            products.map(product => fetchProductWithStocks(product))
+        );
+
+        response.products = productResponses;
+
+        return response;
     }),
 
-    updateDealerDiscount: asyncHandler(async(discountData) => {
+    updateDealerDiscount: asyncHandler(async (discountData) => {
         const { employeeId } = getAuthenticatedEmployeeContext();
 
-        const { dealer_discount_id, discount_value, brand_name, model_name, is_percentage, description } = discountData;
+        const {
+            dealer_discount_id,
+            discount_value,
+            brand_name,
+            model_name,
+            is_percentage,
+            description,
+            product_ids
+        } = discountData;
 
         if (!dealer_discount_id) {
             throw new BadRequestException("Dealer Discount ID is required.");
@@ -534,157 +627,285 @@ const employeeService = {
 
         const existingDiscount = await DealerDiscount.findOne({
             dealer_discount_id,
-            status: "active",
-        });
+            status: "active"
+        }).lean();
 
         if (!existingDiscount) {
-            throw new NotFoundException(`Dealer Discount with ID ${dealer_discount_id} not found.`);
+            throw new NotFoundException(
+                `Dealer Discount with ID ${dealer_discount_id} not found.`
+            );
         }
 
-        if (brand_name || model_name) {
-            const brandName = brand_name ?
-                brand_name.toUpperCase() :
-                existingDiscount.brand_name.toUpperCase();
+        // Resolve Brand & Model
+        const brandName = brand_name ?
+            brand_name.toUpperCase() :
+            existingDiscount.brand_name.toUpperCase();
 
-            const modelName = model_name ?
-                model_name.toUpperCase() :
-                existingDiscount.model_name.toUpperCase();
+        const modelName = model_name ?
+            model_name.toUpperCase() :
+            existingDiscount.model_name.toUpperCase();
 
-            const brandRecord = await Brand.findOne({ brand_name: brandName }).lean();
-            if (!brandRecord) {
-                throw new BadRequestException(`Brand ${brandName} not found.`);
-            }
+        const brandRecord = await Brand.findOne({ brand_name: brandName }).lean();
 
-            const brandModels = brandRecord.brand_models.map((m) => m.toUpperCase());
-            if (!brandModels.includes(modelName)) {
-                throw new BadRequestException(
-                    `Model ${modelName} is not associated with brand ${brandName}.`
-                );
-            }
+        if (!brandRecord) {
+            throw new BadRequestException(`Brand ${brandName} not found.`);
         }
 
-        let updatedIsPercentage = existingDiscount.is_percentage;
-        if (typeof is_percentage === "boolean" && is_percentage !== existingDiscount.is_percentage) {
-            updatedIsPercentage = is_percentage;
+        const brandModels = brandRecord.brand_models.map(m => m.toUpperCase());
+
+        if (!brandModels.includes(modelName)) {
+            throw new BadRequestException(
+                `Model ${modelName} is not associated with brand ${brandName}.`
+            );
         }
 
+        // Validate Product IDs(Graceful filtering)
+        let validProductIds = existingDiscount.product_ids || [];
+        let products = [];
+
+        if (Array.isArray(product_ids)) {
+
+            const uniqueProductIds = [...new Set(product_ids)];
+
+            products = await Product.find({
+                product_id: { $in: uniqueProductIds },
+                brand: brandName,
+                model: modelName
+            }).lean();
+
+            validProductIds = products.map(p => p.product_id);
+        }
+
+        // Prevent duplicate combinations
+        await checkIfDiscountExists(
+            brandName,
+            modelName,
+            existingDiscount.dealer_id,
+            validProductIds,
+            dealer_discount_id
+        );
+
+        // Discount value validation
         let updatedDiscountValue = existingDiscount.discount_value;
-        if (discount_value !== undefined && discount_value !== existingDiscount.discount_value) {
+
+        if (discount_value !== undefined) {
+
             const parsedValue = Number(discount_value);
 
             if (isNaN(parsedValue) || parsedValue < 0) {
-                throw new BadRequestException("Discount value must be a positive number.");
+                throw new BadRequestException(
+                    "Discount value must be a positive number."
+                );
             }
 
             updatedDiscountValue = Math.round(parsedValue * 100) / 100;
         }
 
+        let updatedIsPercentage = existingDiscount.is_percentage;
+
+        if (typeof is_percentage === "boolean") {
+            updatedIsPercentage = is_percentage;
+        }
+
         if (updatedIsPercentage && updatedDiscountValue > 100) {
-            throw new BadRequestException("Percentage discount value cannot exceed 100%.");
+            throw new BadRequestException(
+                "Percentage discount value cannot exceed 100%."
+            );
         }
 
-        let updatedDescription = existingDiscount.description;
-        if (typeof description === "string" && description.trim()) {
-            updatedDescription = description.trim();
-        }
+        const updatedDescription =
+            typeof description === "string" && description.trim() ?
+                description.trim() :
+                existingDiscount.description;
 
+        // Update Discount
         const updatedDiscount = await DealerDiscount.findOneAndUpdate({ dealer_discount_id }, {
             $set: {
+                brand_name: brandName,
+                model_name: modelName,
+                product_ids: validProductIds,
                 discount_value: updatedDiscountValue,
                 is_percentage: updatedIsPercentage,
                 description: updatedDescription,
                 updated_at: getISTDate(),
-                updated_by: employeeId,
-            },
+                updated_by: employeeId
+            }
         }, { new: true });
 
-        return mapDealerDiscountEntityToResponse(updatedDiscount);
+        const response = mapDealerDiscountEntityToResponse(updatedDiscount);
+
+        const productResponses = await Promise.all(
+            products.map(p => fetchProductWithStocks(p))
+        );
+
+        response.products = productResponses;
+
+        return response;
     }),
 
-    getDealerDiscounts: asyncHandler(async(payload = {}, pagination = {}) => {
+    getDealerDiscounts: asyncHandler(async (payload = {}, pagination = {}) => {
+
+        // Ensure authenticated request
         getAuthenticatedEmployeeContext();
 
         const { dealer_id, product_id, brand_name, model_name } = payload;
-        const page = +pagination.page || 1;
-        const limit = +pagination.limit || 10;
+
+        const page = Number(pagination.page) || 1;
+        const limit = Number(pagination.limit) || 10;
         const skip = (page - 1) * limit;
 
-        if (dealer_id && product_id) {
-            const dealer = await employeeSchema.findOne({ employee_id: dealer_id, role: ROLES.DEALER })
-                .select("employee_id brand")
+        const filters = { status: "active" };
+
+        let resolvedBrandName = null;
+        let resolvedModelName = null;
+
+
+        // PRODUCT VALIDATION
+        if (product_id) {
+            const product = await Product
+                .findOne({ product_id, status: "active" })
+                .select("product_id brand model")
                 .lean();
-            if (!dealer) throw new BadRequestException(`Dealer ${dealer_id} not found.`);
 
-            const product = await Product.findOne({ product_id, status: "active" })
-                .select("brand model")
-                .lean();
-            if (!product) throw new BadRequestException(`Product ${product_id} not found.`);
-
-            const dealerBrands = dealer.brand ?
-                dealer.brand.map(b => b.toUpperCase()) : [];
-            if (!dealerBrands.includes(product.brand.toUpperCase()))
-                throw new BadRequestException(`Dealer ${dealer_id} not allowed for brand ${product.brand}.`);
-
-            const dealerDiscount = await DealerDiscount.findOne({
-                dealer_id,
-                brand_name: product.brand.toUpperCase(),
-                model_name: product.model.toUpperCase(),
-                status: "active"
-            }).lean();
-
-            if (!dealerDiscount)
-                throw new NotFoundException(`No discount for dealer ${dealer_id} and product ${product_id}.`);
-
-            return { data: [mapDealerDiscountEntityToResponse(dealerDiscount)] };
-        }
-
-        const filters = {};
-        const brandUpper = brand_name ? brand_name.toUpperCase() : null;
-        const modelUpper = model_name ? model_name.toUpperCase() : null;
-
-        if (brandUpper) {
-            const brand = await Brand.findOne({ brand_name: brandUpper })
-                .select("brand_models brand_name")
-                .lean();
-            if (!brand) throw new BadRequestException(`Brand ${brandUpper} not found.`);
-
-            if (modelUpper && !brand.brand_models.map(m => m.toUpperCase()).includes(modelUpper))
-                throw new BadRequestException(`Model ${modelUpper} not part of brand ${brandUpper}.`);
-
-            Object.assign(filters, { brand_name: brand.brand_name, ...(modelUpper && { model_name: modelUpper }) });
-        }
-
-        if (dealer_id) {
-            const dealer = await employeeSchema.findOne({ employee_id: dealer_id, role: ROLES.DEALER })
-                .select("employee_id brand")
-                .lean();
-            if (!dealer) throw new BadRequestException(`Dealer ${dealer_id} not found.`);
-
-            const dealerBrands = dealer.brand ?
-                dealer.brand.map(b => b.toUpperCase()) : [];
-
-            const brandUpper = brand_name ? brand_name.toUpperCase() : null;
-            if (brandUpper && !dealerBrands.includes(brandUpper)) {
-                throw new BadRequestException(`Dealer ${dealer_id} not allowed for brand ${brandUpper}.`);
+            if (!product) {
+                throw new BadRequestException(`Product ${product_id} not found.`);
             }
+
+            resolvedBrandName = product && product.brand ?
+                product.brand.toUpperCase() :
+                undefined;
+
+            resolvedModelName = product && product.model ?
+                product.model.toUpperCase() :
+                undefined;
+
+            filters.product_ids = { $in: [product_id] };
+        }
+
+        // BRAND + MODEL VALIDATION
+        if (brand_name) {
+
+            const brandUpper = brand_name.toUpperCase();
+
+            const brand = await Brand
+                .findOne({ brand_name: brandUpper })
+                .select("brand_name brand_models")
+                .lean();
+
+            if (!brand) {
+                throw new BadRequestException(`Brand ${brandUpper} not found.`);
+            }
+
+            resolvedBrandName = brand.brand_name;
+
+            filters.brand_name = resolvedBrandName;
+
+            if (model_name) {
+
+                const modelUpper = model_name.toUpperCase();
+
+                const validModels = (brand.brand_models || []).map(m => m.toUpperCase());
+
+                if (!validModels.includes(modelUpper)) {
+                    throw new BadRequestException(
+                        `Model ${modelUpper} is not associated with brand ${brandUpper}.`
+                    );
+                }
+
+                resolvedModelName = modelUpper;
+                filters.model_name = resolvedModelName;
+            }
+        }
+
+        // DEALER VALIDATION
+        if (dealer_id) {
+
+            const dealer = await employeeSchema
+                .findOne({ employee_id: dealer_id, role: ROLES.DEALER })
+                .select("employee_id brand")
+                .lean();
+
+            if (!dealer) {
+                throw new BadRequestException(`Dealer ${dealer_id} not found.`);
+            }
+
+            const dealerBrands = (dealer.brand || []).map(b => b.toUpperCase());
 
             filters.dealer_id = dealer.employee_id;
-            if (dealerBrands.length > 0) {
-                filters.brand_name = { $in: dealerBrands };
+
+            if (dealerBrands.length) {
+                filters.brand_name = resolvedBrandName && dealerBrands.includes(resolvedBrandName) ?
+                    resolvedBrandName : { $in: dealerBrands };
             }
         }
-        const [records, total] = await Promise.all([
-            DealerDiscount.find(filters).skip(skip).limit(limit).sort({ created_at: -1 }).lean(),
+
+        // FETCH DEALER DISCOUNTS (PAGINATED)
+        const [discounts, total] = await Promise.all([
+            DealerDiscount
+                .find(filters)
+                .sort({ created_at: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+
             DealerDiscount.countDocuments(filters)
         ]);
 
+        // EXTRACT UNIQUE PRODUCT IDS
+        const uniqueProductIds = [
+            ...new Set(
+                discounts.flatMap(discount => discount.product_ids || [])
+            )
+        ];
+
+        // FETCH PRODUCTS IN BULK
+        let productMap = new Map();
+
+        if (uniqueProductIds.length > 0) {
+
+            const products = await Product
+                .find({
+                    product_id: { $in: uniqueProductIds },
+                    status: "active"
+                })
+                .lean();
+
+            const productsWithStocks = await Promise.all(
+                products.map(fetchProductWithStocks)
+            );
+
+            productMap = new Map(
+                productsWithStocks.map(p => [p.product_id, p])
+            );
+        }
+
+        // BUILD RESPONSE
+        const responseData = discounts.map(discount => {
+
+            const mappedDiscount = mapDealerDiscountEntityToResponse(discount);
+
+            const productList = (discount.product_ids || [])
+                .map(id => productMap.get(id))
+                .filter(Boolean);
+
+            return {
+                ...mappedDiscount,
+                products: productList
+            };
+        });
+
         return {
-            data: records.map(mapDealerDiscountEntityToResponse),
-            pagination: { page, limit, total }
+            data: responseData,
+            pagination: {
+                page,
+                limit,
+                total
+            }
         };
+
     }),
 
-    logout: asyncHandler(async(token) => {
+    logout: asyncHandler(async (token) => {
         const decoded = jwt.decode(token);
 
         if (!decoded || !decoded.exp) {
