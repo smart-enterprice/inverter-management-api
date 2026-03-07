@@ -53,8 +53,8 @@ const ORDER_DETAILS_RESPONSE_FIELDS = [
 
 const DEALER_DISCOUNT_RESPONSE_FIELDS = [
     'dealer_discount_id', 'brand_name', 'model_name', 'dealer_id',
-    'discount_value', 'is_percentage', 'description', 'status',
-    'created_by', 'created_at', 'updated_at'
+    'product_ids', 'discount_value', 'is_percentage', 'description',
+    'status', 'created_by', 'created_at', 'updated_at'
 ];
 
 export const mapEmployeeRequestToEntity = (data, employeeId = null, isUpdate = false) => {

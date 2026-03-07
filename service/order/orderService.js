@@ -97,13 +97,22 @@ const orderService = {
                     dealer_discount_id: sanitizeInput(detail.dealer_discount_id),
                     dealer_id: dealer.employee_id,
                     brand_name: product.brand,
-                    model_name: product.model
-                });
+                    model_name: product.model,
+                    status: "active"
+                }).lean();
 
                 if (dealerDiscount) {
-                    unitDiscount = dealerDiscount.is_percentage ?
-                        (unitPrice * dealerDiscount.discount_value) / 100 :
-                        dealerDiscount.discount_value;
+                    const productIds = Array.isArray(dealerDiscount.product_ids) ?
+                        dealerDiscount.product_ids : [];
+
+                    const isProductEligible = productIds.includes(product.product_id);
+
+                    if (isProductEligible) {
+                        unitDiscount = dealerDiscount.is_percentage ?
+                            (unitPrice * dealerDiscount.discount_value) / 100 :
+                            dealerDiscount.discount_value;
+
+                    }
                 }
             }
 

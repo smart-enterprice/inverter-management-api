@@ -17,9 +17,13 @@ import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, v
 import { mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse } from "../utils/modelMapper.js";
 import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS, ROLES } from "../utils/constants.js";
 
-async function fetchProductWithStocks(product) {
+export async function fetchProductWithStocks(product) {
     const stocks = await Stock.find({ product_id: product.product_id });
-    return mapProductEntityToResponse(product, stocks.map(mapStockEntityToResponse));
+
+    return mapProductEntityToResponse(
+        product,
+        stocks.map(mapStockEntityToResponse)
+    );
 }
 
 async function checkIfProductExists(brand, model) {

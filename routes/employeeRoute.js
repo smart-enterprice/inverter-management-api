@@ -28,8 +28,10 @@ router.get("/", employeeController.getAllEmployees);
 // ========================== DEALER ROUTES ==========================
 router.post("/dealer/create-discount", employeeController.createDealerDiscount);
 router.post("/dealer/create-discounts", employeeController.createDealerDiscountList);
+
 router.post("/dealer/get-discounts", employeeController.getDealerDiscounts);
 router.put("/dealer/update-discount", employeeController.updateDealerDiscount);
+
 router.get("/dealers/get", employeeController.getAllDealerEmployees);
 router.get("/dealers/deleted", employeeController.getAllDeletedDealerEmployees);
 
