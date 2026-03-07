@@ -186,39 +186,69 @@ const productService = {
 
         const brandInput = sanitizeInput(dto.brand).toUpperCase();
         const modelInput = sanitizeInput(dto.model).toUpperCase();
+        const productName = sanitizeInput(dto.product_name);
+        const productType = sanitizeInput(dto.product_type);
 
-        const brandRecord = await Brand.findOne({ brand_name: brandInput });
+        const brandRecord = await Brand
+            .findOne({ brand_name: brandInput })
+            .lean();
+
         if (!brandRecord) {
-            throw new BadRequestException(`Brand ${dto.brand} does not exist.`);
+            throw new BadRequestException(
+                `Brand ${dto.brand} does not exist.`
+            );
         }
 
-        const status = brandRecord.status?.toLowerCase();
-        if (["inactive", "discontinued"].includes(status)) {
-            throw new BadRequestException(`Cannot create product under brand ${dto.brand} (status: ${status}).`);
+        const brandStatus = brandRecord.status?.toLowerCase();
+
+        if (["inactive", "discontinued"].includes(brandStatus)) {
+            throw new BadRequestException(
+                `Cannot create product under brand ${dto.brand} (status: ${brandStatus}).`
+            );
         }
 
-        const modelList = brandRecord.brand_models.map(m => m.toUpperCase());
-        if (!modelList.includes(modelInput)) {
-            throw new BadRequestException(`Model ${dto.model} is not associated with brand ${dto.brand}.`);
+        const brandModels = brandRecord.brand_models.map(m => m.toUpperCase());
+
+        if (!brandModels.includes(modelInput)) {
+            throw new BadRequestException(
+                `Model ${dto.model} is not associated with brand ${dto.brand}.`
+            );
         }
 
-        const existingProduct = await Product.findOne({ brand: brandInput, model: modelInput });
+        const existingProduct = await Product.findOne({
+            brand: brandInput,
+            model: modelInput,
+            product_name: productName,
+            product_type: productType
+        }).lean();
+
         if (existingProduct) {
-            throw new BadRequestException(`Product already exists: ${brandInput} / ${modelInput}`);
+            throw new BadRequestException(
+                `Product already exists: ${brandInput} / ${modelInput} / ${productName} (${productType})`
+            );
         }
 
         const productId = await generateUniqueProductId();
+
         const product = await Product.create({
             product_id: productId,
             brand: brandInput,
             model: modelInput,
-            product_type: sanitizeInput(dto.product_type),
-            product_name: sanitizeInput(dto.product_name),
+            product_type: productType,
+            product_name: productName,
             available_stock: Number(dto.available_stock || 0),
             price: normalizePrice(dto.product_price) || 0,
             created_by: employee_id
         });
-        logger.info(`✅ Product created → ID: ${productId}, Brand: ${brandInput}, Model: ${modelInput}`);
+
+        logger.info("Product created successfully", {
+            product_id: productId,
+            brand: brandInput,
+            model: modelInput,
+            product_name: productName,
+            product_type: productType,
+            created_by: employee_id
+        });
 
         if (Array.isArray(dto.stocks) && dto.stocks.length > 0) {
             await productService.createOrUpdateProductStock({ [productId]: dto.stocks });
