@@ -35,7 +35,7 @@ const authController = {
     signin: [
         employeeService.loginLimiter,
         sanitizeInputBody,
-        asyncHandler(async(req, res) => {
+        asyncHandler(async (req, res) => {
             if (!req.body || !req.body.employee_email || !req.body.password) {
                 throw new BadRequestException("Email and password are required");
             }
@@ -57,7 +57,7 @@ const authController = {
     ],
 
     logout: [
-        asyncHandler(async(req, res) => {
+        asyncHandler(async (req, res) => {
             const authHeader = req.headers.authorization;
 
             if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -76,7 +76,7 @@ const authController = {
     ],
 
     checkTokenActive: [
-        asyncHandler(async(req, res) => {
+        asyncHandler(async (req, res) => {
             const authHeader = req.headers.authorization;
             let isActive = true;
 
