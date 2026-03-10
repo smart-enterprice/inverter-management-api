@@ -607,19 +607,31 @@ const orderService = {
             unpackedQty = 0;
         }
 
+        // Normalize Status(Pre - processing)
+        let normalizedStatus = null;
+
+        if (updateDto.status) {
+            normalizedStatus = normalizeStatus(updateDto.status);
+
+            if (normalizedStatus === ORDER_STATUSES.CANCELLED) {
+                updateDto.cancel_qty =
+                    orderDetail.qty_ordered -
+                    orderDetail.qty_delivered -
+                    orderDetail.total_cancelled_qty;
+            }
+        }
+
         // 5️⃣ Cancellation Flow
         if (updateDto.cancel_qty !== undefined) {
             const cancelQty = toNumber(updateDto.cancel_qty);
             if (cancelQty <= 0)
                 throw new BadRequestException("Cancel quantity must be greater than 0.");
 
-            const remainingQty =
-                orderDetail.qty_ordered - orderDetail.qty_delivered;
+            const remainingCancelableQty = orderDetail.qty_ordered - orderDetail.qty_delivered - orderDetail.total_cancelled_qty;
 
-            if (cancelQty > remainingQty)
-                throw new BadRequestException(
-                    "Cancel quantity exceeds remaining orderable quantity."
-                );
+            if (cancelQty > remainingCancelableQty) {
+                cancelQty = remainingCancelableQty;
+            }
 
             assertAdminAccess(employeeRole);
 
@@ -648,19 +660,13 @@ const orderService = {
         }
 
         // 6️⃣ Delivery Update (Clean & Unified)
-
-        const isMarkAsDelivered =
-            updateDto.status === ORDER_STATUSES.DELIVERED;
-
-        const hasDeliveredQty =
-            updateDto.delivered_qty !== undefined;
-
-        const hasDeliveredDate =
-            updateDto.delivered_date !== undefined;
+        const isMarkAsDelivered = updateDto.status === ORDER_STATUSES.DELIVERED;
+        const hasDeliveredQty = updateDto.delivered_qty !== undefined;
+        const hasDeliveredDate = updateDto.delivered_date !== undefined;
 
         if (isMarkAsDelivered || hasDeliveredQty || hasDeliveredDate) {
 
-            const remainingQty =
+            const remainingDeliverableQty =
                 orderDetail.qty_ordered - orderDetail.qty_delivered;
 
             let deliveredQty = 0;
@@ -669,21 +675,21 @@ const orderService = {
             /* 1️⃣ Determine Quantity */
 
             if (isMarkAsDelivered) {
-                deliveredQty = remainingQty;
+                deliveredQty = remainingDeliverableQty;
             } else if (hasDeliveredQty) {
+
                 deliveredQty = toNumber(updateDto.delivered_qty);
 
-                if (deliveredQty <= 0)
+                if (deliveredQty <= 0) {
                     throw new BadRequestException("Invalid delivered quantity.");
+                }
 
-                if (deliveredQty > remainingQty)
-                    throw new BadRequestException(
-                        "Delivered quantity exceeds remaining quantity."
-                    );
+                if (deliveredQty > remainingDeliverableQty) {
+                    throw new BadRequestException("Delivered quantity exceeds remaining quantity.");
+                }
             }
 
             /* 2️⃣ Determine Date */
-
             if (hasDeliveredDate) {
                 deliveredAt = updateDto.delivered_date ?
                     new Date(updateDto.delivered_date) :
@@ -693,7 +699,6 @@ const orderService = {
             }
 
             /* 3️⃣ Apply Quantity Update */
-
             if (deliveredQty > 0) {
                 orderDetail.qty_delivered += deliveredQty;
 
@@ -732,7 +737,6 @@ const orderService = {
         }
 
         // 8️⃣ Update Stock Flags
-
         orderDetail.stock_flags = {
             PACKED: packedQty,
             UNPACKED: unpackedQty,
@@ -742,25 +746,23 @@ const orderService = {
         };
 
         // 9️⃣ Intelligent Status Resolution
-
         const previousStatus = orderDetail.status;
 
-        if (updateDto.status) {
-            const normalized = normalizeStatus(updateDto.status);
-
-            if (!isValidStatus(normalized))
+        if (normalizedStatus) {
+            if (!isValidStatus(normalizedStatus)) {
                 throw new BadRequestException(
-                    `Invalid order detail status: ${normalized}`
+                    `Invalid order detail status: ${normalizedStatus}`
                 );
+            }
 
             orderDetail.status = resolveManualStatus({
-                normalized,
+                normalized: normalizedStatus,
                 packedQty,
                 unpackedQty,
                 productionQty
             });
 
-            if (normalized === ORDER_STATUSES.INVOICE) {
+            if (normalizedStatus === ORDER_STATUSES.INVOICE) {
                 await invoiceService.generateOrUpdateInvoiceByOrderDetail(
                     orderDetail,
                     toNumber(updateDto.invoice_qty)
@@ -780,7 +782,6 @@ const orderService = {
         await orderDetail.save();
 
         // 🔟 Recalculate Parent Order (Optimized)
-
         const refreshedDetails = await OrderDetails.find({
             order_number: order.order_number
         });
