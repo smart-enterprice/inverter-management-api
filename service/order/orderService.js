@@ -89,9 +89,12 @@ const orderService = {
 
             const unitPrice = normalizePrice(product.price) || 0;
             let unitDiscount = 0;
+            let discountNotes = [];
 
+            // Manual Discount or Dealer Discount
             if (detail.discount_price && Number(detail.discount_price) > 0) {
                 unitDiscount = Number(detail.discount_price);
+                discountNotes.push(`Manual Discount Applied: ${unitDiscount}`);
             } else if (detail.dealer_discount_id) {
                 const dealerDiscount = await DealerDiscount.findOne({
                     dealer_discount_id: sanitizeInput(detail.dealer_discount_id),
@@ -108,29 +111,45 @@ const orderService = {
                     const isProductEligible = productIds.includes(product.product_id);
 
                     if (isProductEligible) {
-                        unitDiscount = dealerDiscount.is_percentage ?
-                            (unitPrice * dealerDiscount.discount_value) / 100 :
-                            dealerDiscount.discount_value;
+                        if (dealerDiscount.is_percentage) {
 
+                            unitDiscount = (unitPrice * dealerDiscount.discount_value) / 100;
+
+                            discountNotes.push(`Dealer Discount Applied: ${dealerDiscount.dealer_discount_id} | Type: PERCENTAGE | Configured: ${dealerDiscount.discount_value}% | Unit Discount: ${unitDiscount.toFixed(2)}`);
+                        } else {
+
+                            unitDiscount = dealerDiscount.discount_value;
+
+                            discountNotes.push(`Dealer Discount Applied: ${dealerDiscount.dealer_discount_id} | Type: FIXED | Configured: ${dealerDiscount.discount_value} | Unit Discount: ${unitDiscount.toFixed(2)}`);
+                        }
                     }
                 }
             }
 
-            if (unitDiscount < 0 || isNaN(unitDiscount)) unitDiscount = 0;
-            if (unitDiscount > unitPrice) unitDiscount = unitPrice;
+            if (!Number.isFinite(unitDiscount) || unitDiscount < 0) {
+                unitDiscount = 0;
+            }
+            if (unitDiscount > unitPrice) {
+                unitDiscount = unitPrice;
+            }
 
+            // Pricing Calculations
             const totalProductPrice = unitPrice * qtyOrdered;
             const totalDiscount = unitDiscount * qtyOrdered;
             const totalPrice = totalProductPrice - totalDiscount;
 
+            // Order Level Totals
             if (!isProductScheme) {
                 totalOrderAmount += totalPrice;
                 totalOrderDiscount += totalDiscount;
             }
 
             let notes = [];
+
             if (productionRequired > 0) notes.push(`Production Required: ${productionRequired} units`);
             if (unpackedUsed > 0) notes.push(`Unpacked Required for Packing: ${unpackedUsed} units`);
+
+            notes = notes.concat(discountNotes);
 
             const detailStatus = employeeRole === ROLES.SALESMAN ?
                 ORDER_STATUSES.PENDING :
@@ -139,24 +158,32 @@ const orderService = {
             const orderDetails = {
                 order_details_number: await generateUniqueOrderDetailsId(),
                 order_number: orderNumber,
+
                 product_id: product.product_id,
                 product_brand: product.brand,
                 product_name: product.product_name,
                 product_model: product.model,
                 product_type: product.product_type,
+
                 qty_ordered: qtyOrdered,
                 delivery_date: new Date(detail.delivery_date),
+
                 notes: notes.join(' | '),
+
                 stock_usage: stockUsage,
                 stock_flags: stockFlags,
                 status: detailStatus,
+
                 unit_product_price: unitPrice,
                 total_product_price: totalProductPrice,
+
                 dealer_discount: unitDiscount,
                 total_dealer_discount: totalDiscount,
+
                 total_price: totalPrice,
                 is_free: isProductScheme
             };
+
             orderDetailsPayload.push(orderDetails);
         }
 
