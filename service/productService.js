@@ -176,6 +176,9 @@ export async function saveOrUpdateStockTransaction({
         employeeId
     });
 
+    product.available_stock = await productService.calculateAvailableStock(product.product_id);
+    await product.save();
+
     return stockRecord;
 }
 

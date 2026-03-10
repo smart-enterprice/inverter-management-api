@@ -56,14 +56,14 @@ const productSchema = new mongoose.Schema({
     },
 });
 
-productSchema.pre('save', function(next) {
+productSchema.pre('save', function (next) {
     const istNow = getISTDate();
     if (this.isNew) this.created_at = istNow;
     this.updated_at = istNow;
     next();
 });
 
-productSchema.pre('findOneAndUpdate', function(next) {
+productSchema.pre('findOneAndUpdate', function (next) {
     this._update.updated_at = getISTDate();
     next();
 });
@@ -81,7 +81,7 @@ productSchema.statics.getAllProducts = function (filter = {}) {
 };
 
 productSchema.statics.getAllByBrands = function (brandName) {
-    return this.find({ brand: brandName});
+    return this.find({ brand: brandName });
 };
 
 const Product = mongoose.model("Product", productSchema);
