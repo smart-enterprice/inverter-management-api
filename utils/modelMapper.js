@@ -36,6 +36,11 @@ const STOCK_HISTORY_RESPONSE_FIELDS = [
     'created_at', 'updated_at'
 ];
 
+const PRICE_HISTORY_RESPONSE_FIELDS = [
+    'price_history_id', 'product_id', 'old_price', 'new_price', 'changed_by',
+    'change_reason', 'changed_at', 'created_at'
+];
+
 const ORDER_RESPONSE_FIELDS = [
     'order_number', 'dealer_id', 'priority', 'order_note', 'payment_notes', 'status', 'salesman_id',
     'delivery_date', 'promised_delivery_date', 'created_by', 'order_total_price',
@@ -93,7 +98,7 @@ export const mapEmployeeEntityToResponse = (entity, password = null) => {
     return response;
 };
 
-export const mapProductEntityToResponse = (product, stocks = []) => {
+export const mapProductEntityToResponse = (product, stocks = [], priceHistories = []) => {
     const response = {};
 
     PRODUCT_RESPONSE_FIELDS.forEach(field => {
@@ -102,7 +107,8 @@ export const mapProductEntityToResponse = (product, stocks = []) => {
         }
     });
 
-    response.stocks = stocks;
+    response.stocks = Array.isArray(stocks) ? stocks : [];
+    response.price_history = Array.isArray(priceHistories) ? priceHistories : [];
 
     return response;
 };
@@ -113,6 +119,18 @@ export const mapStockEntityToResponse = (stock) => {
     STOCK_RESPONSE_FIELDS.forEach(field => {
         if (stock[field] !== undefined) {
             response[field] = stock[field];
+        }
+    });
+
+    return response;
+};
+
+export const mapPriceHistoryEntityToResponse = (priceHistory) => {
+    const response = {};
+
+    PRICE_HISTORY_RESPONSE_FIELDS.forEach(field => {
+        if (priceHistory[field] !== undefined) {
+            response[field] = priceHistory[field];
         }
     });
 

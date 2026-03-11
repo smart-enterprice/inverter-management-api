@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import StockHistory from '../models/stockHistory.js';
 import companyAddress from '../models/companyAddress.js';
 import invoice from '../models/invoice.js';
+import ProductPriceHistory from '../models/productPriceHistory.js';
 
 const generateRandomString = (length) => {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -25,7 +26,7 @@ const generateSegmentedOrderId = () => {
     return `${segment()}-${segment()}-${segment()}`;
 };
 
-export const generateUniqueEmployeeId = async() => {
+export const generateUniqueEmployeeId = async () => {
     let id;
     let exists;
 
@@ -37,7 +38,7 @@ export const generateUniqueEmployeeId = async() => {
     return id;
 };
 
-export const generateUniqueProductId = async() => {
+export const generateUniqueProductId = async () => {
     let id;
     let exists;
 
@@ -49,7 +50,7 @@ export const generateUniqueProductId = async() => {
     return id;
 };
 
-export const generateUniqueStockId = async() => {
+export const generateUniqueStockId = async () => {
     let id;
     let exists;
 
@@ -61,7 +62,7 @@ export const generateUniqueStockId = async() => {
     return id;
 };
 
-export const generateUniqueStockHistoryId = async() => {
+export const generateUniqueStockHistoryId = async () => {
     let id;
     let exists;
 
@@ -73,7 +74,7 @@ export const generateUniqueStockHistoryId = async() => {
     return id;
 };
 
-export const generateUniqueOrderId = async() => {
+export const generateUniqueOrderId = async () => {
     let order_number;
     let exists;
 
@@ -85,7 +86,7 @@ export const generateUniqueOrderId = async() => {
     return order_number;
 };
 
-export const generateUniqueOrderDetailsId = async() => {
+export const generateUniqueOrderDetailsId = async () => {
     let order__details_number;
     let exists;
 
@@ -97,7 +98,7 @@ export const generateUniqueOrderDetailsId = async() => {
     return order__details_number;
 };
 
-export const generateUniqueBrandId = async() => {
+export const generateUniqueBrandId = async () => {
     let brand_id;
     let exists;
 
@@ -109,7 +110,7 @@ export const generateUniqueBrandId = async() => {
     return brand_id;
 };
 
-export const generateUniqueDealerDiscountId = async() => {
+export const generateUniqueDealerDiscountId = async () => {
     let discount_id;
     let exists;
 
@@ -121,7 +122,7 @@ export const generateUniqueDealerDiscountId = async() => {
     return discount_id;
 };
 
-export const generateUniqueInvoiceId = async() => {
+export const generateUniqueInvoiceId = async () => {
     let invoice_id;
     let exists;
 
@@ -136,7 +137,7 @@ export const generateUniqueInvoiceId = async() => {
     return invoice_id;
 };
 
-export const generateUniqueCompanyAddressId = async() => {
+export const generateUniqueCompanyAddressId = async () => {
     let company_address_id;
     let exists;
 
@@ -149,4 +150,16 @@ export const generateUniqueCompanyAddressId = async() => {
     } while (exists);
 
     return company_address_id;
+};
+
+export const generateUniquePriceHistoryId = async () => {
+    let id;
+    let exists;
+
+    do {
+        id = generateRandomString(20);
+        exists = await ProductPriceHistory.findOne({ price_history_id: id });
+    } while (exists);
+
+    return id;
 };
