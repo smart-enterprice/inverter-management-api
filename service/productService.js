@@ -23,13 +23,13 @@ export async function fetchProductWithStocks(product) {
     const [stocks, priceHistories, stockHistories] = await Promise.all([
         Stock.find({ product_id: product.product_id }).lean(),
 
+        ProductPriceHistory.find({ product_id: product.product_id })
+        .sort({ changed_at: -1 })
+        .lean(),
+
         StockHistory.find({ product_id: product.product_id })
         .sort({ created_at: -1 })
         .lean(),
-
-        ProductPriceHistory.find({ product_id: product.product_id })
-        .sort({ changed_at: -1 })
-        .lean()
     ]);
 
     return mapProductEntityToResponse(
@@ -461,14 +461,14 @@ const productService = {
         const [stocks, priceHistories, stockHistories] = await Promise.all([
             Stock.find({ product_id: { $in: productIds } }).lean(),
 
-            StockHistory.find({ product_id: { $in: productIds } })
-                .sort({ created_at: -1 })
-                .lean(),
-
             ProductPriceHistory
                 .find({ product_id: { $in: productIds } })
                 .sort({ changed_at: -1 })
-                .lean()
+                .lean(),
+
+            StockHistory.find({ product_id: { $in: productIds } })
+                .sort({ created_at: -1 })
+                .lean(),
         ]);
 
         const stockMap = stocks.reduce((acc, stock) => {
@@ -538,14 +538,14 @@ const productService = {
         const [stocks, priceHistories, stockHistories] = await Promise.all([
             Stock.find({ product_id: { $in: productIds } }).lean(),
 
-            StockHistory.find({ product_id: { $in: productIds } })
-                .sort({ created_at: -1 })
-                .lean(),
-
             ProductPriceHistory
                 .find({ product_id: { $in: productIds } })
                 .sort({ changed_at: -1 })
-                .lean()
+                .lean(),
+
+            StockHistory.find({ product_id: { $in: productIds } })
+                .sort({ created_at: -1 })
+                .lean(),
         ]);
 
         logger.info("Stock histories fetched", {
@@ -673,14 +673,14 @@ const productService = {
         const [stocks, priceHistories, stockHistories] = await Promise.all([
             Stock.find({ product_id: { $in: productIds } }).lean(),
 
-            StockHistory.find({ product_id: { $in: productIds } })
-                .sort({ created_at: -1 })
-                .lean(),
-
             ProductPriceHistory
                 .find({ product_id: { $in: productIds } })
                 .sort({ changed_at: -1 })
-                .lean()
+                .lean(),
+
+            StockHistory.find({ product_id: { $in: productIds } })
+                .sort({ created_at: -1 })
+                .lean(),
         ]);
 
         const stockMap = stocks.reduce((acc, stock) => {
