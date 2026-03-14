@@ -98,7 +98,7 @@ export const mapEmployeeEntityToResponse = (entity, password = null) => {
     return response;
 };
 
-export const mapProductEntityToResponse = (product, stocks = [], priceHistories = []) => {
+export const mapProductEntityToResponse = (product, stocks = [], priceHistories = [], stockHistories = []) => {
     const response = {};
 
     PRODUCT_RESPONSE_FIELDS.forEach(field => {
@@ -108,6 +108,7 @@ export const mapProductEntityToResponse = (product, stocks = [], priceHistories 
     });
 
     response.stocks = Array.isArray(stocks) ? stocks : [];
+    response.stock_history = Array.isArray(stockHistories) ? stockHistories : [];
     response.price_history = Array.isArray(priceHistories) ? priceHistories : [];
 
     return response;
@@ -131,6 +132,18 @@ export const mapPriceHistoryEntityToResponse = (priceHistory) => {
     PRICE_HISTORY_RESPONSE_FIELDS.forEach(field => {
         if (priceHistory[field] !== undefined) {
             response[field] = priceHistory[field];
+        }
+    });
+
+    return response;
+};
+
+export const mapStockHistoryEntityToResponse = (stockHistory) => {
+    const response = {};
+
+    STOCK_HISTORY_RESPONSE_FIELDS.forEach(field => {
+        if (stockHistory[field] !== undefined) {
+            response[field] = stockHistory[field];
         }
     });
 

@@ -25,7 +25,7 @@ export const deriveOrderStatusFromDetails = (details = []) => {
     // Build status set while ignoring CANCELLED
     const statusSet = new Set(
         details.map(({ status }) => status)
-            .filter(status => status && status !== ORDER_STATUSES.CANCELLED)
+        .filter(status => status && status !== ORDER_STATUSES.CANCELLED)
     );
 
     // Resolve priority status
@@ -100,13 +100,14 @@ export const canMoveOrderToTargetStatus = (details = [], targetStatus) => {
 
 export const resolveOrderDetailStatus = ({
     qtyOrdered,
+    qtyCancelled,
     qtyDelivered,
     packedQty,
     hasProduction,
     hasUnpacked,
     currentStatus
 }) => {
-    const isCancelled = qtyOrdered === 0;
+    const isCancelled = qtyOrdered === qtyCancelled;
     const isDelivered = qtyDelivered >= qtyOrdered;
     const isInProduction = hasProduction || hasUnpacked;
     const isPackedCandidate =
@@ -114,21 +115,21 @@ export const resolveOrderDetailStatus = ({
 
     console.debug(
         "[OrderStatusEngine] resolveOrderDetailStatus", {
-        input: {
-            qtyOrdered,
-            qtyDelivered,
-            packedQty,
-            hasProduction,
-            hasUnpacked,
-            currentStatus
-        },
-        checks: {
-            isCancelled,
-            isDelivered,
-            isInProduction,
-            isPackedCandidate
-        }
-    });
+            input: {
+                qtyOrdered,
+                qtyDelivered,
+                packedQty,
+                hasProduction,
+                hasUnpacked,
+                currentStatus
+            },
+            checks: {
+                isCancelled,
+                isDelivered,
+                isInProduction,
+                isPackedCandidate
+            }
+        });
 
     if (isCancelled) {
         return ORDER_STATUSES.CANCELLED;
