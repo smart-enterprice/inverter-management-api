@@ -14,25 +14,29 @@ import logger from "../utils/logger.js";
 import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId, generateUniqueStockHistoryId } from "../utils/generatorIds.js";
 import { BadRequestException } from "../middleware/CustomError.js";
 import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext, normalizePrice } from "../utils/validationUtils.js";
-import { mapPriceHistoryEntityToResponse, mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse } from "../utils/modelMapper.js";
+import { mapPriceHistoryEntityToResponse, mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse, mapStockHistoryEntityToResponse } from "../utils/modelMapper.js";
 import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS, ROLES } from "../utils/constants.js";
 import { createPriceHistory } from "./priceHistoryService.js";
 import ProductPriceHistory from "../models/productPriceHistory.js";
 
 export async function fetchProductWithStocks(product) {
-    const [stocks, priceHistories] = await Promise.all([
+    const [stocks, priceHistories, stockHistories] = await Promise.all([
         Stock.find({ product_id: product.product_id }).lean(),
 
-        ProductPriceHistory
-            .find({ product_id: product.product_id })
-            .sort({ changed_at: -1 })
-            .lean()
+        StockHistory.find({ product_id: product.product_id })
+        .sort({ created_at: -1 })
+        .lean(),
+
+        ProductPriceHistory.find({ product_id: product.product_id })
+        .sort({ changed_at: -1 })
+        .lean()
     ]);
 
     return mapProductEntityToResponse(
         product,
         stocks.map(mapStockEntityToResponse),
-        priceHistories.map(mapPriceHistoryEntityToResponse)
+        priceHistories.map(mapPriceHistoryEntityToResponse),
+        stockHistories.map(mapStockHistoryEntityToResponse)
     );
 }
 
@@ -454,8 +458,13 @@ const productService = {
         const productIds = products.map(({ product_id }) => product_id);
         logger.info('product by brands | productsFound', { count: products.length });
 
-        const [stocks, priceHistories] = await Promise.all([
+        const [stocks, priceHistories, stockHistories] = await Promise.all([
             Stock.find({ product_id: { $in: productIds } }).lean(),
+
+            StockHistory.find({ product_id: { $in: productIds } })
+                .sort({ created_at: -1 })
+                .lean(),
+
             ProductPriceHistory
                 .find({ product_id: { $in: productIds } })
                 .sort({ changed_at: -1 })
@@ -490,11 +499,26 @@ const productService = {
             return acc;
         }, {});
 
+        const stockHistoryMap = stockHistories.reduce((acc, history) => {
+            const productId = history.product_id;
+
+            if (!acc[productId]) {
+                acc[productId] = [];
+            }
+
+            acc[productId].push(
+                mapStockHistoryEntityToResponse(history)
+            );
+
+            return acc;
+        }, {});
+
         return products.map(product =>
             mapProductEntityToResponse(
                 product,
                 stockMap[product.product_id] || [],
-                priceHistoryMap[product.product_id] || []
+                priceHistoryMap[product.product_id] || [],
+                stockHistoryMap[product.product_id] || [],
             )
         );
     }),
@@ -511,13 +535,22 @@ const productService = {
 
         const productIds = products.map(({ product_id }) => product_id);
 
-        const [stocks, priceHistories] = await Promise.all([
+        const [stocks, priceHistories, stockHistories] = await Promise.all([
             Stock.find({ product_id: { $in: productIds } }).lean(),
+
+            StockHistory.find({ product_id: { $in: productIds } })
+                .sort({ created_at: -1 })
+                .lean(),
+
             ProductPriceHistory
                 .find({ product_id: { $in: productIds } })
                 .sort({ changed_at: -1 })
                 .lean()
         ]);
+
+        logger.info("Stock histories fetched", {
+            stockHistories,
+        });
 
         const stockMap = stocks.reduce((acc, stock) => {
             const productId = stock.product_id;
@@ -547,11 +580,26 @@ const productService = {
             return acc;
         }, {});
 
+        const stockHistoryMap = stockHistories.reduce((acc, history) => {
+            const productId = history.product_id;
+
+            if (!acc[productId]) {
+                acc[productId] = [];
+            }
+
+            acc[productId].push(
+                mapStockHistoryEntityToResponse(history)
+            );
+
+            return acc;
+        }, {});
+
         return products.map(product =>
             mapProductEntityToResponse(
                 product,
                 stockMap[product.product_id] || [],
-                priceHistoryMap[product.product_id] || []
+                priceHistoryMap[product.product_id] || [],
+                stockHistoryMap[product.product_id] || [],
             )
         );
     }),
@@ -622,8 +670,13 @@ const productService = {
 
         const productIds = products.map(p => p.product_id);
 
-        const [stocks, priceHistories] = await Promise.all([
+        const [stocks, priceHistories, stockHistories] = await Promise.all([
             Stock.find({ product_id: { $in: productIds } }).lean(),
+
+            StockHistory.find({ product_id: { $in: productIds } })
+                .sort({ created_at: -1 })
+                .lean(),
+
             ProductPriceHistory
                 .find({ product_id: { $in: productIds } })
                 .sort({ changed_at: -1 })
@@ -658,11 +711,26 @@ const productService = {
             return acc;
         }, {});
 
+        const stockHistoryMap = stockHistories.reduce((acc, history) => {
+            const productId = history.product_id;
+
+            if (!acc[productId]) {
+                acc[productId] = [];
+            }
+
+            acc[productId].push(
+                mapStockHistoryEntityToResponse(history)
+            );
+
+            return acc;
+        }, {});
+
         const result = products.map(product =>
             mapProductEntityToResponse(
                 product,
                 stockMap[product.product_id] || [],
-                priceHistoryMap[product.product_id] || []
+                priceHistoryMap[product.product_id] || [],
+                stockHistoryMap[product.product_id] || [],
             )
         );
 

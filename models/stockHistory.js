@@ -61,7 +61,7 @@ const stockHistorySchema = new mongoose.Schema({
     }
 });
 
-stockHistorySchema.pre("save", function (next) {
+stockHistorySchema.pre("save", function(next) {
     const istNow = getISTDate();
     if (this.isNew) {
         this.created_at = istNow;
