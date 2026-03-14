@@ -286,6 +286,8 @@ const orderService = {
         // Status filtering
         if (status && Object.values(ORDER_STATUSES).includes(status)) {
             filter.status = status;
+        } else {
+            filter.status = { $ne: ORDER_STATUSES.CANCELLED };
         }
 
         // Priority filter
