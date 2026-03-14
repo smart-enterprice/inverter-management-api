@@ -642,8 +642,11 @@ const orderService = {
                     productionQty
                 }));
 
-            // orderDetail.qty_ordered -= cancelQty;
             orderDetail.total_cancelled_qty += cancelQty;
+
+            if (orderDetail.qty_ordered !== orderDetail.total_cancelled_qty) {
+                orderDetail.qty_ordered = Math.max(0, orderDetail.qty_ordered - cancelQty);
+            }
 
             recalculatePricing(orderDetail);
 
