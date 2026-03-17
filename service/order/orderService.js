@@ -29,7 +29,7 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 
 const orderService = {
-    createOrder: asyncHandler(async(dto) => {
+    createOrder: asyncHandler(async (dto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
         console.log("[CREATE_ORDER]", {
             employeeId,
@@ -51,7 +51,7 @@ const orderService = {
             order_note: sanitizeInput(dto.order_note || ""),
         });
 
-        const productIds = dto.order_details.map((detail) => detail.product_id);
+        const productIds = dto.order_details.map(d => d.product_id);
         const { productMap, productStockMap } = await productService.getProductsByIds(productIds);
 
         let totalOrderAmount = 0;
@@ -72,30 +72,56 @@ const orderService = {
             const isProductScheme = Boolean(detail.is_product_scheme);
             logger.info(`📦 Product: ${product.product_id} | is_product_scheme: ${detail.is_product_scheme} | Parsed: ${isProductScheme}`);
 
-            const { productionRequired, packedUsed, unpackedUsed } = await productService.checkAndReserveStock(
-                product, stockDoc, qtyOrdered, employeeId, employeeRole, orderNumber
+            const {
+                productionRequired,
+                packedUsed,
+                unpackedUsed
+            } = await productService.checkAndReserveStock(
+                product,
+                stockDoc,
+                qtyOrdered,
+                employeeId,
+                employeeRole,
+                orderNumber
             );
 
-            if (productionRequired > 0 || unpackedUsed > 0) hasPendingProduction = true;
+            if (productionRequired > 0 || unpackedUsed > 0) {
+                hasPendingProduction = true;
+            }
 
-            const stockUsage = { PACKED: packedUsed || 0, UNPACKED: unpackedUsed || 0, PRODUCTION: productionRequired || 0 };
-            const stockFlags = {
+            const stockUsage = {
                 PACKED: packedUsed || 0,
                 UNPACKED: unpackedUsed || 0,
-                PRODUCTION: productionRequired || 0,
-                hasUnpacked: (unpackedUsed || 0) > 0,
-                hasProduction: (productionRequired || 0) > 0
+                PRODUCTION: productionRequired || 0
+            };
+
+            const stockFlags = {
+                ...stockUsage,
+                hasUnpacked: unpackedUsed > 0,
+                hasProduction: productionRequired > 0
             };
 
             const unitPrice = normalizePrice(product.price) || 0;
+
             let unitDiscount = 0;
             let discountNotes = [];
 
+            // Do NOT apply any discount for scheme/free products
+            const isDiscountAllowed = !isProductScheme;
+
             // Manual Discount or Dealer Discount
-            if (detail.discount_price && Number(detail.discount_price) > 0) {
+            if (
+                isDiscountAllowed &&
+                detail.discount_price &&
+                Number(detail.discount_price) > 0
+            ) {
                 unitDiscount = Number(detail.discount_price);
                 discountNotes.push(`Manual Discount Applied: ${unitDiscount}`);
-            } else if (detail.dealer_discount_id) {
+
+            } else if (
+                isDiscountAllowed &&
+                detail.dealer_discount_id
+            ) {
                 const dealerDiscount = await DealerDiscount.findOne({
                     dealer_discount_id: sanitizeInput(detail.dealer_discount_id),
                     dealer_id: dealer.employee_id,
@@ -105,22 +131,28 @@ const orderService = {
                 }).lean();
 
                 if (dealerDiscount) {
-                    const productIds = Array.isArray(dealerDiscount.product_ids) ?
-                        dealerDiscount.product_ids : [];
+                    const eligibleProducts =
+                        Array.isArray(dealerDiscount.product_ids) ?
+                            dealerDiscount.product_ids : [];
 
-                    const isProductEligible = productIds.includes(product.product_id);
+                    const isEligible = eligibleProducts.includes(
+                        product.product_id
+                    );
 
-                    if (isProductEligible) {
+                    if (isEligible) {
                         if (dealerDiscount.is_percentage) {
+                            unitDiscount =
+                                (unitPrice * dealerDiscount.discount_value) / 100;
 
-                            unitDiscount = (unitPrice * dealerDiscount.discount_value) / 100;
-
-                            discountNotes.push(`Dealer Discount Applied: ${dealerDiscount.dealer_discount_id} | Type: PERCENTAGE | Configured: ${dealerDiscount.discount_value}% | Unit Discount: ${unitDiscount.toFixed(2)}`);
+                            discountNotes.push(
+                                `Dealer Discount (${dealerDiscount.discount_value}%) → ${unitDiscount.toFixed(2)}`
+                            );
                         } else {
-
                             unitDiscount = dealerDiscount.discount_value;
 
-                            discountNotes.push(`Dealer Discount Applied: ${dealerDiscount.dealer_discount_id} | Type: FIXED | Configured: ${dealerDiscount.discount_value} | Unit Discount: ${unitDiscount.toFixed(2)}`);
+                            discountNotes.push(
+                                `Dealer Discount (Fixed) → ${unitDiscount.toFixed(2)}`
+                            );
                         }
                     }
                 }
@@ -129,6 +161,7 @@ const orderService = {
             if (!Number.isFinite(unitDiscount) || unitDiscount < 0) {
                 unitDiscount = 0;
             }
+
             if (unitDiscount > unitPrice) {
                 unitDiscount = unitPrice;
             }
@@ -144,16 +177,22 @@ const orderService = {
                 totalOrderDiscount += totalDiscount;
             }
 
-            let notes = [];
+            const notes = [
+                productionRequired > 0 &&
+                `Production Required: ${productionRequired}`,
+                unpackedUsed > 0 &&
+                `Unpacked Used: ${unpackedUsed}`,
+                ...discountNotes
+            ]
+                .filter(Boolean)
+                .join(" | ");
 
-            if (productionRequired > 0) notes.push(`Production Required: ${productionRequired} units`);
-            if (unpackedUsed > 0) notes.push(`Unpacked Required for Packing: ${unpackedUsed} units`);
-
-            notes = notes.concat(discountNotes);
-
-            const detailStatus = employeeRole === ROLES.SALESMAN ?
-                ORDER_STATUSES.PENDING :
-                (productionRequired > 0 || unpackedUsed > 0 ? ORDER_STATUSES.PRODUCTION : ORDER_STATUSES.PACKED);
+            const detailStatus =
+                employeeRole === ROLES.SALESMAN ?
+                    ORDER_STATUSES.PENDING :
+                    productionRequired > 0 || unpackedUsed > 0 ?
+                        ORDER_STATUSES.PRODUCTION :
+                        ORDER_STATUSES.PACKED;
 
             const orderDetails = {
                 order_details_number: await generateUniqueOrderDetailsId(),
@@ -168,7 +207,7 @@ const orderService = {
                 qty_ordered: qtyOrdered,
                 delivery_date: new Date(detail.delivery_date),
 
-                notes: notes.join(' | '),
+                notes,
 
                 stock_usage: stockUsage,
                 stock_flags: stockFlags,
@@ -181,15 +220,20 @@ const orderService = {
                 total_dealer_discount: totalDiscount,
 
                 total_price: totalPrice,
+
                 is_free: isProductScheme
             };
 
             orderDetailsPayload.push(orderDetails);
         }
 
-        const orderStatus = employeeRole === ROLES.SALESMAN ? ORDER_STATUSES.PENDING : (hasPendingProduction ? ORDER_STATUSES.PRODUCTION : ORDER_STATUSES.PACKED);
+        order.status =
+            employeeRole === ROLES.SALESMAN ?
+                ORDER_STATUSES.PENDING :
+                hasPendingProduction ?
+                    ORDER_STATUSES.PRODUCTION :
+                    ORDER_STATUSES.PACKED;
 
-        order.status = orderStatus;
         order.sales_target_updated = false;
         order.order_total_price = totalOrderAmount;
         order.order_total_discount = totalOrderDiscount;
@@ -230,7 +274,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetailsList);
     }),
 
-    getByOrderId: asyncHandler(async(orderNumber) => {
+    getByOrderId: asyncHandler(async (orderNumber) => {
         if (!orderNumber) {
             throw new BadRequestException("Order number is required.");
         }
@@ -251,7 +295,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, orderDetails);
     }),
 
-    getAllOrders: asyncHandler(async({
+    getAllOrders: asyncHandler(async ({
         includeRejected = false,
         page = 1,
         limit = 10,
@@ -306,11 +350,11 @@ const orderService = {
 
             // 1️⃣ Find matching dealers first (lean for performance)
             const matchedDealers = await Employee.find({
-                    $or: [
-                        { employee_name: searchRegex },
-                        { shop_name: searchRegex },
-                    ],
-                })
+                $or: [
+                    { employee_name: searchRegex },
+                    { shop_name: searchRegex },
+                ],
+            })
                 .select("employee_id")
                 .lean();
 
@@ -331,10 +375,10 @@ const orderService = {
         ------------------------------------------- */
         const [orders, total] = await Promise.all([
             Order.find(filter)
-            .sort({ updated_at: -1 })
-            .skip(skip)
-            .limit(numericLimit)
-            .lean(), // 🚀 Performance boost
+                .sort({ updated_at: -1 })
+                .skip(skip)
+                .limit(numericLimit)
+                .lean(), // 🚀 Performance boost
 
             Order.countDocuments(filter)
         ]);
@@ -352,7 +396,7 @@ const orderService = {
            3️⃣ Fetch Related Data
         ------------------------------------------- */
         const { dealerMap, detailsMap } =
-        await fetchDealerAndOrderDetails(orders);
+            await fetchDealerAndOrderDetails(orders);
 
         const transformedOrders = orders.map(order =>
             transformOrderToResponse(
@@ -370,7 +414,7 @@ const orderService = {
         };
     }),
 
-    getByOrderStatus: asyncHandler(async(orderStatus) => {
+    getByOrderStatus: asyncHandler(async (orderStatus) => {
         if (!orderStatus || !Object.values(ORDER_STATUSES).includes(orderStatus)) {
             throw new BadRequestException(`Invalid order status: ${orderStatus}`);
         }
@@ -392,7 +436,7 @@ const orderService = {
         );
     }),
 
-    getOrdersByDateFilter: asyncHandler(async(query) => {
+    getOrdersByDateFilter: asyncHandler(async (query) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
         const { year, month, start_date, end_date } = query;
 
@@ -450,7 +494,7 @@ const orderService = {
            4️⃣ Attach dealer & details
         -------------------------------------------------- */
         const { dealerMap, detailsMap } =
-        await fetchDealerAndOrderDetails(orders);
+            await fetchDealerAndOrderDetails(orders);
 
         return orders.map(order =>
             transformOrderToResponse(
@@ -461,7 +505,7 @@ const orderService = {
         );
     }),
 
-    updateOrderDetailStatus: asyncHandler(async(orderDetailsId, updateDto) => {
+    updateOrderDetailStatus: asyncHandler(async (orderDetailsId, updateDto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
         const nowIST = () => getISTDate();
         const toNumber = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
@@ -811,7 +855,7 @@ const orderService = {
         return mapOrderDetailEntityToResponse(orderDetail);
     }),
 
-    updateMultipleOrderDetailsStatus: asyncHandler(async(orderNumber, updates) => {
+    updateMultipleOrderDetailsStatus: asyncHandler(async (orderNumber, updates) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!updates || typeof updates !== "object") throw new BadRequestException("Invalid request body.");
@@ -889,7 +933,7 @@ const orderService = {
         return transformOrderToResponse(order, null, updatedDetails);
     }),
 
-    updateOrderDetailsBatch: async(orderDetails = []) => {
+    updateOrderDetailsBatch: async (orderDetails = []) => {
         if (!orderDetails.length) return;
 
         const ids = orderDetails.map(d => d.order_details_number);
@@ -912,7 +956,7 @@ const orderService = {
         }
     },
 
-    applyOrderStatusChange: asyncHandler(async({
+    applyOrderStatusChange: asyncHandler(async ({
         order,
         updatedDetails,
         status,
@@ -955,10 +999,10 @@ const orderService = {
 
             order.status =
                 detailStatuses.has(ORDER_STATUSES.PRODUCTION) ?
-                ORDER_STATUSES.PRODUCTION :
-                detailStatuses.has(ORDER_STATUSES.PACKED) ?
-                ORDER_STATUSES.PACKED :
-                ORDER_STATUSES.CONFIRMED;
+                    ORDER_STATUSES.PRODUCTION :
+                    detailStatuses.has(ORDER_STATUSES.PACKED) ?
+                        ORDER_STATUSES.PACKED :
+                        ORDER_STATUSES.CONFIRMED;
 
             return;
         }
@@ -973,7 +1017,7 @@ const orderService = {
         order.status = next;
     }),
 
-    cancelOrderAndReturnStock: asyncHandler(async({
+    cancelOrderAndReturnStock: asyncHandler(async ({
         order,
         updatedDetails,
         employeeId,
@@ -993,7 +1037,7 @@ const orderService = {
         await order.save();
     }),
 
-    updateOrderStatus: asyncHandler(async(orderNumber, newStatus) => {
+    updateOrderStatus: asyncHandler(async (orderNumber, newStatus) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!newStatus || typeof newStatus !== "string") throw new BadRequestException("Invalid newStatus provided.");
@@ -1062,7 +1106,7 @@ const orderService = {
         return transformOrderToResponse(order, dealer, refreshedDetails);
     }),
 
-    updateOrderAndDetails: asyncHandler(async(orderNumber, payload) => {
+    updateOrderAndDetails: asyncHandler(async (orderNumber, payload) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         if (!payload || typeof payload !== "object") {
