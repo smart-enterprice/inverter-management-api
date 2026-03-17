@@ -106,7 +106,7 @@ export const PRODUCT_REQUIRED_FIELDS = ["brand", "model", "product_type", "produ
 export const PRODUCT_UPDATABLE_FIELDS = [...PRODUCT_REQUIRED_FIELDS, "status"];
 
 export const ORDER_REQUIRED_FIELDS = ["dealer_id", "priority", "order_details"];
-export const ORDER_DETAILS_REQUIRED_FIELDS = ["product_id", "product_brand", "product_name", "product_model", "product_type", "qty_ordered", "delivery_date", ];
+export const ORDER_DETAILS_REQUIRED_FIELDS = ["product_id", "product_brand", "product_name", "product_model", "product_type", "qty_ordered", "delivery_date",];
 
 export const DEALER_DISCOUNT_REQUIRED_FIELDS = ["brand_name", "model_name", "dealer_id", "discount_value", "is_percentage"];
 

@@ -320,11 +320,32 @@ const orderService = {
             filter.status = { $ne: ORDER_STATUSES.REJECTED };
         }
 
-        // Role-based filtering
-        if (employeeRole === ROLES.SALESMAN) {
-            filter.salesman_id = employeeId;
-        } else if (!ADMIN_PRIVILEGED_ROLES.includes(employeeRole)) {
-            filter.created_by = employeeId;
+        // 🔐 Role-Based Filtering (Clean & Scalable)
+        switch (employeeRole) {
+
+            /* 🧑‍💼 Salesman → only their own orders */
+            case ROLES.SALESMAN:
+                filter.salesman_id = employeeId;
+                break;
+
+            /* 🏢 Admin-Level → view orders created by them */
+            case ROLES.SUPER_ADMIN:
+            case ROLES.ADMIN:
+            case ROLES.MANAGER:
+                // filter.created_by = employeeId;
+                break;
+
+            /* ⚙️ Operational Roles → no restriction */
+            case ROLES.PRODUCTION:
+            case ROLES.PACKING:
+                // Full access to orders for processing
+                break;
+
+            /* 🛡️ Fallback (safe default) */
+            default:
+                // Optional: restrict or allow based on future requirements
+                // filter.created_by = employeeId;
+                break;
         }
 
         // Status filtering
