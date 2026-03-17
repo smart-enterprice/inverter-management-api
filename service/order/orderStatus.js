@@ -4,76 +4,96 @@ import { ORDER_STATUSES } from "../../utils/constants.js";
 
 const ORDER_STATUS_PRIORITY = [
     ORDER_STATUSES.REJECTED,
-    // ORDER_STATUSES.CANCELLED, // intentionally skipped as in original logic
+    // ORDER_STATUSES.CANCELLED intentionally excluded
     ORDER_STATUSES.PRODUCTION,
     ORDER_STATUSES.PACKED,
     ORDER_STATUSES.INVOICE,
     ORDER_STATUSES.SHIPPED
 ];
 
+// Exclude unwanted statuses (e.g., CANCELLED, REJECTED)
+const EXCLUDED_STATUSES = new Set([
+    ORDER_STATUSES.CANCELLED,
+    ORDER_STATUSES.REJECTED
+]);
+
+const filterActiveDetails = (details = []) =>
+    details.filter(
+        ({ status }) => status && !EXCLUDED_STATUSES.has(status)
+    );
+
+// Check if all items belong to allowed statuses
+const areAllInStatuses = (items = [], allowed = []) =>
+    items.length > 0 &&
+    items.every(({ status }) => allowed.includes(status));
+
 export const deriveOrderStatusFromDetails = (details = []) => {
     if (!Array.isArray(details) || details.length === 0) {
         return ORDER_STATUSES.PENDING;
     }
 
-    // Fast path for single item
+    // Fast path: single order detail
     if (details.length === 1) {
-        const { status } = details[0] || {};
-        return status || ORDER_STATUSES.PENDING;
+        if (!details[0] || !details[0].status) {
+            return ORDER_STATUSES.PENDING;
+        }
+        return details[0].status;
     }
+
+    const activeDetails = filterActiveDetails(details);
 
     // Build status set while ignoring CANCELLED
     const statusSet = new Set(
-        details.map(({ status }) => status)
-        .filter(status => status && status !== ORDER_STATUSES.CANCELLED)
+        activeDetails.map(({ status }) => status)
     );
 
-    // Resolve priority status
+    // 1. Priority resolution
     for (const status of ORDER_STATUS_PRIORITY) {
         if (statusSet.has(status)) {
             return status;
         }
     }
 
-    // Check if all delivered or completed
-    const allDelivered = details.every(({ status }) =>
-        status === ORDER_STATUSES.DELIVERED ||
-        status === ORDER_STATUSES.COMPLETED
-    );
-
-    if (allDelivered) {
+    // 2. All Delivered / Completed(ignore CANCELLED and REJECTED)
+    if (areAllInStatuses(activeDetails, [
+        ORDER_STATUSES.DELIVERED,
+        ORDER_STATUSES.COMPLETED
+    ])) {
         return ORDER_STATUSES.COMPLETED;
     }
 
-    // Check if all cancelled
-    const allCancelled = details.every(
+    // 3. All Cancelled
+    if (details.every(
         ({ status }) => status === ORDER_STATUSES.CANCELLED
-    );
-
-    if (allCancelled) {
+    )) {
         return ORDER_STATUSES.CANCELLED;
     }
 
-    // Check if all rejected
-    const allRejected = details.every(
+    // 4. All Rejected
+    if (details.every(
         ({ status }) => status === ORDER_STATUSES.REJECTED
-    );
-
-    if (allRejected) {
+    )) {
         return ORDER_STATUSES.REJECTED;
     }
 
     return ORDER_STATUSES.CONFIRMED;
 };
 
-export const allDetailsDelivered = (details = []) =>
-    Array.isArray(details) &&
-    details.length > 0 &&
-    details.every(detail =>
-        detail.status === ORDER_STATUSES.DELIVERED ||
-        detail.status === ORDER_STATUSES.COMPLETED
-    );
+// Check if all active items are delivered
+export const allDetailsDelivered = (details = []) => {
+    if (!Array.isArray(details) || details.length === 0) {
+        return false;
+    }
 
+    const activeDetails = filterActiveDetails(details);
+
+    return areAllInStatuses(activeDetails, [
+        ORDER_STATUSES.DELIVERED,
+        ORDER_STATUSES.COMPLETED
+    ]);
+};
+
+// Allowed status transitions
 const ORDER_STATUS_TRANSITIONS = {
     PENDING: ["PENDING", "CONFIRMED"],
     CONFIRMED: ["PENDING", "CONFIRMED"],
@@ -85,7 +105,11 @@ const ORDER_STATUS_TRANSITIONS = {
     COMPLETED: ["DELIVERED"]
 };
 
-export const canMoveOrderToTargetStatus = (details = [], targetStatus) => {
+// Validate if order can move to target status
+export const canMoveOrderToTargetStatus = (
+    details = [],
+    targetStatus
+) => {
 
     const allowedStatuses = ORDER_STATUS_TRANSITIONS[targetStatus];
 
@@ -93,73 +117,38 @@ export const canMoveOrderToTargetStatus = (details = [], targetStatus) => {
         return false;
     }
 
-    return details.every(detail =>
-        allowedStatuses.includes(detail.status)
+    return details.every(({ status }) =>
+        allowedStatuses.includes(status)
     );
 };
 
 export const resolveOrderDetailStatus = ({
-    qtyOrdered,
-    qtyCancelled,
-    qtyDelivered,
-    packedQty,
-    hasProduction,
-    hasUnpacked,
+    qtyOrdered = 0,
+    qtyCancelled = 0,
+    qtyDelivered = 0,
+    packedQty = 0,
+    hasProduction = false,
+    hasUnpacked = false,
     currentStatus
 }) => {
     const isCancelled = qtyOrdered === qtyCancelled;
     const isDelivered = qtyDelivered >= qtyOrdered;
     const isInProduction = hasProduction || hasUnpacked;
-    const isPackedCandidate =
-        packedQty > 0 && !hasProduction && !hasUnpacked;
+    const isPacked = packedQty > 0 && !isInProduction;
 
-    console.debug(
-        "[OrderStatusEngine] resolveOrderDetailStatus", {
-            input: {
-                qtyOrdered,
-                qtyDelivered,
-                packedQty,
-                hasProduction,
-                hasUnpacked,
-                currentStatus
-            },
-            checks: {
-                isCancelled,
-                isDelivered,
-                isInProduction,
-                isPackedCandidate
-            }
-        });
+    if (isCancelled) return ORDER_STATUSES.CANCELLED;
 
-    if (isCancelled) {
-        return ORDER_STATUSES.CANCELLED;
-    }
+    if (isDelivered) return ORDER_STATUSES.DELIVERED;
 
-    if (isDelivered) {
-        return ORDER_STATUSES.DELIVERED;
-    }
-
-    // 3️⃣ Auto move from CONFIRMED
     if (currentStatus === ORDER_STATUSES.CONFIRMED) {
-
-        if (isInProduction) {
-            return ORDER_STATUSES.PRODUCTION;
-        }
-
-        if (packedQty > 0) {
-            return ORDER_STATUSES.PACKED;
-        }
-
+        if (isInProduction) return ORDER_STATUSES.PRODUCTION;
+        if (packedQty > 0) return ORDER_STATUSES.PACKED;
         return ORDER_STATUSES.CONFIRMED;
     }
 
-    if (isInProduction) {
-        return ORDER_STATUSES.PRODUCTION;
-    }
+    if (isInProduction) return ORDER_STATUSES.PRODUCTION;
 
-    if (isPackedCandidate) {
-        return ORDER_STATUSES.PACKED;
-    }
+    if (isPacked) return ORDER_STATUSES.PACKED;
 
     return currentStatus;
 };
