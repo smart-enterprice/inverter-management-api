@@ -27,7 +27,7 @@ export const validateOrderCreator = (employeeId, employeeRole, dto) => {
     }
 };
 
-export const validateOrderDTO = async(dto) => {
+export const validateOrderDTO = async (dto) => {
     for (const field of ORDER_REQUIRED_FIELDS) {
         if (!dto[field]) {
             throw new BadRequestException(`'${field}' is required.`);
@@ -73,3 +73,19 @@ export const validateOrderDTO = async(dto) => {
 
     return dealer;
 };
+
+export const validateOrderAndDetailState = (order, orderDetail) => {
+    if (orderDetail.status === ORDER_STATUSES.CANCELLED)
+        throw new BadRequestException("Order detail already cancelled");
+
+    if (order.status === ORDER_STATUSES.CANCELLED)
+        throw new BadRequestException("Parent order cancelled");
+};
+
+export const assertAdminAccess = (role) => {
+    if (!ADMIN_PRIVILEGED_ROLES.includes((role || "").toUpperCase())) {
+        throw new ForbiddenException("Access denied");
+    }
+};
+
+export const hasCancellation = (dto) => dto.cancel_qty !== undefined;

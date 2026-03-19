@@ -99,7 +99,8 @@ export const STOCK_ACTIONS = {
 
 export const STOCK_TYPES = {
     STOCK_PACKED: 'PACKED',
-    STOCK_UNPACKED: 'UNPACKED'
+    STOCK_UNPACKED: 'UNPACKED',
+    STOCK_PRODUCTION: 'PRODUCTION'
 };
 
 export const PRODUCT_REQUIRED_FIELDS = ["brand", "model", "product_type", "product_name"];
