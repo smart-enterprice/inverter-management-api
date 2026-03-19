@@ -24,12 +24,12 @@ export async function fetchProductWithStocks(product) {
         Stock.find({ product_id: product.product_id }).lean(),
 
         ProductPriceHistory.find({ product_id: product.product_id })
-        .sort({ changed_at: -1 })
-        .lean(),
+            .sort({ changed_at: -1 })
+            .lean(),
 
         StockHistory.find({ product_id: product.product_id })
-        .sort({ created_at: -1 })
-        .lean(),
+            .sort({ created_at: -1 })
+            .lean(),
     ]);
 
     return mapProductEntityToResponse(
@@ -1031,28 +1031,6 @@ const productService = {
 
         const updatedBrand = await Brand.findOne({ brand_name: newBrandName || normalizedBrandName });
         return mapProductBrandEntityToResponse(updatedBrand);
-    }),
-
-    returnStock: asyncHandler(async (product_id, quantity, employeeId, employeeRole, orderNumber) => {
-        if (!product_id || !quantity || quantity <= 0) {
-            throw new BadRequestException("Invalid product ID or quantity to return.");
-        }
-
-        const product = await Product.findOne({ product_id });
-        if (!product) {
-            throw new BadRequestException(`Product not found: ${product_id}`);
-        }
-
-        await saveOrUpdateStockTransaction({
-            product,
-            quantity: quantity,
-            action: STOCK_ACTIONS.STOCK_RETURN,
-            employeeId,
-            role,
-            orderNumber
-        });
-
-        return product;
     }),
 
 }

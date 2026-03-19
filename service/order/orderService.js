@@ -528,6 +528,7 @@ const orderService = {
 
     updateOrderDetailStatus: asyncHandler(async (orderDetailsId, updateDto) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+
         const nowIST = () => getISTDate();
         const toNumber = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
 
@@ -567,15 +568,13 @@ const orderService = {
             );
 
         // 3️⃣ Stock State Initialization 
-
         let {
             PACKED: packedQty = 0,
             UNPACKED: unpackedQty = 0,
             PRODUCTION: productionQty = 0
         } = orderDetail.stock_flags || {};
 
-        let returnPacked = 0;
-        let returnUnpacked = 0;
+        let returns = [];
 
         const appendNote = (note) => {
             orderDetail.notes = [orderDetail.notes, note]
@@ -584,7 +583,6 @@ const orderService = {
         };
 
         /*🔹 Helper Functions */
-
         const assertAdminAccess = (role) => {
             const normalized = (role || "").toUpperCase();
             if (!ADMIN_PRIVILEGED_ROLES.includes(normalized)) {
@@ -594,42 +592,51 @@ const orderService = {
             }
         };
 
+        // Stock consumption helper
         const consumeStockForCancellation = ({
             qty,
-            packedQty,
-            unpackedQty,
-            productionQty
+            packedQty = 0,
+            unpackedQty = 0,
+            productionQty = 0
         }) => {
             let remaining = qty;
-            let returnPacked = 0;
-            let returnUnpacked = 0;
 
-            if (productionQty > 0 && remaining > 0) {
-                const used = Math.min(productionQty, remaining);
-                productionQty -= used;
-                remaining -= used;
-            }
+            const consume = (available, shouldReturn = false) => {
+                if (remaining <= 0 || available <= 0) {
+                    return { used: 0, left: available };
+                }
 
-            if (unpackedQty > 0 && remaining > 0) {
-                const used = Math.min(unpackedQty, remaining);
-                unpackedQty -= used;
-                returnUnpacked += used;
+                const used = Math.min(available, remaining);
                 remaining -= used;
-            }
 
-            if (packedQty > 0 && remaining > 0) {
-                const used = Math.min(packedQty, remaining);
-                packedQty -= used;
-                returnPacked += used;
-                remaining -= used;
-            }
+                return {
+                    used,
+                    left: available - used,
+                    returned: shouldReturn ? used : 0
+                };
+            };
+
+            // Priority: PRODUCTION → UNPACKED → PACKED
+            const production = consume(productionQty, false);
+            const unpacked = consume(unpackedQty, true);
+            const packed = consume(packedQty, true);
 
             return {
-                packedQty,
-                unpackedQty,
-                productionQty,
-                returnPacked,
-                returnUnpacked
+                updatedStock: {
+                    PACKED: packed.left,
+                    UNPACKED: unpacked.left,
+                    PRODUCTION: production.left
+                },
+                returns: [
+                    {
+                        qty: unpacked.returned || 0,
+                        type: STOCK_TYPES.STOCK_UNPACKED
+                    },
+                    {
+                        qty: packed.returned || 0,
+                        type: STOCK_TYPES.STOCK_PACKED
+                    }
+                ].filter(r => r.qty > 0)
             };
         };
 
@@ -663,7 +670,6 @@ const orderService = {
         };
 
         // 4️⃣ Production → Unpacked → Packed Transitions
-
         if (updateDto.has_production_completed && productionQty > 0) {
             unpackedQty += productionQty;
             productionQty = 0;
@@ -688,8 +694,10 @@ const orderService = {
         // 5️⃣ Cancellation Flow
         if (updateDto.cancel_qty !== undefined) {
             const cancelQty = toNumber(updateDto.cancel_qty);
-            if (cancelQty <= 0)
+
+            if (cancelQty <= 0) {
                 throw new BadRequestException("Cancel quantity must be greater than 0.");
+            }
 
             const remainingCancelableQty = orderDetail.qty_ordered - orderDetail.qty_delivered - orderDetail.total_cancelled_qty;
 
@@ -699,13 +707,28 @@ const orderService = {
 
             assertAdminAccess(employeeRole);
 
-            ({ packedQty, unpackedQty, productionQty, returnPacked, returnUnpacked } =
-                consumeStockForCancellation({
-                    qty: cancelQty,
-                    packedQty,
-                    unpackedQty,
-                    productionQty
-                }));
+            // 🔥 FIXED: No variable shadowing
+            const stockResult = consumeStockForCancellation({
+                qty: cancelQty,
+                packedQty,
+                unpackedQty,
+                productionQty
+            });
+
+            const {
+                updatedStock: {
+                    PACKED: updatedPackedQty,
+                    UNPACKED: updatedUnpackedQty,
+                    PRODUCTION: updatedProductionQty
+                },
+                returns: calculatedReturns = []
+            } = stockResult;
+
+            // Apply updated values
+            packedQty = updatedPackedQty;
+            unpackedQty = updatedUnpackedQty;
+            productionQty = updatedProductionQty;
+            returns = calculatedReturns;
 
             orderDetail.total_cancelled_qty += cancelQty;
 
@@ -787,18 +810,16 @@ const orderService = {
             }
         }
 
+        console.log("[OrderDetail][Returns]", returns);
         // 7️⃣ Persist Stock Returns
-        if (returnPacked || returnUnpacked) {
+        if (returns.length > 0) {
             await persistStockReturns({
                 product,
+                returns,
                 employeeId,
                 role: employeeRole,
                 orderNumber: order.order_number,
-                orderDetailsNumber: orderDetail.order_details_number,
-                returns: [
-                    { qty: returnUnpacked, type: STOCK_TYPES.STOCK_UNPACKED },
-                    { qty: returnPacked, type: STOCK_TYPES.STOCK_PACKED }
-                ]
+                orderDetailsNumber: orderDetail.order_details_number
             });
         }
 

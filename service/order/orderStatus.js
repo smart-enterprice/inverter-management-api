@@ -1,6 +1,7 @@
 // service/order/orderStatus.js
 
 import { ORDER_STATUSES } from "../../utils/constants.js";
+import { normalizeStatus } from "../../utils/orderStatusUtils.js";
 
 const ORDER_STATUS_PRIORITY = [
     ORDER_STATUSES.REJECTED,
@@ -151,4 +152,30 @@ export const resolveOrderDetailStatus = ({
     if (isPacked) return ORDER_STATUSES.PACKED;
 
     return currentStatus;
+};
+
+export const resolveManualOrderStatus = ({ normalized, stock }) => {
+    if (normalized === ORDER_STATUSES.CONFIRMED) {
+        if (stock.PRODUCTION > 0 || stock.UNPACKED > 0)
+            return ORDER_STATUSES.PRODUCTION;
+
+        if (stock.PACKED > 0)
+            return ORDER_STATUSES.PACKED;
+
+        return ORDER_STATUSES.CONFIRMED;
+    }
+
+    return normalized;
+};
+
+export const normalizeIncomingStatus = (dto, orderDetail) => {
+    if (!dto.status) return null;
+
+    const normalized = normalizeStatus(dto.status);
+
+    if (normalized === ORDER_STATUSES.CANCELLED) {
+        dto.cancel_qty = orderDetail.qty_ordered - orderDetail.qty_delivered - orderDetail.total_cancelled_qty;
+    }
+
+    return normalized;
 };

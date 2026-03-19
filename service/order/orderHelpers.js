@@ -35,3 +35,18 @@ export const fetchDealerAndOrderDetails = async (orders = []) => {
 
     return { dealerMap, detailsMap };
 };
+
+export const toNumberSafe = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
+
+export const appendOrderNote = (orderDetail, note) => {
+    orderDetail.notes = [orderDetail.notes, note].filter(Boolean).join(" | ");
+};
+
+export const recalculateOrderDetailPricing = (detail) => {
+    const unitPrice = toNumberSafe(detail.unit_product_price);
+    const unitDiscount = toNumberSafe(detail.dealer_discount);
+
+    detail.total_product_price = unitPrice * detail.qty_ordered;
+    detail.total_dealer_discount = unitDiscount * detail.qty_ordered;
+    detail.total_price = detail.total_product_price - detail.total_dealer_discount;
+};
