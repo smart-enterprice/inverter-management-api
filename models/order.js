@@ -38,8 +38,13 @@ const orderSchema = new mongoose.Schema({
         type: String,
         default: ORDER_STATUSES.PENDING, // PENDING, CONFIRMED, PRODUCTION, PACKED, INVOICE, SHIPPED, DELIVERED, CANCELLED, REJECTED
     },
+
     promised_delivery_date: {
         type: Date
+    },
+    delivery_note: {
+        type: String,
+        default: "",
     },
 
     order_total_price: {

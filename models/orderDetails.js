@@ -51,6 +51,11 @@ const orderDetailsSchema = new mongoose.Schema({
         type: Date,
         required: [true, "📅 Delivery date is required."],
     },
+    delivery_notes: {
+        type: [String],
+        default: [],
+    },
+
     notes: {
         type: String,
         default: "",
