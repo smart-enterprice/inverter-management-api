@@ -808,6 +808,10 @@ const orderService = {
             if (deliveredQty > 0) {
                 orderDetail.qty_delivered += deliveredQty;
 
+                if (!deliveredAt) {
+                    deliveredAt = nowIST();
+                }
+
                 appendNote(
                     `Delivered ${deliveredQty} unit(s) on ${deliveredAt.toISOString()}`
                 );
