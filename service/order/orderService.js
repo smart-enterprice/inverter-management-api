@@ -687,19 +687,19 @@ const orderService = {
             normalizedStatus = normalizeStatus(updateDto.status);
 
             if (normalizedStatus === ORDER_STATUSES.CANCELLED) {
-                updateDto.cancel_qty = orderDetail.qty_ordered - orderDetail.qty_delivered - orderDetail.total_cancelled_qty;
+                updateDto.cancel_qty = orderDetail.qty_ordered - orderDetail.qty_delivered;
             }
         }
 
         // 5️⃣ Cancellation Flow
         if (updateDto.cancel_qty !== undefined) {
-            const cancelQty = toNumber(updateDto.cancel_qty);
+            let cancelQty = toNumber(updateDto.cancel_qty);
 
             if (cancelQty <= 0) {
                 throw new BadRequestException("Cancel quantity must be greater than 0.");
             }
 
-            const remainingCancelableQty = orderDetail.qty_ordered - orderDetail.qty_delivered - orderDetail.total_cancelled_qty;
+            const remainingCancelableQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
 
             if (cancelQty > remainingCancelableQty) {
                 cancelQty = remainingCancelableQty;
@@ -784,8 +784,24 @@ const orderService = {
                 deliveredAt = updateDto.delivered_date ?
                     new Date(updateDto.delivered_date) :
                     nowIST();
-            } else if (deliveredQty > 0) {
-                deliveredAt = nowIST();
+
+                if (updateDto.delivery_note?.trim()) {
+                    const note = updateDto.delivery_note.trim();
+                    const previousDeliveryDate = orderDetail.delivery_date;
+
+                    const employee = await Employee.findOne({
+                        employee_id: employeeId,
+                        role: employeeRole
+                    });
+
+                    const formattedNote =
+                        employee
+                            ? `Employee: ${employee?.employee_name || "N/A"} | Role: ${employee?.role || "N/A"} | Note: ${note || "—"} | Date: ${previousDeliveryDate || "—"} → ${deliveredAt || "—"}`
+                            : note;
+
+                    orderDetail.delivery_notes.push(formattedNote);
+                }
+
             }
 
             /* 3️⃣ Apply Quantity Update */
@@ -797,20 +813,11 @@ const orderService = {
                 );
             }
 
-            /* 4️⃣ Apply Date Update (if only date changed) */
-
-            if (deliveredAt) {
-                orderDetail.delivery_date = deliveredAt;
-
-                if (!deliveredQty) {
-                    appendNote(
-                        `Delivery date updated to ${deliveredAt.toISOString()}`
-                    );
-                }
-            }
+            orderDetail.delivery_date = deliveredAt;
         }
 
         console.log("[OrderDetail][Returns]", returns);
+
         // 7️⃣ Persist Stock Returns
         if (returns.length > 0) {
             await persistStockReturns({
@@ -1170,6 +1177,7 @@ const orderService = {
             order_note,
             status,
             delivery_date,
+            delivery_note,
             amount_paid,
             payment_method,
             order_details = []
@@ -1184,22 +1192,6 @@ const orderService = {
             throw new BadRequestException(`No order found for: ${orderNumber}`);
         }
 
-        if (priority && priority !== order.priority) {
-            order.priority = priority;
-        }
-
-        if (order_note && order_note.trim()) {
-            order.order_note = [order.order_note, order_note.trim()]
-                .filter(Boolean)
-                .join(" | ");
-        }
-
-        if (order_details.length) {
-            await orderService.updateOrderDetailsBatch(order_details);
-        }
-
-        let updatedDetails = await OrderDetails.find({ order_number: orderNumber });
-
         // 🚫 Prevent update if order already CANCELLED
         if (order.status === ORDER_STATUSES.CANCELLED) {
             throw new BadRequestException(
@@ -1207,6 +1199,36 @@ const orderService = {
             );
         }
 
+        // Fetch employee (optional)
+        let employee = null;
+        if (employeeId && employeeRole) {
+            employee = await Employee.findOne({
+                employee_id: employeeId,
+                role: employeeRole
+            });
+        }
+
+        // Update priority
+        if (priority && priority !== order.priority) {
+            order.priority = priority;
+        }
+
+        // Append order note
+        if (order_note && order_note.trim()) {
+            order.order_note = [order.order_note, order_note.trim()]
+                .filter(Boolean)
+                .join(" | ");
+        }
+
+        // Update order details (batch)
+        if (order_details.length) {
+            await orderService.updateOrderDetailsBatch(order_details);
+        }
+
+        // Fetch updated details
+        let updatedDetails = await OrderDetails.find({ order_number: orderNumber });
+
+        // status handling
         if (status) {
             const normalizedStatus = normalizeStatus(status);
 
@@ -1255,7 +1277,10 @@ const orderService = {
             );
         }
 
+        // DELIVERY DATE LOGIC
         let finalDeliveryDate;
+        let finalDeliveryNote;
+
         if (delivery_date != null) {
             const parsedDate = new Date(delivery_date);
 
@@ -1265,6 +1290,14 @@ const orderService = {
 
             finalDeliveryDate = parsedDate;
 
+            if (delivery_note && delivery_note?.trim()) {
+                finalDeliveryNote = delivery_note.trim();
+                const previousDeliveryDate = order.promised_delivery_date;
+
+                if (employee) {
+                    finalDeliveryNote = `Employee: ${employee?.employee_name || "N/A"} | Role: ${employee?.role || "N/A"} | Note: ${finalDeliveryNote || "—"} | Date: ${previousDeliveryDate || "—"} → ${finalDeliveryDate || "—"}`;
+                }
+            }
         } else {
             if (!updatedDetails || updatedDetails.length === 0) {
                 throw new BadRequestException("No order details found to calculate delivery date.");
@@ -1284,8 +1317,14 @@ const orderService = {
             );
         }
 
-        // Update order promised delivery date
+        // Apply delivery updates
         order.promised_delivery_date = finalDeliveryDate;
+
+        if (finalDeliveryNote) {
+            order.delivery_note = [order.delivery_note, finalDeliveryNote]
+                .filter(Boolean)
+                .join(" | ");
+        }
 
         await order.save();
 
