@@ -132,17 +132,15 @@ export const resolveOrderDetailStatus = ({
     hasUnpacked = false,
     currentStatus
 }) => {
-    const isCancelled = qtyOrdered === qtyCancelled;
-    const isDelivered = qtyDelivered >= qtyOrdered;
     const isInProduction = hasProduction || hasUnpacked;
     const isPacked = packedQty > 0 && !isInProduction;
 
-    if (isCancelled) return ORDER_STATUSES.CANCELLED;
+    if (qtyOrdered > 0 && qtyCancelled > 0 && qtyOrdered === qtyCancelled) return ORDER_STATUSES.CANCELLED;
 
-    if (isDelivered) return ORDER_STATUSES.DELIVERED;
+    if (qtyDelivered > 0 && qtyOrdered > 0 && qtyDelivered >= qtyOrdered) return ORDER_STATUSES.DELIVERED;
 
     if (currentStatus === ORDER_STATUSES.CONFIRMED) {
-        if (isInProduction) return ORDER_STATUSES.PRODUCTION;
+        if (hasProduction || hasUnpacked) return ORDER_STATUSES.PRODUCTION;
         if (packedQty > 0) return ORDER_STATUSES.PACKED;
         return ORDER_STATUSES.CONFIRMED;
     }
