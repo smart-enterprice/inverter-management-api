@@ -145,3 +145,7 @@ export function normalizePrice(value) {
 
     return Math.round(num * 100) / 100;
 }
+
+export const toSafeNumber = (value) => Number(value) || 0;
+
+export const round = (num) => Math.round(num);
