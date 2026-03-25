@@ -768,8 +768,7 @@ const orderService = {
 
         if (isMarkAsDelivered || hasDeliveredQty || hasDeliveredDate) {
 
-            const remainingDeliverableQty =
-                orderDetail.qty_ordered - orderDetail.qty_delivered;
+            const remainingDeliverableQty = orderDetail.qty_ordered - orderDetail.qty_delivered - orderDetail.total_cancelled_qty;
 
             let deliveredQty = 0;
             let deliveredAt = null;
