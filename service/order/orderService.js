@@ -12,7 +12,7 @@ import DealerDiscount from "../../models/dealerDiscount.js";
 
 import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../../utils/generatorIds.js";
 import { BadRequestException, ForbiddenException } from "../../middleware/CustomError.js";
-import { getAuthenticatedEmployeeContext, isValidTransition, normalizePrice, sanitizeInput } from "../../utils/validationUtils.js";
+import { getAuthenticatedEmployeeContext, isValidTransition, normalizePrice, round, sanitizeInput } from "../../utils/validationUtils.js";
 
 import { getISTDate, ROLES, STOCK_TYPES, ORDER_STATUSES, CANCELLABLE_STATUSES, ADMIN_PRIVILEGED_ROLES, STATUSES_REQUIRING_DETAIL_VALIDATION, IMMUTABLE_ORDER_STATUSES } from "../../utils/constants.js";
 import { mapOrderDetailEntityToResponse, transformOrderToResponse } from "../../utils/modelMapper.js";
@@ -213,13 +213,13 @@ const orderService = {
                 stock_flags: stockFlags,
                 status: detailStatus,
 
-                unit_product_price: unitPrice,
-                total_product_price: totalProductPrice,
+                unit_product_price: round(unitPrice),
+                total_product_price: round(totalProductPrice),
 
-                dealer_discount: unitDiscount,
-                total_dealer_discount: totalDiscount,
+                dealer_discount: round(unitDiscount),
+                total_dealer_discount: round(totalDiscount),
 
-                total_price: totalPrice,
+                total_price: round(totalPrice),
 
                 is_free: isProductScheme
             };
@@ -235,8 +235,8 @@ const orderService = {
                     ORDER_STATUSES.PACKED;
 
         order.sales_target_updated = false;
-        order.order_total_price = totalOrderAmount;
-        order.order_total_discount = totalOrderDiscount;
+        order.order_total_price = round(totalOrderAmount);
+        order.order_total_discount = round(totalOrderDiscount);
 
         if (dto.delivery_date != null) {
             const parsedDate = new Date(dto.delivery_date);
@@ -641,13 +641,29 @@ const orderService = {
         };
 
         const recalculatePricing = (detail) => {
-            const unitPrice = toNumber(detail.unit_product_price);
-            const unitDiscount = toNumber(detail.dealer_discount);
+            const {
+                qty_ordered = 0,
+                qty_delivered = 0,
+                total_cancelled_qty = 0,
+                unit_product_price = 0,
+                dealer_discount = 0
+            } = detail;
 
-            detail.total_product_price = unitPrice * detail.qty_ordered;
-            detail.total_dealer_discount = unitDiscount * detail.qty_ordered;
-            detail.total_price =
-                detail.total_product_price - detail.total_dealer_discount;
+            const balanceQty = Math.max(
+                0,
+                qty_ordered - qty_delivered - total_cancelled_qty
+            );
+
+            const unitPrice = Number(unit_product_price) || 0;
+            const unitDiscount = Number(dealer_discount) || 0;
+
+            const totalProductPrice = unitPrice * balanceQty;
+            const totalDiscount = unitDiscount * balanceQty;
+            const totalPrice = totalProductPrice - totalDiscount;
+
+            detail.total_product_price = round(totalProductPrice);
+            detail.total_dealer_discount = round(totalDiscount);
+            detail.total_price = round(totalPrice);
         };
 
         const resolveManualStatus = ({
@@ -687,7 +703,7 @@ const orderService = {
             normalizedStatus = normalizeStatus(updateDto.status);
 
             if (normalizedStatus === ORDER_STATUSES.CANCELLED) {
-                updateDto.cancel_qty = orderDetail.qty_ordered - orderDetail.qty_delivered;
+                updateDto.cancel_qty = orderDetail.qty_ordered - orderDetail.qty_delivered - orderDetail.total_cancelled_qty;
             }
         }
 
@@ -699,7 +715,7 @@ const orderService = {
                 throw new BadRequestException("Cancel quantity must be greater than 0.");
             }
 
-            const remainingCancelableQty = orderDetail.qty_ordered - orderDetail.qty_delivered;
+            const remainingCancelableQty = orderDetail.qty_ordered - orderDetail.qty_delivered - orderDetail.total_cancelled_qty;
 
             if (cancelQty > remainingCancelableQty) {
                 cancelQty = remainingCancelableQty;
@@ -731,10 +747,6 @@ const orderService = {
             returns = calculatedReturns;
 
             orderDetail.total_cancelled_qty += cancelQty;
-
-            if (orderDetail.qty_ordered !== orderDetail.total_cancelled_qty) {
-                orderDetail.qty_ordered = Math.max(0, orderDetail.qty_ordered - cancelQty);
-            }
 
             recalculatePricing(orderDetail);
 

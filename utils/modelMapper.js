@@ -1,7 +1,7 @@
 // modelMapper.js
 
 import logger from './logger.js';
-import { sanitizeInput } from './validationUtils.js';
+import { sanitizeInput, toSafeNumber } from './validationUtils.js';
 
 const EMPLOYEE_INPUT_FIELDS = [
     'employee_name', 'employee_email', 'employee_phone', 'role',
@@ -50,10 +50,11 @@ const ORDER_RESPONSE_FIELDS = [
 
 const ORDER_DETAILS_RESPONSE_FIELDS = [
     'order_number', 'order_details_number', 'product_id', 'product_brand', 'product_name',
-    'product_model', 'product_type', 'qty_ordered', 'qty_delivered', 'delivery_date', 'delivery_notes',
-    'notes', 'unit_product_price', 'total_product_price', 'is_free', 'dealer_discount',
-    'stock_usage', 'stock_flags', 'total_dealer_discount', 'total_price', 'status',
-    'total_cancelled_qty', 'cancellation_history', 'created_at', 'updated_at'
+    'product_model', 'product_type', 'total_qty_ordered', 'qty_ordered', 'qty_delivered',
+    'delivery_date', 'delivery_notes', 'notes', 'unit_product_price', 'total_product_price',
+    'is_free', 'dealer_discount', 'stock_usage', 'stock_flags', 'total_dealer_discount',
+    'total_price', 'status', 'total_cancelled_qty', 'cancellation_history', 'created_at',
+    'updated_at'
 ];
 
 const DEALER_DISCOUNT_RESPONSE_FIELDS = [
@@ -177,12 +178,21 @@ export const mapDealerEntityToResponse = (dealer) => {
 };
 
 export const mapOrderDetailEntityToResponse = (detail) => {
-    if (!detail) return null;
+    if (!detail || typeof detail !== 'object') return null;
 
     const orderDetailData = {};
     ORDER_DETAILS_RESPONSE_FIELDS.forEach((field) => {
         if (detail[field] !== undefined) {
-            orderDetailData[field] = detail[field];
+
+            switch (field) {
+                case 'qty_ordered':
+                    orderDetailData['total_qty_ordered'] = toSafeNumber(detail.qty_ordered);
+                    orderDetailData[field] = toSafeNumber(detail.qty_ordered) - toSafeNumber(detail.qty_delivered) - toSafeNumber(detail.total_cancelled_qty);
+                    break;
+                default:
+                    orderDetailData[field] = detail[field];
+                    break;
+            }
         }
     });
 
