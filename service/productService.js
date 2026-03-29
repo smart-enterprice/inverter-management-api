@@ -529,9 +529,51 @@ const productService = {
         return fetchProductWithStocks(product);
     }),
 
-    getProducts: asyncHandler(async (filter = {}) => {
-        const products = await Product.find(filter).lean();
-        if (!products.length) return [];
+    getProducts: asyncHandler(async ({
+        page = 1,
+        limit = 10,
+        search = "",
+        type,
+        status,
+    }) => {
+        const skip = (page - 1) * limit;
+
+        // 🔹 Build filter
+        const filter = {};
+
+        if (status) filter.status = status;
+        if (type) filter.product_type = type;
+
+        if (search) {
+            filter.$or = [
+                { product_name: { $regex: search, $options: "i" } },
+                { product_id: { $regex: search, $options: "i" } },
+                { brand: { $regex: search, $options: "i" } },
+            ];
+        }
+
+        // 🔹 Fetch products with pagination
+        const [products, total] = await Promise.all([
+            Product.find(filter)
+                .sort({ created_at: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+
+            Product.countDocuments(filter),
+        ]);
+
+        if (!products.length) {
+            return {
+                data: [],
+                pagination: {
+                    total: 0,
+                    page,
+                    limit,
+                    totalPages: 0,
+                },
+            };
+        }
 
         const productIds = products.map(({ product_id }) => product_id);
 
@@ -594,7 +636,7 @@ const productService = {
             return acc;
         }, {});
 
-        return products.map(product =>
+        const data = products.map(product =>
             mapProductEntityToResponse(
                 product,
                 stockMap[product.product_id] || [],
@@ -602,6 +644,14 @@ const productService = {
                 stockHistoryMap[product.product_id] || [],
             )
         );
+
+        return {
+            data,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        };
     }),
 
     getProductsByIds: asyncHandler(async (productIds) => {

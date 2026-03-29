@@ -1,8 +1,9 @@
 // controller/productController.js
 import asyncHandler from "express-async-handler";
 import { productService } from "../service/productService.js";
-import { sanitizeInputBody } from "../utils/validationUtils.js";
+import { sanitizeInput, sanitizeInputBody } from "../utils/validationUtils.js";
 import { BadRequestException } from "../middleware/CustomError.js";
+import { buildResponse } from "../utils/responseUtils.js";
 
 const productController = {
     sanitizeInputBody,
@@ -56,6 +57,7 @@ const productController = {
     }),
 
     getAllProductsByBrands: asyncHandler(async (req, res) => {
+
         const productData = await productService.getAllProductsByBrands(req.body);
 
         return res.status(200).json({
@@ -68,14 +70,48 @@ const productController = {
         });
     }),
 
+    // 🔹 Get All Products
+    // export const fetchProducts = ({
+    //     page = 1,
+    //     limit = 10,
+    //     search = "",
+    //     type = "",
+    //     status = "",
+    // } = {}) => {
+    //     const query = buildQuery({ page, limit, search, type, status });
+    //     return apiRequest(`/product-details/get/all?${query}`, {
+    //         method: "GET",
+    //     });
+    // };
+
     getAll: asyncHandler(async (req, res) => {
-        const productList = await productService.getProducts({});
-        res.status(200).json({
-            success: true,
-            status: 200,
-            message: "📦 All products fetched successfully",
-            data: productList,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 10;
+
+        const search = sanitizeInput(req.query.search);
+        const status = sanitizeInput(req.query.status);
+        const type = sanitizeInput(req.query.type);
+
+        const result = await productService.getProducts({
+            page: Number(page),
+            limit: Number(limit),
+            search,
+            type,
+            status
+        });
+
+        buildResponse({
+            res,
+            message: "📦 Products fetched successfully",
+            data: result.data,
+            extra: {
+                pagination: {
+                    page: result.page,
+                    limit: result.limit,
+                    total: result.total,
+                    totalPages: Math.ceil(result.total / result.limit)
+                }
+            }
         });
     }),
 
