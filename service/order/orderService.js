@@ -302,7 +302,9 @@ const orderService = {
         status,
         priority,
         search,
-        dealer
+        dealer,
+        startDate,
+        endDate
     }) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
@@ -314,11 +316,6 @@ const orderService = {
             1️⃣ Build Filter Cleanly
         ------------------------------------------- */
         const filter = {};
-
-        // Exclude rejected unless explicitly requested
-        if (!includeRejected) {
-            filter.status = { $ne: ORDER_STATUSES.REJECTED };
-        }
 
         // 🔐 Role-Based Filtering (Clean & Scalable)
         switch (employeeRole) {
@@ -351,8 +348,6 @@ const orderService = {
         // Status filtering
         if (status && Object.values(ORDER_STATUSES).includes(status)) {
             filter.status = status;
-        } else {
-            filter.status = { $ne: ORDER_STATUSES.CANCELLED };
         }
 
         // Priority filter
@@ -387,6 +382,27 @@ const orderService = {
                 { dealer_id: searchRegex }, // direct dealer_id search
                 ...(dealerIds.length ? [{ dealer_id: { $in: dealerIds } }] : []),
             ];
+        }
+
+        // 📅 Date Range Filter (Production Ready)
+        if (startDate || endDate) {
+            filter.created_at = {};
+
+            if (startDate) {
+                const start = new Date(startDate);
+                start.setHours(0, 0, 0, 0);
+                filter.created_at.$gte = start;
+            }
+
+            if (endDate) {
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                filter.created_at.$lte = end;
+            } else {
+                const end = new Date(startDate);
+                end.setHours(23, 59, 59, 999);
+                filter.created_at.$lte = end;
+            }
         }
 
         logger.info("📦 Order Filter:", filter);
@@ -426,6 +442,17 @@ const orderService = {
                 detailsMap[order.order_number] || []
             )
         );
+
+        // the rejected and cancelled orders should be end of the list
+        transformedOrders.sort((a, b) => {
+            if (a.status === ORDER_STATUSES.REJECTED || a.status === ORDER_STATUSES.CANCELLED) {
+                return 1;
+            }
+            if (b.status === ORDER_STATUSES.REJECTED || b.status === ORDER_STATUSES.CANCELLED) {
+                return -1;
+            }
+            return 0;
+        });
 
         return {
             orders: transformedOrders,
