@@ -7,6 +7,7 @@ const companyAddressController = {
     async upsertCompanyAddress(req, res, next) {
         try {
             const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
+            console.log(employeeId, employeeRole);
 
             if (!isRoleAllowedForApproval(employeeRole)) {
                 throw new ForbiddenException(
