@@ -1,13 +1,9 @@
 import CompanyAddress from "../models/companyAddress.js";
-import { isRoleAllowedForApproval } from "../utils/validationUtils.js";
+import { v4 as uuidv4 } from "uuid";
 
 const companyAddressService = {
 
     async createOrUpdate(data) {
-        if (!isRoleAllowedForApproval(userRole)) {
-            throw new Error("Unauthorized role to create or update company address");
-        }
-
         const existing = await CompanyAddress.findOne({ is_active: true });
 
         // 🟢 CREATE
