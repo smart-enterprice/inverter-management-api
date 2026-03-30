@@ -36,6 +36,9 @@ const orderController = {
 
         const dealer = sanitizeInput(req.query.dealer);
 
+        const startDate = req.query.startDate;
+        const endDate = req.query.endDate;
+
         const result = await orderService.getAllOrders({
             includeRejected,
             page,
@@ -43,7 +46,9 @@ const orderController = {
             status,
             priority,
             search,
-            dealer
+            dealer,
+            startDate,
+            endDate
         });
 
         buildResponse({
