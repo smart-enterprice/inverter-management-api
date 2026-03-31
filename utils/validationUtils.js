@@ -3,7 +3,7 @@
 import validator from 'validator';
 
 import { BadRequestException, ValidationException, UnauthorizedException, ForbiddenException } from '../middleware/CustomError.js';
-import { ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, ROLES, PRODUCT_REQUIRED_FIELDS, DEALER_DISCOUNT_REQUIRED_FIELDS, ALLOWED_TRANSITIONS, } from './constants.js';
+import { ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, ROLES, PRODUCT_REQUIRED_FIELDS, DEALER_DISCOUNT_REQUIRED_FIELDS, ALLOWED_TRANSITIONS, STOCK_MANAGEMENT_ROLES, } from './constants.js';
 import { validatePassword } from './employeeAuth.js';
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 
@@ -77,6 +77,19 @@ export const validateMainRoleAccess = () => {
     const role = (rawRole || "").toUpperCase();
 
     if (!employee_id || !role || !ADMIN_PRIVILEGED_ROLES.includes(role)) {
+        throw new ForbiddenException(
+            `Access denied. Your role (${role}) does not have permission to perform this action.`
+        );
+    }
+    return { employee_id, role };
+};
+
+export const validateStockManagementRoleAccess = () => {
+    const employee_id = CurrentRequestContext.getEmployeeId();
+    const rawRole = CurrentRequestContext.getRole();
+    const role = (rawRole || "").toUpperCase();
+
+    if (!employee_id || !role || !STOCK_MANAGEMENT_ROLES.includes(role)) {
         throw new ForbiddenException(
             `Access denied. Your role (${role}) does not have permission to perform this action.`
         );

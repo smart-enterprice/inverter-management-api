@@ -13,7 +13,7 @@ import Brand from "../models/brand.js";
 import logger from "../utils/logger.js";
 import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId, generateUniqueStockHistoryId } from "../utils/generatorIds.js";
 import { BadRequestException } from "../middleware/CustomError.js";
-import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext, normalizePrice } from "../utils/validationUtils.js";
+import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext, normalizePrice, validateStockManagementRoleAccess } from "../utils/validationUtils.js";
 import { mapPriceHistoryEntityToResponse, mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse, mapStockHistoryEntityToResponse } from "../utils/modelMapper.js";
 import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS, ROLES } from "../utils/constants.js";
 import { createPriceHistory } from "./priceHistoryService.js";
@@ -359,7 +359,7 @@ const productService = {
     }),
 
     createOrUpdateProductStock: asyncHandler(async (stockMapInput) => {
-        const { employee_id, role } = validateMainRoleAccess();
+        const { employee_id, role } = validateStockManagementRoleAccess();
 
         if (!stockMapInput || typeof stockMapInput !== 'object' || Array.isArray(stockMapInput)) {
             throw new BadRequestException("Expected a product-wise stock object.");
