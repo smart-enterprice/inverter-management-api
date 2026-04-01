@@ -13,7 +13,7 @@ import Brand from "../models/brand.js";
 import logger from "../utils/logger.js";
 import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId, generateUniqueStockHistoryId } from "../utils/generatorIds.js";
 import { BadRequestException } from "../middleware/CustomError.js";
-import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext, normalizePrice, validateStockManagementRoleAccess } from "../utils/validationUtils.js";
+import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext, normalizePrice, validateStockManagementRoleAccess, normalizeLower, normalizeUpper } from "../utils/validationUtils.js";
 import { mapPriceHistoryEntityToResponse, mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse, mapStockHistoryEntityToResponse } from "../utils/modelMapper.js";
 import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS, ROLES } from "../utils/constants.js";
 import { createPriceHistory } from "./priceHistoryService.js";
@@ -961,15 +961,15 @@ const productService = {
             description = ""
         } = bodyData;
 
-        const normalizedStatus = status.trim().toLowerCase();
-        const normalizedBrandName = brandName.trim().toUpperCase();
-        const newBrandName = brand_name?.trim().toUpperCase();
+        const normalizedStatus = normalizeLower(status);
+        const normalizedBrandName = normalizeUpper(brandName);
+        const newBrandName = normalizeUpper(brand_name);
 
         if (!normalizedBrandName || typeof normalizedBrandName !== 'string' || !normalizedBrandName.trim()) {
             throw new BadRequestException("Brand name parameter is missing or invalid.");
         }
 
-        if (!normalizedStatus || !STATUS.includes(normalizedStatus)) {
+        if (normalizedStatus && !STATUS.includes(normalizedStatus)) {
             throw new BadRequestException("Status must be one of: " + STATUS.join(', '));
         }
 
@@ -978,15 +978,16 @@ const productService = {
             throw new BadRequestException(`Brand ${normalizedBrandName} not found.`);
         }
 
-        let updatedModelsSet = new Set(brand.brand_models.map(m => m.toUpperCase()));
+        let updatedModelsSet = new Set(brand.brand_models.map(m => normalizeUpper(m)));
+
         if (Array.isArray(brand_models) && brand_models.length > 0) {
-            brand_models.forEach(model => updatedModelsSet.add(model.trim().toUpperCase()));
+            brand_models.forEach(model => updatedModelsSet.add(normalizeUpper(model)));
         }
 
         if (brand_models_update && typeof brand_models_update === 'object') {
             for (const [oldModel, newModel] of Object.entries(brand_models_update)) {
-                const oldM = oldModel.trim().toUpperCase();
-                const newM = newModel.trim().toUpperCase();
+                const oldM = normalizeUpper(oldModel);
+                const newM = normalizeUpper(newModel);
                 if (updatedModelsSet.has(oldM)) {
                     updatedModelsSet.delete(oldM);
                     updatedModelsSet.add(newM);
@@ -1002,7 +1003,7 @@ const productService = {
         let deletedModelsList = brand.deleted_brand_models || [];
         if (Array.isArray(delete_models) && delete_models.length > 0) {
             for (const model of delete_models) {
-                const mUpper = model.trim().toUpperCase();
+                const mUpper = normalizeUpper(model);
                 if (updatedModelsSet.has(mUpper)) {
                     updatedModelsSet.delete(mUpper);
                     deletedModelsList.push(mUpper);
@@ -1010,10 +1011,10 @@ const productService = {
             }
         }
 
-        let descriptionNote = brand.description || "";
-        if (typeof description === "string" && description.trim() !== "") {
-            descriptionNote = description;
-        }
+        const descriptionNote =
+            typeof description === "string" && description.trim()
+                ? description.trim()
+                : brand.description || "";
 
         const mergedBrandModels = Array.from(updatedModelsSet);
 

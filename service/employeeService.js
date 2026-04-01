@@ -117,14 +117,12 @@ async function checkIfDiscountExists(
         .lean();
 
     for (const discount of existingDiscounts) {
-
         const existingProducts = Array.isArray(discount.product_ids) ? [...new Set(discount.product_ids.map(String))]
             .sort()
             .join(",") :
             "";
 
         if (existingProducts === normalizedIncoming) {
-
             throw new BadRequestException(
                 `A discount already exists for brand ${brandName}, model ${modelName} with the same product combination.`
             );

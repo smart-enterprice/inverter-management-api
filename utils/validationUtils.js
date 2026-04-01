@@ -68,7 +68,10 @@ export const validateEmployeeData = (data, isUpdate = false) => {
             errors.push({ field: 'role', message: `Allowed roles: ${Object.values(ROLES).join(', ')}` });
     }
 
-    if (errors.length > 0) throw new ValidationException('Validation failed', errors);
+    if (errors.length > 0) {
+        const message = formatValidationMessage(errors);
+        throw new ValidationException(message, errors);
+    }
 };
 
 export const validateMainRoleAccess = () => {
@@ -162,3 +165,20 @@ export function normalizePrice(value) {
 export const toSafeNumber = (value) => Number(value) || 0;
 
 export const round = (num) => Math.round(num);
+
+export const safeTrim = (val) => (typeof val === "string" ? val.trim() : "");
+
+export const normalizeUpper = (val) => safeTrim(val).toUpperCase();
+export const normalizeLower = (val) => safeTrim(val).toLowerCase();
+
+export const shouldValidate = (field) => !isUpdate || field !== undefined;
+
+export const formatValidationMessage = (errors) => {
+    if (!errors || errors.length === 0) return "Validation failed";
+
+    const formattedErrors = errors
+        .map(e => `${e.field} - ${e.message}`)
+        .join(", ");
+
+    return `Validation failed -> ${formattedErrors}`;
+};
