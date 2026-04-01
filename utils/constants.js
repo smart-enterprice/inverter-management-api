@@ -38,6 +38,9 @@ export const PATH_ROUTES = {
     get INVOICE_ROUTE() {
         return `${this.BASIC_ROUTE}/invoice-details`;
     },
+    get BULK_IMPORT_ROUTE() {
+        return `${this.BASIC_ROUTE}/upload-excel`;
+    },
 };
 
 export const {

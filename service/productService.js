@@ -541,8 +541,8 @@ const productService = {
         // 🔹 Build filter
         const filter = {};
 
-        if (status) filter.status = status;
-        if (type) filter.product_type = type;
+        if (status && status !== "all" && status !== "All" && status !== "ALL") filter.status = status;
+        if (type && type !== "all" && type !== "All" && type !== "ALL") filter.product_type = type;
 
         if (search) {
             filter.$or = [
