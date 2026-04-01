@@ -184,7 +184,7 @@ const processDealerSheet = async (rows, createdBy) => {
         const name = toStr(row["Name"]);
         const email = toStr(row["Email"]);
         const phone = toStr(row["Phone Number"]);
-        const password = toStr(row["Password"]) || generatePassword(name);
+        const password = generatePassword(name);
         const shopName = toStr(row["Shop Name"]);
         const brands = toUpperArray(row["Brand"]);
         const district = toStr(row["District"]);
@@ -249,7 +249,7 @@ const processUserSheet = async (rows, createdBy) => {
         const name = toStr(row["Name"]);
         const email = toStr(row["Email"]);
         const phone = toStr(row["Phone Number"]);
-        const password = toStr(row["Password"]) || generatePassword(name);
+        const password = generatePassword(name);
         const district = toStr(row["District"]);
         const town = toStr(row["Town"]);
         const address = toStr(row["Address"]);
