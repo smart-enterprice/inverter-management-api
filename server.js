@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
@@ -5,69 +8,79 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import compression from "compression";
 import hpp from "hpp";
-import dotenv from "dotenv";
+import path from 'path';
+import fs from 'fs';
+import mongoose from "mongoose";
 
-import logger, { securityLogger, apiLogger } from "./utils/logger.js";
+import swaggerUi from 'swagger-ui-express';
+
+import logger, { apiLogger } from "./utils/logger.js";
 import { handleRateLimitError, globalErrorHandler } from "./middleware/errorHandler.js";
+
 import employeeRoute from "./routes/employeeRoute.js";
 import authRoute from "./routes/authRoute.js";
-import { STATUS_CODES, PATH_ROUTES } from "./utils/constants.js";
+import orderRoute from "./routes/orderRoute.js";
+import productRoute from "./routes/productRoute.js";
+import publicRoute from "./routes/publicRoute.js";
+import locationRoute from "./routes/locationRoute.js";
+import companyRoute from "./routes/companyAddressRoute.js";
+import invoiceRoute from "./routes/invoiceRoute.js";
+
+import { PATH_ROUTES, APPLICATION_NAME, ENVIRONMENT, PORT, APPLICATION_URL, ALLOWED_ORIGINS } from "./utils/constants.js";
+
 import { NotFoundException } from "./middleware/CustomError.js";
-import { requestContextMiddleware } from './middleware/requestContextMiddleware.js';
+import { requestContextMiddleware } from "./middleware/requestContextMiddleware.js";
 
 import { connectToDatabase, closeDatabaseConnection } from "./config/dbConfig.js";
 import { employeeService } from "./service/employeeService.js";
 
-process.on('uncaughtException', (err) => {
-    console.error('Uncaught Exception:', err);
-    process.exit(1);
-});
+import chalk from "chalk";
 
-process.on('unhandledRejection', (reason) => {
-    console.error('Unhandled Rejection:', reason);
-    process.exit(1);
-});
-
-dotenv.config();
+// Generates a clickable hyperlink in supported terminals
+function hyperlink(text, url) {
+    return `\u001b]8;;${url}\u0007${text}\u001b]8;;\u0007`;
+}
 
 const app = express();
+const port = PORT || 3000;
 
 app.set("trust proxy", 1);
 
 const globalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 200,
-    message: {
-        success: false,
-        message: "Too many requests from this IP. Please try again later.",
-    },
     standardHeaders: true,
     legacyHeaders: false,
     handler: handleRateLimitError,
 });
 
 const corsOptions = {
-    origin: function(origin, callback) {
-        const allowedOrigins = process.env.ALLOWED_ORIGINS ?
-            process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()) : ["http://localhost:3000"];
+    origin(origin, callback) {
+        const allowedOrigins = ALLOWED_ORIGINS ?
+            ALLOWED_ORIGINS.split(',').map(o => o.trim()) : ['http://localhost:5173'];
 
-        if (!origin) return callback(null, true);
+        allowedOrigins.push('http://localhost:3000');
+        allowedOrigins.push('https://editor.swagger.io');
+        allowedOrigins.push('http://localhost:1280');
 
-        if (allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            securityLogger.warn("CORS violation attempt", { origin });
-            callback(new Error("Not allowed by CORS"));
+        if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+            return callback(null, true);
         }
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        logger.warn(`[CORS] Origin blocked: ${origin}`);
+        return callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept'],
     optionsSuccessStatus: 200,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 };
 
-app.use(requestContextMiddleware);
 app.use(cors(corsOptions));
+
 app.use(helmet());
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
@@ -75,11 +88,21 @@ app.use(cookieParser());
 app.use(compression());
 app.use(hpp());
 app.use(globalLimiter);
+app.use(requestContextMiddleware);
 
 app.use((req, res, next) => {
     apiLogger.info(`Incoming ${req.method} request to ${req.originalUrl}`);
     next();
 });
+
+// -------------------------------------------------------------
+// Swagger
+// -------------------------------------------------------------
+const swaggerFile = path.resolve("./swagger-output.json");
+if (fs.existsSync(swaggerFile)) {
+    const swaggerDocument = JSON.parse(fs.readFileSync(swaggerFile, "utf8"));
+    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+}
 
 const requiredEnvVars = ["MONGO_URL", "JWT_SECRET"];
 const missingEnvVars = requiredEnvVars.filter((envVar) => !process.env[envVar]);
@@ -88,24 +111,22 @@ if (missingEnvVars.length > 0) {
     process.exit(1);
 }
 
-const PORT = process.env.PORT || 3000;
-
-const startServer = async() => {
+const startServer = async () => {
     try {
         await connectToDatabase();
 
-        const server = app.listen(PORT, () => {
+        const server = app.listen(port, () => {
             employeeService.defaultSuperAdminSetup();
 
-            logger.info(`Server started on port ${PORT}`, {
-                environment: process.env.NODE_ENV || "development",
-            });
+            const url = APPLICATION_URL || `http://localhost:${port}`;
+            const clickableUrl = hyperlink(APPLICATION_NAME, url);
+
+            logger.info(`${chalk.green("🚀 Server running:")} ${chalk.blueBright(clickableUrl)}`);
         });
 
-        // Graceful shutdown
         const gracefulShutdown = (signal) => {
             logger.info(`Received ${signal}. Shutting down gracefully...`);
-            server.close(async() => {
+            server.close(async () => {
                 await closeDatabaseConnection();
                 process.exit(0);
             });
@@ -119,56 +140,77 @@ const startServer = async() => {
     }
 };
 
-startServer();
-
 // Routes
 app.get("/", (req, res) => {
     res.json({
         success: true,
-        message: "👋 Welcome to Smart Enterprice",
+        message: `👋 Welcome to ${APPLICATION_NAME}`,
         version: "1.0.0",
         status: "operational",
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
     });
 });
 
-// Health check endpoint
-app.get("/health", async(req, res) => {
-    let dbStatus = "unknown";
-    let dbName = "unknown";
+// Ignore favicon requests to prevent NotFoundException spam
+app.get('/favicon.ico', (req, res) => res.status(204).end());
 
-    if (globalThis && globalThis.mongoose && globalThis.mongoose.connection) {
-        const state = globalThis.mongoose.connection.readyState;
-        const mongooseConnectionState = {
-            0: "disconnected",
-            1: "connected",
-            2: "connecting",
-            3: "disconnecting"
-        };
-        dbStatus = mongooseConnectionState[state] || "unknown";
-        dbName = globalThis.mongoose.connection.name || "unknown";
-    }
+// Health check endpoint
+app.get("/health", async (req, res) => {
+    const state = mongoose.connection && mongoose.connection.readyState ?
+        mongoose.connection.readyState :
+        0;
+    const dbStatus = {
+        0: "disconnected",
+        1: "connected",
+        2: "connecting",
+        3: "disconnecting",
+    }[state] || "unknown";
 
     res.status(200).json({
         success: true,
         message: "🩺 Health check OK",
-        service: "Smart Enterprice",
-        environment: process.env.NODE_ENV || "development",
+        service: APPLICATION_NAME,
+        environment: ENVIRONMENT || "development",
         version: "1.0.0",
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
         db: {
             status: dbStatus,
-            name: dbName
-        }
+            name: mongoose.connection ? mongoose.connection.name || "unknown" : "unknown",
+        },
     });
 });
 
 app.use(PATH_ROUTES.AUTH_ROUTE, authRoute);
+app.use(PATH_ROUTES.LOCATION_ROUTE, locationRoute);
+app.use(PATH_ROUTES.BASIC_ROUTE, publicRoute);
+
 app.use(PATH_ROUTES.EMPLOYEE_ROUTE, employeeRoute);
+app.use(PATH_ROUTES.PRODUCT_ROUTE, productRoute);
+app.use(PATH_ROUTES.ORDER_ROUTE, orderRoute);
+
+app.use(PATH_ROUTES.INVOICE_ROUTE, invoiceRoute);
+
+app.use(PATH_ROUTES.COMPANY_ROUTE, companyRoute);
+
 
 app.use((req, res, next) => {
     next(new NotFoundException(`Endpoint '${req.method} ${req.originalUrl}' not found.`));
 });
 
-app.use(handleRateLimitError);
 app.use(globalErrorHandler);
+
+startServer();
+
+process.on("unhandledRejection", reason => {
+    if (reason && reason.isOperational) {
+        logger.warn(`Operational rejection: ${reason.message}`);
+    } else {
+        logger.error("Unhandled Rejection:", reason);
+        process.exit(1);
+    }
+});
+
+process.on("uncaughtException", err => {
+    logger.error("Uncaught Exception:", err);
+    process.exit(1);
+});
