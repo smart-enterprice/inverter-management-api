@@ -891,12 +891,14 @@ const orderService = {
                 );
             }
 
-            orderDetail.status = resolveManualStatus({
+            const resolvedStatus = resolveManualStatus({
                 normalized: normalizedStatus,
                 packedQty,
                 unpackedQty,
                 productionQty
             });
+
+            orderDetail.status = resolvedStatus;
 
             if (normalizedStatus === ORDER_STATUSES.INVOICE) {
                 await invoiceService.generateOrUpdateInvoiceByOrderDetail(
@@ -904,7 +906,7 @@ const orderService = {
                     toNumber(updateDto.invoice_qty)
                 );
             }
-        } else {
+        } else if (previousStatus !== ORDER_STATUSES.PENDING) {
             orderDetail.status = resolveOrderDetailStatus({
                 qtyOrdered: orderDetail.qty_ordered,
                 qtyCancelled: orderDetail.total_cancelled_qty,
