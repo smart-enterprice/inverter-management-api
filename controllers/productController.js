@@ -70,20 +70,6 @@ const productController = {
         });
     }),
 
-    // 🔹 Get All Products
-    // export const fetchProducts = ({
-    //     page = 1,
-    //     limit = 10,
-    //     search = "",
-    //     type = "",
-    //     status = "",
-    // } = {}) => {
-    //     const query = buildQuery({ page, limit, search, type, status });
-    //     return apiRequest(`/product-details/get/all?${query}`, {
-    //         method: "GET",
-    //     });
-    // };
-
     getAll: asyncHandler(async (req, res) => {
         const page = Number(req.query.page) || 1;
         const limit = Number(req.query.limit) || 10;
