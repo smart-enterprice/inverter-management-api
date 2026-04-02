@@ -6,3 +6,12 @@ export function generatePassword(name) {
 
     return `${firstName}-smartinvert@#12321`;
 }
+
+export function generateUniqueEmail(name) {
+    const formattedName = name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z]/g, "");
+
+    return `${formattedName}@smartenterprises.com`;
+}
