@@ -11,7 +11,7 @@ import { CurrentRequestContext } from "../utils/CurrentRequestContext.js";
 import logger from "../utils/logger.js";
 import { ROLES } from "../utils/constants.js";
 import { BadRequestException } from "../middleware/CustomError.js";
-import { generatePassword } from "../utils/password.js";
+import { generatePassword, generateUniqueEmail } from "../utils/generateData.js";
 
 //  Helpers
 
@@ -182,7 +182,7 @@ const processDealerSheet = async (rows, createdBy) => {
         console.log('row', row);
 
         const name = toStr(row["Name"]);
-        const email = toStr(row["Email"]);
+        const email = toStr(row["Email"]) || generateUniqueEmail(name);
         const phone = toStr(row["Phone Number"]);
         const password = generatePassword(name);
         const shopName = toStr(row["Shop Name"]);
