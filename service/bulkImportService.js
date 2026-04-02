@@ -179,8 +179,6 @@ const processDealerSheet = async (rows, createdBy) => {
             continue;
         }
 
-        console.log('row', row);
-
         const name = toStr(row["Name"]);
         const email = toStr(row["Email"]) || generateUniqueEmail(name);
         const phone = toStr(row["Phone Number"]);
