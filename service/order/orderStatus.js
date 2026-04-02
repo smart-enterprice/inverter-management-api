@@ -5,6 +5,7 @@ import { normalizeStatus } from "../../utils/orderStatusUtils.js";
 
 const ORDER_STATUS_PRIORITY = [
     ORDER_STATUSES.REJECTED,
+    ORDER_STATUSES.PENDING,
     // ORDER_STATUSES.CANCELLED intentionally excluded
     ORDER_STATUSES.PRODUCTION,
     ORDER_STATUSES.PACKED,
