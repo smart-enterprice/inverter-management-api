@@ -1,6 +1,6 @@
 // controllers/bulkImportController.js
-
 import asyncHandler from "express-async-handler";
+import ExcelJS from "exceljs";
 import { BadRequestException } from "../middleware/CustomError.js";
 import { bulkImportService } from "../service/bulkImportService.js";
 
@@ -39,54 +39,84 @@ const bulkImportController = {
         });
     }),
 
-    getTemplate: asyncHandler(async (_req, res) => {
-        return res.status(200).json({
-            success: true,
-            status: 200,
-            message: "📋 Excel template structure",
-            data: {
-                sheets: {
-                    "Delaer Data": {
-                        description: "Dealer accounts (ROLE_DEALER is assigned automatically)",
-                        columns: [
-                            "Name",
-                            "Email",
-                            "Phone Number",
-                            "Password (optional – auto-generated if blank)",
-                            "Shop Name",
-                            "Brand (comma-separated for multiple)",
-                            "District",
-                            "Town",
-                            "Address",
-                        ],
-                    },
-                    "User Data": {
-                        description: "Internal users with dynamic roles",
-                        columns: [
-                            "Name",
-                            "Email",
-                            "Phone Number",
-                            "Password (optional – auto-generated if blank)",
-                            "District",
-                            "Town",
-                            "Address",
-                            "Role (e.g. ROLE_SALESMAN)",
-                        ],
-                    },
-                    "Brand Data": {
-                        description: "Product brands",
-                        columns: [
-                            "Brand Name",
-                            "Models (comma-separated)",
-                            "Description",
-                        ],
-                    },
+    getTemplate: asyncHandler(async (req, res) => {
+        const isDownload = req.query.download === "true";
+
+        const templateData = {
+            sheets: {
+                "Delaer Data": {
+                    description: "Dealer accounts (ROLE_DEALER is assigned automatically)",
+                    columns: [
+                        "Name",
+                        "Email (optional – auto-generated if blank)",
+                        "Phone Number",
+                        "Password (optional – auto-generated if blank)",
+                        "Shop Name",
+                        "Brand (comma-separated for multiple)",
+                        "District",
+                        "Town",
+                        "Address",
+                    ],
                 },
-                passwordRule:
-                    "Auto-generated format: {FirstName}-smartinvert@1221  e.g. Ajmal-smartinvert@1221",
+                "User Data": {
+                    description: "Internal users with dynamic roles",
+                    columns: [
+                        "Name",
+                        "Email",
+                        "Phone Number",
+                        "Password (optional – auto-generated if blank)",
+                        "District",
+                        "Town",
+                        "Address",
+                        "Role (e.g. ROLE_SALESMAN)",
+                    ],
+                },
+                "Brand Data": {
+                    description: "Product brands",
+                    columns: [
+                        "Brand Name",
+                        "Models (comma-separated)",
+                        "Description",
+                    ],
+                },
             },
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+            passwordRule:
+                "Auto-generated format: {FirstName}-smartinvert@1221  e.g. Ajmal-smartinvert@1221",
+        };
+
+        if (!isDownload) {
+            return res.status(200).json({
+                success: true,
+                status: 200,
+                message: "📋 Excel template structure",
+                data: templateData,
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+            });
+        }
+
+        // 🔥 DOWNLOAD MODE (REAL EXCEL FILE)
+        const workbook = new ExcelJS.Workbook();
+        Object.entries(templateData.sheets).forEach(([sheetName, sheetData]) => {
+            const worksheet = workbook.addWorksheet(sheetName);
+
+            // Add header row
+            worksheet.addRow(sheetData.columns);
+
+            // Style header (optional but pro)
+            worksheet.getRow(1).font = { bold: true };
         });
+
+        res.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        res.setHeader(
+            "Content-Disposition",
+            "attachment; filename=file_upload_template.xlsx"
+        );
+
+        await workbook.xlsx.write(res);
+        res.end();
     }),
 };
 
