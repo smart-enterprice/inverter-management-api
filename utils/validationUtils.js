@@ -105,8 +105,6 @@ export const getAuthenticatedEmployeeContext = () => {
     const employee_role = CurrentRequestContext.getRole();
     const employeeRole = (employee_role || "").toUpperCase();
 
-    console.log(`roles : ${employeeId} :: ${employeeRole}`);
-
     if (!employeeId || !employeeRole || !Object.values(ROLES).includes(employeeRole)) {
         throw new ForbiddenException(`Access denied: only users with roles ${Object.values(ROLES).join(", ")} are authorized.`);
     }
