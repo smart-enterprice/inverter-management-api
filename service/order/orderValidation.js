@@ -6,8 +6,6 @@ import { APPROVAL_GRANTED_ROLES, ORDER_CREATOR_ROLES, ORDER_DETAILS_REQUIRED_FIE
 import { sanitizeInput } from "../../utils/validationUtils.js";
 
 export const validateOrderCreator = (employeeId, employeeRole, dto) => {
-    console.log("employeeRole received: ", employeeRole);
-
     if (!employeeId ||
         !employeeRole ||
         !Object.values(ORDER_CREATOR_ROLES).includes(employeeRole.toUpperCase())
