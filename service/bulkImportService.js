@@ -49,7 +49,7 @@ const validateEmployeeRow = (row, index, sheetLabel) => {
     const errors = [];
 
     const name = toStr(row["Name"]);
-    const email = toStr(row["Email"]);
+    const email = toStr(row["Email"]) || toStr(row["Email Address"]) || toStr(row["Email (optional – auto-generated if blank)"]) || generateUniqueEmail(name);
     const phone = toStr(row["Phone Number"]);
 
     if (!name || name.length < 2)
@@ -71,7 +71,7 @@ const validateBrandRow = (row, index) => {
     if (!brandName)
         errors.push(`Row ${index}: Brand Name is required`);
 
-    const models = toUpperArray(row["Models"]);
+    const models = toUpperArray(row["Models"]) || toUpperArray(row["Models (comma-separated)"]);
     if (models.length === 0)
         errors.push(`Row ${index}: At least one model is required`);
 
@@ -180,11 +180,11 @@ const processDealerSheet = async (rows, createdBy) => {
         }
 
         const name = toStr(row["Name"]);
-        const email = toStr(row["Email"]) || generateUniqueEmail(name);
+        const email = toStr(row["Email"]) || toStr(row["Email Address"]) || toStr(row["Email (optional – auto-generated if blank)"]) || generateUniqueEmail(name);
         const phone = toStr(row["Phone Number"]);
         const password = generatePassword(name);
         const shopName = toStr(row["Shop Name"]);
-        const brands = toUpperArray(row["Brand"]);
+        const brands = toUpperArray(row["Brand"]) || toUpperArray(row["Brand (comma-separated)"]) || toUpperArray(row["Brand (optional)"]);
         const district = toStr(row["District"]);
         const town = toStr(row["Town"]);
         const address = toStr(row["Address"]);
@@ -245,7 +245,7 @@ const processUserSheet = async (rows, createdBy) => {
         }
 
         const name = toStr(row["Name"]);
-        const email = toStr(row["Email"]);
+        const email = toStr(row["Email"]) || toStr(row["Email Address"]) || toStr(row["Email (optional – auto-generated if blank)"]) || generateUniqueEmail(name);
         const phone = toStr(row["Phone Number"]);
         const password = generatePassword(name);
         const district = toStr(row["District"]);
@@ -297,7 +297,7 @@ const processBrandSheet = async (rows, createdBy) => {
         }
 
         const brandName = toStr(row["Brand Name"]);
-        const models = toUpperArray(row["Models"]);
+        const models = toUpperArray(row["Models"]) || toUpperArray(row["Models (comma-separated)"]);
         const description = toStr(row["Description"]);
 
         try {
