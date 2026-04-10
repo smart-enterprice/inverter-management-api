@@ -49,7 +49,7 @@ const validateEmployeeRow = (row, index, sheetLabel) => {
     const errors = [];
 
     const name = toStr(row["Name"]);
-    const email = toStr(row["Email"]);
+    const email = toStr(row["Email"]) || toStr(row["Email Address"]) || toStr(row["Email (optional – auto-generated if blank)"]) || generateUniqueEmail(name);
     const phone = toStr(row["Phone Number"]);
 
     if (!name || name.length < 2)
@@ -71,7 +71,7 @@ const validateBrandRow = (row, index) => {
     if (!brandName)
         errors.push(`Row ${index}: Brand Name is required`);
 
-    const models = toUpperArray(row["Models"]);
+    const models = toUpperArray(row["Models"]) || toUpperArray(row["Models (comma-separated)"]);
     if (models.length === 0)
         errors.push(`Row ${index}: At least one model is required`);
 
