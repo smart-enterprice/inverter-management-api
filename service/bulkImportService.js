@@ -12,6 +12,7 @@ import logger from "../utils/logger.js";
 import { ROLES } from "../utils/constants.js";
 import { BadRequestException } from "../middleware/CustomError.js";
 import { generatePassword, generateUniqueEmail } from "../utils/generateData.js";
+import { getBrandsFromRow, getModelsFromRow, mergeUniqueModels, normalizeModels, normalizeToUpper } from "../utils/brandUtils.js";
 
 //  Helpers
 
@@ -49,7 +50,7 @@ const validateEmployeeRow = (row, index, sheetLabel) => {
     const errors = [];
 
     const name = toStr(row["Name"]);
-    const email = toStr(row["Email"]);
+    const email = toStr(row["Email"]) || toStr(row["Email Address"]) || toStr(row["Email (optional – auto-generated if blank)"]) || generateUniqueEmail(name);
     const phone = toStr(row["Phone Number"]);
 
     if (!name || name.length < 2)
@@ -71,7 +72,7 @@ const validateBrandRow = (row, index) => {
     if (!brandName)
         errors.push(`Row ${index}: Brand Name is required`);
 
-    const models = toUpperArray(row["Models"]);
+    const models = getModelsFromRow(row);
     if (models.length === 0)
         errors.push(`Row ${index}: At least one model is required`);
 
@@ -112,6 +113,7 @@ const createEmployee = async ({
             brand_name: { $in: upperBrands },
             status: "active",
         });
+
         resolvedBrands = brandDocs.map((b) => b.brand_name);
     }
 
@@ -142,26 +144,50 @@ const createEmployee = async ({
 };
 
 const createBrand = async ({ brandName, models, description, createdBy }) => {
-    const upper = brandName.toUpperCase();
+    const normalizedBrandName = normalizeToUpper(brandName);
+    const normalizedModels = normalizeModels(models);
 
-    const existing = await Brand.findOne({ brand_name: upper });
-    if (existing) throw new Error(`Brand already exists: ${upper}`);
+    // 🔍 Fetch only required fields (lean for performance)
+    const existingBrand = await Brand.findOne(
+        { brand_name: normalizedBrandName },
+        { brand_models: 1 }
+    ).lean();
+
+    if (existingBrand) {
+        const mergedModels = mergeUniqueModels(
+            existingBrand.brand_models,
+            normalizedModels
+        );
+
+        const isSame =
+            mergedModels.length === existingBrand.brand_models.length &&
+            mergedModels.every((m, i) => m === existingBrand.brand_models[i]);
+
+        if (isSame) {
+            return mapProductBrandEntityToResponse(existingBrand);
+        }
+
+        const updatedBrand = await Brand.findOneAndUpdate(
+            { brand_name: normalizedBrandName },
+            { $set: { brand_models: mergedModels } },
+            { new: true }
+        );
+
+        return mapProductBrandEntityToResponse(updatedBrand);
+    }
 
     const brandId = await generateUniqueBrandId();
-    const uniqueModels = [...new Set(models.map((m) => m.toUpperCase()))];
 
-    const brand = new Brand({
+    const newBrand = await Brand.create({
         brand_id: brandId,
-        brand_name: upper,
-        brand_models: uniqueModels,
-        description: description || "",
+        brand_name: normalizedBrandName,
+        brand_models: normalizedModels,
+        description: description?.trim() || "",
         created_by: createdBy,
         status: "active",
     });
 
-    await brand.save();
-
-    return mapProductBrandEntityToResponse(brand);
+    return mapProductBrandEntityToResponse(newBrand);
 };
 
 const processDealerSheet = async (rows, createdBy) => {
@@ -180,11 +206,11 @@ const processDealerSheet = async (rows, createdBy) => {
         }
 
         const name = toStr(row["Name"]);
-        const email = toStr(row["Email"]) || generateUniqueEmail(name);
+        const email = toStr(row["Email"]) || toStr(row["Email Address"]) || toStr(row["Email (optional – auto-generated if blank)"]) || generateUniqueEmail(name);
         const phone = toStr(row["Phone Number"]);
         const password = generatePassword(name);
         const shopName = toStr(row["Shop Name"]);
-        const brands = toUpperArray(row["Brand"]);
+        const brands = getBrandsFromRow(row);
         const district = toStr(row["District"]);
         const town = toStr(row["Town"]);
         const address = toStr(row["Address"]);
@@ -210,7 +236,7 @@ const processDealerSheet = async (rows, createdBy) => {
                 employee_name: result.employee_name,
                 employee_email: result.employee_email,
                 role: result.role,
-                password_used: password,   // returned so admin can share credentials
+                password_used: password,
             });
         } catch (err) {
             logger.error(`[BulkImport] Dealer row ${rowNum} failed: ${err.message}`);
@@ -245,7 +271,7 @@ const processUserSheet = async (rows, createdBy) => {
         }
 
         const name = toStr(row["Name"]);
-        const email = toStr(row["Email"]);
+        const email = toStr(row["Email"]) || toStr(row["Email Address"]) || toStr(row["Email (optional – auto-generated if blank)"]) || generateUniqueEmail(name);
         const phone = toStr(row["Phone Number"]);
         const password = generatePassword(name);
         const district = toStr(row["District"]);
@@ -297,7 +323,7 @@ const processBrandSheet = async (rows, createdBy) => {
         }
 
         const brandName = toStr(row["Brand Name"]);
-        const models = toUpperArray(row["Models"]);
+        const models = getModelsFromRow(row);
         const description = toStr(row["Description"]);
 
         try {
@@ -347,9 +373,9 @@ export const bulkImportService = {
         }
 
         // ── Parse sheets ──
-        const dealerRows = parseSheet(workbook, DEALER_SHEET);
-        const userRows = parseSheet(workbook, USER_SHEET);
         const brandRows = parseSheet(workbook, BRAND_SHEET);
+        const userRows = parseSheet(workbook, USER_SHEET);
+        const dealerRows = parseSheet(workbook, DEALER_SHEET);
 
         logger.info(
             `[BulkImport] Rows → Dealers:${dealerRows.length} | Users:${userRows.length} | Brands:${brandRows.length}`
@@ -357,8 +383,8 @@ export const bulkImportService = {
 
         // ── Process (brands first so dealer brand validation works) ──
         const brandResult = await processBrandSheet(brandRows, createdBy);
-        const dealerResult = await processDealerSheet(dealerRows, createdBy);
         const userResult = await processUserSheet(userRows, createdBy);
+        const dealerResult = await processDealerSheet(dealerRows, createdBy);
 
         const summary = {
             dealers: {
