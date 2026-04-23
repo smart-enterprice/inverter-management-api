@@ -28,6 +28,12 @@ const productSchema = new mongoose.Schema({
         type: String,
         required: [true, "📱 Product Type is required."]
     },
+    product_category: {
+        type: String,
+        enum: ["INVERTER", "BATTERY", "OTHER"],
+        default: "INVERTER",
+        required: [true, "📦 Product Category is required."]
+    },
     status: {
         type: String,
         default: "active",
@@ -41,6 +47,12 @@ const productSchema = new mongoose.Schema({
         type: Number,
         required: [true, "💰 Product price is required."],
         min: [0, "Price must be a positive number."],
+    },
+    cost: {
+        type: Number,
+        required: false,
+        default: 0,
+        min: [0, "Cost must be a non-negative number."],
     },
     created_by: {
         type: String,

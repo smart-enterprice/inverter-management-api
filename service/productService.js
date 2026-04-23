@@ -15,7 +15,7 @@ import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId, 
 import { BadRequestException } from "../middleware/CustomError.js";
 import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext, normalizePrice, validateStockManagementRoleAccess, normalizeLower, normalizeUpper } from "../utils/validationUtils.js";
 import { mapPriceHistoryEntityToResponse, mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse, mapStockHistoryEntityToResponse } from "../utils/modelMapper.js";
-import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS, ROLES } from "../utils/constants.js";
+import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS, ROLES, PRODUCT_CATEGORIES } from "../utils/constants.js";
 import { createPriceHistory } from "./priceHistoryService.js";
 import ProductPriceHistory from "../models/productPriceHistory.js";
 
@@ -205,6 +205,11 @@ const productService = {
         const modelInput = sanitizeInput(dto.model).toUpperCase();
         const productName = sanitizeInput(dto.product_name);
         const productType = sanitizeInput(dto.product_type);
+        const productCategory = sanitizeInput(dto.product_category || 'INVERTER').toUpperCase();
+
+        if (!productCategory || !PRODUCT_CATEGORIES[productCategory]) {
+            throw new BadRequestException(`Invalid product category: ${productCategory}. Allowed categories: ${Object.keys(PRODUCT_CATEGORIES).join(", ")}`);
+        }
 
         const brandRecord = await Brand
             .findOne({ brand_name: brandInput })
@@ -236,26 +241,30 @@ const productService = {
             brand: brandInput,
             model: modelInput,
             product_name: productName,
-            product_type: productType
+            product_type: productType,
+            product_category: productCategory
         }).lean();
 
         if (existingProduct) {
             throw new BadRequestException(
-                `Product already exists: ${brandInput} / ${modelInput} / ${productName} (${productType})`
+                `Product already exists: ${brandInput} / ${modelInput} / ${productName} (${productType} | ${productCategory})`
             );
         }
 
         const productId = await generateUniqueProductId();
         const normalizedPrice = normalizePrice(dto.product_price) || 0;
+        const normalizedCost = normalizePrice(dto.product_cost) || 0;
 
         const product = await Product.create({
             product_id: productId,
             brand: brandInput,
             model: modelInput,
             product_type: productType,
+            product_category: productCategory,
             product_name: productName,
             available_stock: Number(dto.available_stock || 0),
             price: normalizedPrice,
+            cost: normalizedCost,
             created_by: employee_id
         });
 
@@ -265,7 +274,18 @@ const productService = {
             old_price: 0,
             new_price: normalizedPrice,
             changed_by: employee_id,
-            change_reason: "Product created"
+            change_reason: "Product created",
+            isCostUpdate: false
+        });
+
+        // 🔹 Cost History (initial record)
+        await createPriceHistory({
+            product_id: productId,
+            old_price: 0,
+            new_price: normalizedCost,
+            changed_by: employee_id,
+            change_reason: "Product created",
+            isCostUpdate: true
         });
 
         if (Array.isArray(dto.stocks) && dto.stocks.length > 0) {
@@ -305,6 +325,19 @@ const productService = {
             }
         }
 
+        // Detect Category Change
+        if (dto.product_category !== undefined) {
+            const normalizedCategory = sanitizeInput(dto.product_category || 'INVERTER').toUpperCase();
+
+            if (!normalizedCategory || !PRODUCT_CATEGORIES[normalizedCategory]) {
+                throw new BadRequestException(`Invalid product category: ${normalizedCategory}. Allowed categories: ${Object.keys(PRODUCT_CATEGORIES).join(", ")}`);
+            }
+
+            if (product.product_category !== normalizedCategory) {
+                updates.product_category = normalizedCategory;
+            }
+        }
+
         // Detect Price Change
         const normalizedPrice = normalizePrice(dto.product_price);
         if (normalizedPrice !== undefined) {
@@ -321,7 +354,30 @@ const productService = {
                     changed_by: employee_id,
                     change_reason:
                         sanitizeInput(dto.price_change_reason) ||
-                        "Manual price update"
+                        "Manual price update",
+                    isCostUpdate: false
+                });
+            }
+        }
+
+        // Detect Cost Change
+        const normalizedCost = normalizePrice(dto.product_cost);
+        if (normalizedCost !== undefined) {
+            if (isNaN(normalizedCost) || normalizedCost < 0) {
+                throw new BadRequestException('Product cost must be a non-negative number.');
+            }
+            if (normalizedCost !== product.cost) {
+                updates.cost = normalizedCost;
+
+                await createPriceHistory({
+                    product_id: productId,
+                    old_price: product.cost,
+                    new_price: normalizedCost,
+                    changed_by: employee_id,
+                    change_reason:
+                        sanitizeInput(dto.cost_change_reason) ||
+                        "Manual cost update",
+                    isCostUpdate: true
                 });
             }
         }

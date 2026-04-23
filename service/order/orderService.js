@@ -72,18 +72,36 @@ const orderService = {
             const isProductScheme = Boolean(detail.is_product_scheme);
             logger.info(`📦 Product: ${product.product_id} | is_product_scheme: ${detail.is_product_scheme} | Parsed: ${isProductScheme}`);
 
-            const {
-                productionRequired,
-                packedUsed,
-                unpackedUsed
-            } = await productService.checkAndReserveStock(
-                product,
-                stockDoc,
-                qtyOrdered,
-                employeeId,
-                employeeRole,
-                orderNumber
-            );
+            // 🔋 Battery identification using product_category
+            const isBattery =
+                typeof product.product_category === "string" &&
+                product.product_category.toLowerCase().includes("battery");
+
+            let productionRequired = 0;
+            let packedUsed = 0;
+            let unpackedUsed = 0;
+
+            if (isBattery) {
+                // ✅ Battery Logic: always treat as packed, skip production
+                packedUsed = qtyOrdered;
+                unpackedUsed = 0;
+                productionRequired = 0;
+                logger.info(`🔋 Battery product detected: ${product.product_id} | Qty: ${qtyOrdered} → Direct PACKED`);
+            } else {
+                // ✅ Existing stock allocation logic for non-battery products
+                const result = await productService.checkAndReserveStock(
+                    product,
+                    stockDoc,
+                    qtyOrdered,
+                    employeeId,
+                    employeeRole,
+                    orderNumber
+                );
+
+                productionRequired = result.productionRequired;
+                packedUsed = result.packedUsed;
+                unpackedUsed = result.unpackedUsed;
+            }
 
             if (productionRequired > 0 || unpackedUsed > 0) {
                 hasPendingProduction = true;
@@ -117,7 +135,6 @@ const orderService = {
             ) {
                 unitDiscount = Number(detail.discount_price);
                 discountNotes.push(`Manual Discount Applied: ${unitDiscount}`);
-
             } else if (
                 isDiscountAllowed &&
                 detail.dealer_discount_id
@@ -135,9 +152,7 @@ const orderService = {
                         Array.isArray(dealerDiscount.product_ids) ?
                             dealerDiscount.product_ids : [];
 
-                    const isEligible = eligibleProducts.includes(
-                        product.product_id
-                    );
+                    const isEligible = eligibleProducts.includes(product.product_id);
 
                     if (isEligible) {
                         if (dealerDiscount.is_percentage) {
@@ -158,13 +173,8 @@ const orderService = {
                 }
             }
 
-            if (!Number.isFinite(unitDiscount) || unitDiscount < 0) {
-                unitDiscount = 0;
-            }
-
-            if (unitDiscount > unitPrice) {
-                unitDiscount = unitPrice;
-            }
+            if (!Number.isFinite(unitDiscount) || unitDiscount < 0) { unitDiscount = 0; }
+            if (unitDiscount > unitPrice) { unitDiscount = unitPrice; }
 
             // Pricing Calculations
             const totalProductPrice = unitPrice * qtyOrdered;
@@ -178,21 +188,20 @@ const orderService = {
             }
 
             const notes = [
-                productionRequired > 0 &&
-                `Production Required: ${productionRequired}`,
-                unpackedUsed > 0 &&
-                `Unpacked Used: ${unpackedUsed}`,
+                productionRequired > 0 && `Production Required: ${productionRequired}`,
+                unpackedUsed > 0 && `Unpacked Used: ${unpackedUsed}`,
+                isBattery && `Battery Product: Direct PACKED allocation`,
                 ...discountNotes
-            ]
-                .filter(Boolean)
-                .join(" | ");
+            ].filter(Boolean).join(" | ");
 
             const detailStatus =
-                employeeRole === ROLES.SALESMAN ?
-                    ORDER_STATUSES.PENDING :
-                    productionRequired > 0 || unpackedUsed > 0 ?
-                        ORDER_STATUSES.PRODUCTION :
-                        ORDER_STATUSES.PACKED;
+                employeeRole === ROLES.SALESMAN
+                    ? ORDER_STATUSES.PENDING
+                    : isBattery
+                        ? ORDER_STATUSES.PACKED
+                        : productionRequired > 0 || unpackedUsed > 0
+                            ? ORDER_STATUSES.PRODUCTION
+                            : ORDER_STATUSES.PACKED;
 
             const orderDetails = {
                 order_details_number: await generateUniqueOrderDetailsId(),
@@ -203,6 +212,7 @@ const orderService = {
                 product_name: product.product_name,
                 product_model: product.model,
                 product_type: product.product_type,
+                product_category: product.product_category,
 
                 qty_ordered: qtyOrdered,
                 delivery_date: new Date(detail.delivery_date),

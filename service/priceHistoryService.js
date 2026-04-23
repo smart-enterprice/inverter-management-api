@@ -7,12 +7,17 @@ export const createPriceHistory = async ({
     old_price,
     new_price,
     changed_by,
-    change_reason
+    change_reason,
+    isCostUpdate = false
 }) => {
 
     if (!product_id || new_price === undefined || !changed_by) {
         throw new Error("Invalid price history payload");
     }
+
+    console.log("---------------------------");
+    console.log(product_id, old_price, new_price, changed_by, change_reason, isCostUpdate);
+    console.log("---------------------------");
 
     const priceHistoryId = await generateUniquePriceHistoryId();
 
@@ -22,8 +27,11 @@ export const createPriceHistory = async ({
         old_price,
         new_price,
         changed_by,
-        change_reason
+        change_reason,
+        is_cost_update: isCostUpdate
     });
+
+    logger.info(`📝 PriceHistory Logged → Product:${product_id}, Old Price:${old_price}, New Price:${new_price}, Changed By:${changed_by}`);
 
     return history;
 };
