@@ -14,10 +14,11 @@ export const fetchDealerAndOrderDetails = async (orders = []) => {
         Employee.find({
             employee_id: { $in: dealerIds },
             role: ROLES.DEALER
-        }),
+        }).lean(),
+
         OrderDetails.find({
             order_number: { $in: orderNumbers }
-        })
+        }).lean()
     ]);
 
     const dealerMap = dealers.reduce((map, dealer) => {
@@ -49,4 +50,24 @@ export const recalculateOrderDetailPricing = (detail) => {
     detail.total_product_price = unitPrice * detail.qty_ordered;
     detail.total_dealer_discount = unitDiscount * detail.qty_ordered;
     detail.total_price = detail.total_product_price - detail.total_dealer_discount;
+};
+
+export const buildDateRange = (startDate, endDate) => {
+    if (!startDate && !endDate) return undefined;
+
+    const range = {};
+
+    if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        range.$gte = start;
+    }
+
+    if (endDate || startDate) {
+        const end = new Date(endDate || startDate);
+        end.setHours(23, 59, 59, 999);
+        range.$lte = end;
+    }
+
+    return range;
 };

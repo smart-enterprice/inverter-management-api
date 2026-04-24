@@ -15,8 +15,8 @@ const EMPLOYEE_RESPONSE_FIELDS = [
 ];
 
 const PRODUCT_RESPONSE_FIELDS = [
-    'product_id', 'product_name', 'model', 'product_type',
-    'available_stock', 'price', 'status', 'created_by', 'brand',
+    'product_id', 'product_name', 'model', 'product_type', 'product_category',
+    'available_stock', 'price', 'cost', 'status', 'created_by', 'brand',
     'created_at', 'updated_at', 'log_note'
 ];
 
@@ -38,7 +38,7 @@ const STOCK_HISTORY_RESPONSE_FIELDS = [
 
 const PRICE_HISTORY_RESPONSE_FIELDS = [
     'price_history_id', 'product_id', 'old_price', 'new_price', 'changed_by',
-    'change_reason', 'changed_at', 'created_at'
+    'change_reason', 'is_cost_update', 'changed_at', 'created_at'
 ];
 
 const ORDER_RESPONSE_FIELDS = [
@@ -50,7 +50,7 @@ const ORDER_RESPONSE_FIELDS = [
 
 const ORDER_DETAILS_RESPONSE_FIELDS = [
     'order_number', 'order_details_number', 'product_id', 'product_brand', 'product_name',
-    'product_model', 'product_type', 'total_qty_ordered', 'qty_ordered', 'qty_delivered',
+    'product_model', 'product_type', 'product_category', 'total_qty_ordered', 'qty_ordered', 'qty_delivered',
     'delivery_date', 'delivery_notes', 'notes', 'unit_product_price', 'total_product_price',
     'is_free', 'dealer_discount', 'stock_usage', 'stock_flags', 'total_dealer_discount',
     'total_price', 'status', 'total_cancelled_qty', 'cancellation_history', 'created_at',

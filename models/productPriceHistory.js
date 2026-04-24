@@ -40,6 +40,11 @@ const productPriceHistorySchema = new mongoose.Schema({
         default: ""
     },
 
+    is_cost_update: {
+        type: Boolean,
+        default: false
+    },
+
     changed_at: {
         type: Date,
         default: getISTDate

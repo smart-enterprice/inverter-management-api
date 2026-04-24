@@ -77,13 +77,19 @@ const productController = {
         const search = sanitizeInput(req.query.search);
         const status = sanitizeInput(req.query.status);
         const type = sanitizeInput(req.query.type);
+        const category = sanitizeInput(req.query.category);
+        const brand = sanitizeInput(req.query.brand);
+        const model = sanitizeInput(req.query.model);
 
         const result = await productService.getProducts({
             page: Number(page),
             limit: Number(limit),
             search,
             type,
-            status
+            status,
+            category,
+            brand,
+            model
         });
 
         buildResponse({
