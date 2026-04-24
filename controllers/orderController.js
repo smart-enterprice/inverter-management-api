@@ -39,6 +39,9 @@ const orderController = {
         const startDate = req.query.startDate;
         const endDate = req.query.endDate;
 
+        const deliveryStartDate = req.query.deliveryStartDate;
+        const deliveryEndDate = req.query.deliveryEndDate;
+
         const result = await orderService.getAllOrders({
             includeRejected,
             page,
@@ -48,7 +51,9 @@ const orderController = {
             search,
             dealer,
             startDate,
-            endDate
+            endDate,
+            deliveryStartDate,
+            deliveryEndDate
         });
 
         buildResponse({
