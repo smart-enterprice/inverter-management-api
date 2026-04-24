@@ -1,12 +1,13 @@
 import jwt from 'jsonwebtoken';
 import { UnauthorizedException } from './CustomError.js';
+import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
+import { JWT_SECRET } from '../utils/constants.js';
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const jwt_secret = JWT_SECRET;
 
-export const verifyToken = (req, res, next) => {
+export const verifyToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
 
-    console.log("weirjbgjdsjbfmnvedf");
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw new UnauthorizedException('Authorization token missing or malformed');
     }
@@ -14,15 +15,20 @@ export const verifyToken = (req, res, next) => {
     const token = authHeader.split(' ')[1];
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, jwt_secret);
 
-        req.user = {
-            employee_id: decoded.employee_id,
-            role: decoded.role,
-            status: decoded.status
-        };
+        const { employee_id, role, status } = decoded;
+        if (!employee_id || !role) {
+            throw new UnauthorizedException('Invalid token payload.');
+        }
 
-        next();
+        CurrentRequestContext.run({}, () => {
+            CurrentRequestContext.setEmployeeId(employee_id);
+            CurrentRequestContext.setRole(role);
+            CurrentRequestContext.setCurrentToken(token);
+        
+            next();
+        });
     } catch (err) {
         throw new UnauthorizedException('Invalid or expired token');
     }

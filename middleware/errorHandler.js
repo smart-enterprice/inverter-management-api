@@ -1,130 +1,75 @@
-// errorhandler.js
-
-// import STATUS_CODES from '../utils/constants.js';
-
-// const errorHandler = (err, req, res, next) => {
-//     const statusCode = res.statusCode && res.statusCode !== 200 ?
-//         res.statusCode :
-//         STATUS_CODES.INTERNAL_SERVER_ERROR;
-
-//     res.status(statusCode);
-
-//     switch (statusCode) {
-//         case STATUS_CODES.BAD_REQUEST:
-//             res.json({
-//                 title: "Bad Request",
-//                 message: err.message,
-//             });
-//             break;
-
-//         case STATUS_CODES.VALIDATION_ERROR:
-//             res.json({
-//                 title: "Validation Error",
-//                 message: err.message,
-//             });
-//             break;
-
-//         case STATUS_CODES.UNAUTHORIZED:
-//             res.json({
-//                 title: "Unauthorized",
-//                 message: err.message,
-//             });
-//             break;
-
-//         case STATUS_CODES.FORBIDDEN:
-//             res.json({
-//                 title: "Forbidden",
-//                 message: err.message,
-//             });
-//             break;
-
-//         case STATUS_CODES.NOT_FOUND:
-//             res.json({
-//                 title: "Not Found",
-//                 message: err.message,
-//             });
-//             break;
-
-//         case STATUS_CODES.CONFLICT:
-//             res.json({
-//                 title: "Conflict",
-//                 message: err.message,
-//             });
-//             break;
-
-//         case STATUS_CODES.TOO_MANY_REQUESTS:
-//             res.json({
-//                 title: "Too Many Requests",
-//                 message: err.message,
-//             });
-//             break;
-
-//         case STATUS_CODES.INTERNAL_SERVER_ERROR:
-//         default:
-//             res.json({
-//                 title: "Internal Server Error",
-//                 message: err.message,
-//             });
-//             break;
-//     }
-// };
-
-// export default errorHandler;
-
 import {
     CustomException
 } from '../middleware/CustomError.js';
+import { ENVIRONMENT } from '../utils/constants.js';
 import logger from '../utils/logger.js';
 
-const sendError = (err, req, res) => {
+const sendErrorResponse = (error, req, res) => {
+    const timestamp = new Date().toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+    });
+
+
     const response = {
         success: false,
-        name: err.name,
-        message: err.message,
-        statusCode: err.statusCode || 500,
-        errors: err.errors || null,
-        timestamp: new Date().toISOString()
+        name: error.name || 'Error',
+        message: error.message || 'Internal Server Error',
+        statusCode: error.statusCode || 500,
+        errorCode: error.code || null,
+        errors: error.errors || null,
+        timestamp,
     };
 
-    if (process.env.NODE_ENV === 'development') {
-        response.stack = err.stack;
+    if (ENVIRONMENT === 'development' && error.stack) {
+        response.stack = error.stack;
     }
 
-    logger.error(`${err.name || 'Error'}: ${err.message}`, response);
+    logger.error(`${response.name}: ${response.message}`, {
+        method: req.method,
+        url: req.originalUrl,
+        statusCode: response.statusCode,
+        ip: req.ip,
+        errorCode: response.errorCode,
+        stack: error.stack,
+    });
+
     res.status(response.statusCode).json(response);
 };
 
-const handleRateLimitError = (err, req, res, next) => {
-    if (err.status === 429) {
-        logger.warn('Rate limit exceeded', {
-            ip: req.ip,
-            url: req.originalUrl
-        });
+export const handleRateLimitError = (req, res, next, options) => {
+    const timestamp = new Date().toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata'
+    });
 
-        const retryAfter = (err.headers && err.headers['retry-after']) || 3600;
+    logger.warn('Rate limit exceeded', { ip: req.ip, url: req.originalUrl });
 
-        return res.status(429).json({
-            success: false,
-            status: 429,
-            message: 'Too many requests. Please try again later.',
-            retryAfter,
-            timestamp: new Date().toISOString(),
-        });
+    let retryAfter = 3600;
+    if (options && options.standardHeaders) {
+        retryAfter = res.getHeader('Retry-After') || 3600;
     }
 
-    next(err);
+    res.status(429).json({
+        success: false,
+        statusCode: 429,
+        errorCode: 'ERR_RATE_LIMIT',
+        message: 'Too many requests. Please try again later.',
+        retryAfter,
+        timestamp,
+    });
 };
 
-const globalErrorHandler = (err, req, res, next) => {
-    if (!(err instanceof CustomException)) {
-        err = new CustomException(err.message || 'Internal Server Error', 500);
-        err.stack = err.stack;
+export const globalErrorHandler = (err, req, res, next) => {
+    let error = err;
+
+    if (!(error instanceof CustomException)) {
+        const message = error.message || 'Internal Server Error';
+        const statusCode = error.statusCode || 500;
+
+        const convertedError = new CustomException(message, statusCode, null, error.code);
+        convertedError.stack = error.stack;
+
+        error = convertedError;
     }
 
-    sendError(err, req, res);
-};
-
-export {
-    handleRateLimitError,
-    globalErrorHandler
+    sendErrorResponse(error, req, res);
 };

@@ -1,22 +1,15 @@
 // authController.js
 import asyncHandler from "express-async-handler";
 import helmet from "helmet";
-import xss from "xss";
 
 import { employeeService } from "../service/employeeService.js";
 import { BadRequestException } from "../middleware/CustomError.js";
+import { sanitizeInputBody } from "../utils/validationUtils.js";
+import Employee from "../models/employees.js";
+import jwt from "jsonwebtoken";
 import logger from "../utils/logger.js";
-
-const sanitizeInput = (req, res, next) => {
-    if (req.body) {
-        for (const key in req.body) {
-            if (typeof req.body[key] === "string") {
-                req.body[key] = xss(req.body[key]);
-            }
-        }
-    }
-    next();
-};
+import { JWT_SECRET } from "../utils/constants.js";
+import { tokenBlacklistService } from "../service/tokenBlacklistService.js";
 
 const authController = {
     employeeSecurityMiddleware: [
@@ -37,38 +30,17 @@ const authController = {
         })
     ],
 
-    sanitizeInput,
+    sanitizeInputBody,
 
     signin: [
         employeeService.loginLimiter,
-        sanitizeInput,
-        asyncHandler(async(req, res) => {
-            logger.info("Signin attempt :", {
-                email: req.body.employee_email,
-                ip: req.ip,
-                userAgent: req.get("User-Agent")
-            });
-
+        sanitizeInputBody,
+        asyncHandler(async (req, res) => {
             if (!req.body || !req.body.employee_email || !req.body.password) {
                 throw new BadRequestException("Email and password are required");
             }
 
             const loginResult = await employeeService.loginEmployee(req.body);
-
-            const cookieOptions = {
-                expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
-                sameSite: "strict"
-            };
-
-            res.cookie("jwt", loginResult.access_token, cookieOptions);
-
-            logger.info("Signin successful:", {
-                employeeId: loginResult.employee.employee_id,
-                email: loginResult.employee.employee_email,
-                ip: req.ip
-            });
 
             return res.status(200).json({
                 success: true,
@@ -79,31 +51,81 @@ const authController = {
                     token: loginResult.access_token,
                     expiresIn: loginResult.expiresIn
                 },
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
             });
         })
     ],
 
-    logout: asyncHandler(async(req, res) => {
-        res.cookie("jwt", "", {
-            expires: new Date(Date.now() + 10 * 1000),
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict"
-        });
+    logout: [
+        asyncHandler(async (req, res) => {
+            const authHeader = req.headers.authorization;
 
-        logger.info("User logged out:", {
-            ip: req.ip,
-            userAgent: req.get("User-Agent")
-        });
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                throw new UnauthorizedException('No token provided or format is invalid');
+            }
 
-        return res.status(200).json({
-            success: true,
-            status: 200,
-            message: "👋 Logged out successfully!",
-            timestamp: new Date().toISOString()
-        });
-    })
+            const token = authHeader.split(' ')[1];
+            await employeeService.logout(token);
+
+            return res.status(200).json({
+                success: true,
+                message: '✅ Successfully logged out',
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+            });
+        })
+    ],
+
+    checkTokenActive: [
+        asyncHandler(async (req, res) => {
+            const authHeader = req.headers.authorization;
+            let isActive = true;
+
+            try {
+                if (!authHeader || !authHeader.startsWith("Bearer ")) {
+                    throw new BadRequestException("Missing token");
+                }
+
+                const token = authHeader.split(" ")[1];
+                if (!token || token === "null" || token === "undefined") {
+                    throw new BadRequestException("Invalid token");
+                }
+
+                const decoded = jwt.verify(token, JWT_SECRET);
+                logger.debug("[AUTH] JWT verified");
+
+                const { employee_id } = decoded;
+                if (!employee_id) {
+                    throw new BadRequestException("Invalid payload");
+                }
+
+                if (tokenBlacklistService.isBlacklisted(token)) {
+                    throw new BadRequestException("Blacklisted token");
+                }
+
+                const employee = await Employee.findOne({
+                    employee_id,
+                    status: "active",
+                });
+
+                if (!employee) {
+                    throw new BadRequestException("Inactive user");
+                }
+
+                logger.info("[AUTH] Token is active");
+            } catch (err) {
+                isActive = false;
+                logger.error("[AUTH] Token validation failed", {
+                    reason: err.message
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                active: isActive,
+                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+            });
+        })
+    ]
 };
 
 export default authController;
