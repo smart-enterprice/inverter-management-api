@@ -405,6 +405,7 @@ const orderService = {
         // delivery date filter
         const deliveryRange = buildDateRange(deliveryStartDate, deliveryEndDate);
         if (deliveryRange) {
+
             // 1️⃣ Filter on Order collection
             filter.promised_delivery_date = deliveryRange;
 
