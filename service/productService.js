@@ -13,7 +13,7 @@ import Brand from "../models/brand.js";
 import logger from "../utils/logger.js";
 import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId, generateUniqueStockHistoryId } from "../utils/generatorIds.js";
 import { BadRequestException } from "../middleware/CustomError.js";
-import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext, normalizePrice, validateStockManagementRoleAccess, normalizeLower, normalizeUpper } from "../utils/validationUtils.js";
+import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext, normalizePrice, validateStockManagementRoleAccess, normalizeLower, normalizeUpper, normalizeProductType } from "../utils/validationUtils.js";
 import { mapPriceHistoryEntityToResponse, mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse, mapStockHistoryEntityToResponse } from "../utils/modelMapper.js";
 import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS, ROLES, PRODUCT_CATEGORIES } from "../utils/constants.js";
 import { createPriceHistory } from "./priceHistoryService.js";
@@ -591,6 +591,9 @@ const productService = {
         search = "",
         type,
         status,
+        category,
+        brand,
+        model
     }) => {
         const skip = (page - 1) * limit;
 
@@ -598,13 +601,27 @@ const productService = {
         const filter = {};
 
         if (status && status !== "all" && status !== "All" && status !== "ALL") filter.status = status;
-        if (type && type !== "all" && type !== "All" && type !== "ALL") filter.product_type = type;
+
+        const normalizedType = normalizeProductType(type);
+        if (normalizedType) {
+            filter.product_type = {
+                $regex: `^${normalizedType}$`,
+                $options: "i",
+            };
+        }
+
+        if (category && category !== "all" && category !== "All" && category !== "ALL") filter.product_category = category;
+        if (brand && brand !== "all" && brand !== "All" && brand !== "ALL") filter.brand = brand;
+        if (model && model !== "all" && model !== "All" && model !== "ALL") filter.model = model;
 
         if (search) {
             filter.$or = [
                 { product_name: { $regex: search, $options: "i" } },
                 { product_id: { $regex: search, $options: "i" } },
                 { brand: { $regex: search, $options: "i" } },
+                { model: { $regex: search, $options: "i" } },
+                { product_type: { $regex: search, $options: "i" } },
+                { product_category: { $regex: search, $options: "i" } },
             ];
         }
 

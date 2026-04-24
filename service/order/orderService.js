@@ -23,7 +23,7 @@ import invoiceService from "../invoiceService.js";
 import { allDetailsDelivered, canMoveOrderToTargetStatus, deriveOrderStatusFromDetails, resolveOrderDetailStatus } from "./orderStatus.js";
 import { validateOrderCreator, validateOrderDTO } from "./orderValidation.js";
 import { persistStockReturns, returnStockForDetail } from "./orderStock.js";
-import { fetchDealerAndOrderDetails } from "./orderHelpers.js";
+import { buildDateRange, fetchDealerAndOrderDetails } from "./orderHelpers.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -306,7 +306,6 @@ const orderService = {
     }),
 
     getAllOrders: asyncHandler(async ({
-        includeRejected = false,
         page = 1,
         limit = 10,
         status,
@@ -314,7 +313,10 @@ const orderService = {
         search,
         dealer,
         startDate,
-        endDate
+        endDate,
+        deliveryStartDate,
+        deliveryEndDate,
+        includeRejected = false
     }) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
@@ -394,24 +396,44 @@ const orderService = {
             ];
         }
 
-        // 📅 Date Range Filter (Production Ready)
-        if (startDate || endDate) {
-            filter.created_at = {};
+        // created date filter
+        const createdRange = buildDateRange(startDate, endDate);
+        if (createdRange) {
+            filter.created_at = createdRange;
+        }
 
-            if (startDate) {
-                const start = new Date(startDate);
-                start.setHours(0, 0, 0, 0);
-                filter.created_at.$gte = start;
-            }
+        // delivery date filter
+        const deliveryRange = buildDateRange(deliveryStartDate, deliveryEndDate);
+        if (deliveryRange) {
+            // 1️⃣ Filter on Order collection
+            filter.promised_delivery_date = deliveryRange;
 
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                filter.created_at.$lte = end;
-            } else {
-                const end = new Date(startDate);
-                end.setHours(23, 59, 59, 999);
-                filter.created_at.$lte = end;
+            // 2️⃣ Fetch matching OrderDetails (only required fields)
+            const matchingDetails = await OrderDetails.find({
+                delivery_date: deliveryRange,
+            })
+                .select("order_number")
+                .lean();
+
+            if (matchingDetails.length) {
+                // 3️⃣ Extract unique order numbers
+                const orderNumbersFromDetails = [
+                    ...new Set(matchingDetails.map(d => d.order_number)),
+                ];
+
+                // 4️⃣ Merge with existing order_number filter safely
+                if (filter.order_number) {
+                    filter.order_number = {
+                        $in: [
+                            ...new Set([
+                                ...(filter.order_number.$in || []),
+                                ...orderNumbersFromDetails,
+                            ]),
+                        ],
+                    };
+                } else {
+                    filter.order_number = { $in: orderNumbersFromDetails };
+                }
             }
         }
 

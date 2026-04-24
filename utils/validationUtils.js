@@ -180,3 +180,16 @@ export const formatValidationMessage = (errors) => {
 
     return `Validation failed -> ${formattedErrors}`;
 };
+
+export const normalizeProductType = (value) => {
+    if (!value) return undefined;
+
+    const cleaned = value
+        .replace(/\+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (cleaned.toLowerCase() === "all") return undefined;
+
+    return cleaned;
+};
