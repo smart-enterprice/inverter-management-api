@@ -10,6 +10,10 @@ router.use(verifyToken);
 router.use(sanitizeInputBody);
 
 // PRODUCT ROUTES
+
+router.get("/types", productController.getProductTypes);
+router.get("/categories", productController.getProductCategories);
+
 // CREATE
 router.post("/create-product", productController.createProduct);
 router.post("/getAllProductsByBrand", productController.getAllProductsByBrands);

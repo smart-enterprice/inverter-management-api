@@ -1157,6 +1157,25 @@ const productService = {
         return mapProductBrandEntityToResponse(updatedBrand);
     }),
 
+    // get product types
+    getProductTypes: asyncHandler(async () => {
+        const types = await Product.distinct("product_type");
+
+        const normalised = [...new Set(
+            types
+                .filter(Boolean)
+                .map(t => t.trim().toUpperCase())
+        )].sort();
+
+        return normalised;
+    }),
+
+    // get product categories
+    getProductCategories: asyncHandler(async () => {
+        const categories = Object.keys(PRODUCT_CATEGORIES).sort();
+        return categories;
+    }),
+
 }
 
 export { productService };

@@ -202,6 +202,27 @@ const productController = {
         });
     }),
 
+    // get product types and categories
+    getProductTypes: asyncHandler(async (req, res) => {
+        const data = await productService.getProductTypes();
+
+        return buildResponse({
+            res,
+            message: "🗂️ Product types fetched successfully",
+            data,
+        });
+    }),
+
+    getProductCategories: asyncHandler(async (req, res) => {
+        const data = await productService.getProductCategories();
+
+        return buildResponse({
+            res,
+            message: "🗂️ Product categories fetched successfully",
+            data,
+        });
+    }),
+
 };
 
 export default productController;
