@@ -39,7 +39,6 @@ const orderDetailsSchema = new mongoose.Schema({
     },
     product_category: {
         type: String,
-        required: [true, "📱 Product Category is required."],
     },
     qty_ordered: {
         type: Number,
