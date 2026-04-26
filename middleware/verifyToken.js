@@ -5,14 +5,36 @@ import { JWT_SECRET } from '../utils/constants.js';
 
 const jwt_secret = JWT_SECRET;
 
-export const verifyToken = async (req, res, next) => {
+const extractToken = (req) => {
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw new UnauthorizedException('Authorization token missing or malformed');
+    // ✅ Check Authorization header
+    if (authHeader?.startsWith("Bearer ")) {
+        return authHeader.split(" ")[1];
     }
 
-    const token = authHeader.split(' ')[1];
+    // ⚠️ Header exists but malformed
+    if (authHeader) {
+        throw new UnauthorizedException(
+            "Authorization header malformed. Expected 'Bearer <token>'"
+        );
+    }
+
+    // ✅ Fallback for SSE (query param)
+    if (req.query?.token) {
+        return req.query.token;
+    }
+
+    // ⚠️ No token found
+    return null;
+};
+
+export const verifyToken = async (req, res, next) => {
+    const token = extractToken(req);
+
+    if (!token) {
+        throw new UnauthorizedException('Authorization token missing or malformed');
+    }
 
     try {
         const decoded = jwt.verify(token, jwt_secret);
@@ -26,7 +48,7 @@ export const verifyToken = async (req, res, next) => {
             CurrentRequestContext.setEmployeeId(employee_id);
             CurrentRequestContext.setRole(role);
             CurrentRequestContext.setCurrentToken(token);
-        
+
             next();
         });
     } catch (err) {
