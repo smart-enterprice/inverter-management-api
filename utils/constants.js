@@ -41,6 +41,9 @@ export const PATH_ROUTES = {
     get BULK_IMPORT_ROUTE() {
         return `${this.BASIC_ROUTE}/upload-excel`;
     },
+    get NOTIFICATION_ROUTE() {
+        return `${this.BASIC_ROUTE}/notifications`;
+    },
 };
 
 export const {

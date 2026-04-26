@@ -24,6 +24,7 @@ import { allDetailsDelivered, canMoveOrderToTargetStatus, deriveOrderStatusFromD
 import { validateOrderCreator, validateOrderDTO } from "./orderValidation.js";
 import { persistStockReturns, returnStockForDetail } from "./orderStock.js";
 import { buildDateRange, fetchDealerAndOrderDetails } from "./orderHelpers.js";
+import { notifyOrderCreated } from "../notificationService.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -280,6 +281,15 @@ const orderService = {
 
         const orderDetailsList = await OrderDetails.insertMany(orderDetailsPayload);
         logger.info(`✅ Order created successfully — Order#: ${orderNumber} | Total Items: ${orderDetailsList.length}`);
+
+        // Trigger notification (non-blocking — errors won't fail the order)
+        notifyOrderCreated({
+            order: { ...order.toObject(), order_details: orderDetailsList },
+            dealer,
+            createdBy: employeeId,
+        }).catch((err) =>
+            logger.error("[Notification] Non-fatal error:", err.message)
+        );
 
         return transformOrderToResponse(order, dealer, orderDetailsList);
     }),
