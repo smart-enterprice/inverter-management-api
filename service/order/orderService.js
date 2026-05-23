@@ -536,18 +536,66 @@ const orderService = {
                 },
             },
             { $match: { remaining_qty: { $gt: 0 } } },
+
+            // Join with orders to get dealer_id for each line item.
+            {
+                $lookup: {
+                    from: "orders",
+                    localField: "order_number",
+                    foreignField: "order_number",
+                    as: "order_doc",
+                },
+            },
+            { $unwind: { path: "$order_doc", preserveNullAndEmptyArrays: true } },
+            {
+                $addFields: { dealer_id: "$order_doc.dealer_id" },
+            },
+
+            // Per product × dealer × status: sum remaining qty.
             {
                 $group: {
-                    _id: { product_id: "$product_id", status: "$status" },
+                    _id: {
+                        product_id: "$product_id",
+                        dealer_id: "$dealer_id",
+                        status: "$status",
+                    },
                     product_name: { $first: "$product_name" },
                     product_brand: { $first: "$product_brand" },
                     product_model: { $first: "$product_model" },
                     product_type: { $first: "$product_type" },
                     product_category: { $first: "$product_category" },
                     qty: { $sum: "$remaining_qty" },
-                    order_count: { $sum: 1 },
                 },
             },
+
+            // Pivot statuses per product × dealer.
+            {
+                $group: {
+                    _id: { product_id: "$_id.product_id", dealer_id: "$_id.dealer_id" },
+                    product_name: { $first: "$product_name" },
+                    product_brand: { $first: "$product_brand" },
+                    product_model: { $first: "$product_model" },
+                    product_type: { $first: "$product_type" },
+                    product_category: { $first: "$product_category" },
+                    breakdown: {
+                        $push: { status: "$_id.status", qty: "$qty" },
+                    },
+                    total_qty: { $sum: "$qty" },
+                },
+            },
+
+            // Look up dealer info.
+            {
+                $lookup: {
+                    from: "employees",
+                    localField: "_id.dealer_id",
+                    foreignField: "employee_id",
+                    as: "dealer_doc",
+                },
+            },
+            { $unwind: { path: "$dealer_doc", preserveNullAndEmptyArrays: true } },
+
+            // Group all dealers under their product.
             {
                 $group: {
                     _id: "$_id.product_id",
@@ -556,26 +604,54 @@ const orderService = {
                     product_model: { $first: "$product_model" },
                     product_type: { $first: "$product_type" },
                     product_category: { $first: "$product_category" },
-                    breakdown: {
+                    dealers: {
                         $push: {
-                            status: "$_id.status",
-                            qty: "$qty",
-                            order_count: "$order_count",
+                            dealer_id: "$_id.dealer_id",
+                            dealer_name: "$dealer_doc.employee_name",
+                            shop_name: "$dealer_doc.shop_name",
+                            town: "$dealer_doc.town",
+                            employee_phone: "$dealer_doc.employee_phone",
+                            breakdown: "$breakdown",
+                            total_qty: "$total_qty",
                         },
                     },
-                    total_qty: { $sum: "$qty" },
+                    total_qty: { $sum: "$total_qty" },
                 },
             },
             { $sort: { product_brand: 1, product_model: 1, product_name: 1 } },
         ]);
 
-        return rows.map((row) => {
-            const counts = TRACKED_STATUSES.reduce(
-                (acc, s) => ({ ...acc, [s]: 0 }),
-                {}
-            );
-            (row.breakdown || []).forEach((b) => {
+        const emptyCounts = () =>
+            TRACKED_STATUSES.reduce((acc, s) => ({ ...acc, [s]: 0 }), {});
+
+        const pivotBreakdown = (breakdown = []) => {
+            const counts = emptyCounts();
+            breakdown.forEach((b) => {
                 if (counts[b.status] !== undefined) counts[b.status] = b.qty;
+            });
+            return counts;
+        };
+
+        return rows.map((row) => {
+            // Build the dealer list with per-dealer counts.
+            const dealers = (row.dealers || [])
+                .map((d) => ({
+                    dealer_id: d.dealer_id,
+                    dealer_name: d.dealer_name || null,
+                    shop_name: d.shop_name || null,
+                    town: d.town || null,
+                    employee_phone: d.employee_phone ? String(d.employee_phone) : null,
+                    counts: pivotBreakdown(d.breakdown),
+                    total_qty: d.total_qty,
+                }))
+                .sort((a, b) => b.total_qty - a.total_qty);
+
+            // Roll up product-level counts from dealer counts.
+            const counts = emptyCounts();
+            dealers.forEach((d) => {
+                TRACKED_STATUSES.forEach((s) => {
+                    counts[s] += d.counts[s] || 0;
+                });
             });
 
             return {
@@ -587,6 +663,8 @@ const orderService = {
                 product_category: row.product_category,
                 counts,
                 total_qty: row.total_qty,
+                dealer_count: dealers.length,
+                dealers,
             };
         });
     }),

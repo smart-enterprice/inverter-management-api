@@ -3,7 +3,7 @@
 import asyncHandler from "express-async-handler";
 import { buildResponse } from "../utils/responseUtils.js";
 import { orderService } from "../service/order/orderService.js";
-import { sanitizeInput } from "../utils/validationUtils.js";
+import { sanitizeInput, validateMainRoleAccess } from "../utils/validationUtils.js";
 
 const orderController = {
     createOrder: asyncHandler(async (req, res) => {
@@ -97,6 +97,9 @@ const orderController = {
     }),
 
     getProductionSummary: asyncHandler(async (req, res) => {
+        // Restrict to SUPER_ADMIN / ADMIN / MANAGER (ADMIN_PRIVILEGED_ROLES).
+        validateMainRoleAccess();
+
         const data = await orderService.getProductionSummary();
 
         buildResponse({
