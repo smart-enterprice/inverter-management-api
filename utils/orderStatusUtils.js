@@ -28,6 +28,10 @@ export const assertRejectAllowed = (from) => {
 
 export const assertCancellable = (from) => {
     if (!CANCELLABLE_STATUSES.has(from)) {
-        throw new BadRequestException(`Cannot cancel order at status '${from}'. Cancellation allowed only before INVOICE.`);
+        throw new BadRequestException(
+            `Cannot cancel order at status '${from}'. ` +
+            `Once an invoice is generated, the order is part of the GST tax record — ` +
+            `issue a credit note instead of cancelling.`
+        );
     }
 };

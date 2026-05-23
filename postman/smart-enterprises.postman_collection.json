@@ -1,0 +1,720 @@
+{
+  "info": {
+    "name": "Smart Enterprises API — Full Backend",
+    "description": "Complete Postman collection covering every route in the inverter-management-api.\n\nQuick start:\n1. Import this file into Postman.\n2. Run **Auth → Sign In** first. The token is auto-saved to the collection variable `{{token}}` and used by every other request.\n3. Switch environments by editing the `base_url` collection variable: local (`http://localhost:1280/api/v1`) or prod (`https://api.smartenterprises.online/api/v1`).\n\nNotes:\n• Every protected route uses Bearer auth via `{{token}}` — set once, used everywhere.\n• Create / Update bodies show example payloads. Edit them to your data before sending.\n• Path params (`:employeeId`, `:orderNumber`, etc.) are filled with the placeholders that match the saved collection variables (`{{employee_id}}`, `{{order_number}}`, `{{product_id}}`). The Sign In script also saves the logged-in user's `employee_id`.\n• Disabled (greyed-out) query params show options that exist but you may not need by default.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "smart-enterprises-full"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:1280/api/v1", "description": "Local: http://localhost:1280/api/v1 · Prod: https://api.smartenterprises.online/api/v1" },
+    { "key": "token", "value": "", "description": "Auto-set by Sign In" },
+    { "key": "employee_id", "value": "", "description": "Auto-set by Sign In to the logged-in user's id" },
+    { "key": "order_number", "value": "", "description": "Fill in to use across the Orders folder" },
+    { "key": "order_details_id", "value": "", "description": "OrderDetails number for detail-status PUT" },
+    { "key": "product_id", "value": "", "description": "Used across Products folder" },
+    { "key": "brand_id", "value": "", "description": "Used by brand endpoints" },
+    { "key": "dealer_id", "value": "", "description": "Used as query param for analytics filtering" },
+    { "key": "from", "value": "2026-05-01", "description": "Default range start" },
+    { "key": "to", "value": "2026-05-31", "description": "Default range end" }
+  ],
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Sign In (run this first)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('login returns 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "if (body?.data?.token) {",
+                  "    pm.collectionVariables.set('token', body.data.token);",
+                  "    console.log('✓ token saved');",
+                  "}",
+                  "if (body?.data?.employee?.employee_id) {",
+                  "    pm.collectionVariables.set('employee_id', body.data.employee.employee_id);",
+                  "    console.log('✓ employee_id saved:', body.data.employee.employee_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"employee_email\": \"superadmin123@gmail.com\",\n  \"password\": \"superadmin@123\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/signin", "host": ["{{base_url}}"], "path": ["auth", "signin"] }
+          }
+        },
+        {
+          "name": "Check Token Active",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/auth/token/active", "host": ["{{base_url}}"], "path": ["auth", "token", "active"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Employees",
+      "item": [
+        {
+          "name": "Sign Up (Create Employee)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"employee_name\": \"Test User\",\n  \"employee_email\": \"test@example.com\",\n  \"employee_phone\": 9999999999,\n  \"password\": \"changeme@123\",\n  \"role\": \"ROLE_SALESMAN\",\n  \"district\": \"Malappuram\"\n}" },
+            "url": { "raw": "{{base_url}}/employees/signup", "host": ["{{base_url}}"], "path": ["employees", "signup"] }
+          }
+        },
+        {
+          "name": "Get My Profile",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/employees/get/profile", "host": ["{{base_url}}"], "path": ["employees", "get", "profile"] } }
+        },
+        {
+          "name": "Employee Counts (role-wise)",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/employees/count", "host": ["{{base_url}}"], "path": ["employees", "count"] } }
+        },
+        {
+          "name": "List Employees (paginated)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/employees?page=1&limit=10&status=active",
+              "host": ["{{base_url}}"],
+              "path": ["employees"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" },
+                { "key": "status", "value": "active" },
+                { "key": "role", "value": "", "disabled": true },
+                { "key": "search", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Employees by Role",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/employees/getByRole/ROLE_SALESMAN", "host": ["{{base_url}}"], "path": ["employees", "getByRole", "ROLE_SALESMAN"] }
+          }
+        },
+        {
+          "name": "Get Employee by ID",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/employees/{{employee_id}}", "host": ["{{base_url}}"], "path": ["employees", "{{employee_id}}"] }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"employee_name\": \"Updated Name\",\n  \"employee_phone\": 9999999998\n}" },
+            "url": { "raw": "{{base_url}}/employees/{{employee_id}}", "host": ["{{base_url}}"], "path": ["employees", "{{employee_id}}"] }
+          }
+        },
+        {
+          "name": "Reset Password (Self)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"old_password\": \"current@123\",\n  \"new_password\": \"newpass@123\"\n}" },
+            "url": { "raw": "{{base_url}}/employees/update/reset-password", "host": ["{{base_url}}"], "path": ["employees", "update", "reset-password"] }
+          }
+        },
+        {
+          "name": "Reset Password (Admin sets for user)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"new_password\": \"newpass@123\"\n}" },
+            "url": { "raw": "{{base_url}}/employees/update/reset-password/{{employee_id}}", "host": ["{{base_url}}"], "path": ["employees", "update", "reset-password", "{{employee_id}}"] }
+          }
+        },
+        {
+          "name": "Delete Employee (soft)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"employee_id\": \"{{employee_id}}\"\n}" },
+            "url": { "raw": "{{base_url}}/employees/update/delete-employee", "host": ["{{base_url}}"], "path": ["employees", "update", "delete-employee"] }
+          }
+        },
+        {
+          "name": "List Dealers",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/employees/dealers/get?page=1&limit=10&status=active&includeDealers=true&scope=ASSIGNED_ONLY",
+              "host": ["{{base_url}}"],
+              "path": ["employees", "dealers", "get"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" },
+                { "key": "status", "value": "active" },
+                { "key": "includeDealers", "value": "true" },
+                { "key": "scope", "value": "ASSIGNED_ONLY" },
+                { "key": "search", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Deleted Dealers",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/employees/dealers/deleted", "host": ["{{base_url}}"], "path": ["employees", "dealers", "deleted"] } }
+        },
+        {
+          "name": "List Employees with Passwords (admin)",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/employees/get/employees-password", "host": ["{{base_url}}"], "path": ["employees", "get", "employees-password"] } }
+        },
+        {
+          "name": "List Deleted Employees",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/employees/get/deleted-employees", "host": ["{{base_url}}"], "path": ["employees", "get", "deleted-employees"] } }
+        },
+        {
+          "name": "Dealer Discounts",
+          "item": [
+            {
+              "name": "Create Discount",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"dealer_id\": \"{{dealer_id}}\",\n  \"brand_name\": \"WARRIOR\",\n  \"model_name\": \"SMA\",\n  \"product_ids\": [\"{{product_id}}\"],\n  \"discount_value\": 5,\n  \"is_percentage\": true\n}" },
+                "url": { "raw": "{{base_url}}/employees/dealer/create-discount", "host": ["{{base_url}}"], "path": ["employees", "dealer", "create-discount"] }
+              }
+            },
+            {
+              "name": "Create Bulk Discounts",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "[\n  {\n    \"dealer_id\": \"{{dealer_id}}\",\n    \"brand_name\": \"WARRIOR\",\n    \"model_name\": \"SMA\",\n    \"product_ids\": [\"{{product_id}}\"],\n    \"discount_value\": 5,\n    \"is_percentage\": true\n  }\n]" },
+                "url": { "raw": "{{base_url}}/employees/dealer/create-discounts", "host": ["{{base_url}}"], "path": ["employees", "dealer", "create-discounts"] }
+              }
+            },
+            {
+              "name": "Get Discounts",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"dealer_id\": \"{{dealer_id}}\"\n}" },
+                "url": { "raw": "{{base_url}}/employees/dealer/get-discounts", "host": ["{{base_url}}"], "path": ["employees", "dealer", "get-discounts"] }
+              }
+            },
+            {
+              "name": "Update Discount",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"dealer_discount_id\": \"\",\n  \"discount_value\": 7\n}" },
+                "url": { "raw": "{{base_url}}/employees/dealer/update-discount", "host": ["{{base_url}}"], "path": ["employees", "dealer", "update-discount"] }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "List Active Products",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/product-details?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["product-details"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "brand", "value": "", "disabled": true },
+                { "key": "category", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List All Products (incl. inactive)",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/product-details/get/all", "host": ["{{base_url}}"], "path": ["product-details", "get", "all"] } }
+        },
+        {
+          "name": "Low Stock Products",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/product-details/low-stock?page=1&limit=20&threshold=5",
+              "host": ["{{base_url}}"],
+              "path": ["product-details", "low-stock"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "threshold", "value": "5" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Product Types",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/product-details/types", "host": ["{{base_url}}"], "path": ["product-details", "types"] } }
+        },
+        {
+          "name": "Product Categories",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/product-details/categories", "host": ["{{base_url}}"], "path": ["product-details", "categories"] } }
+        },
+        {
+          "name": "Get Product by ID",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/product-details/{{product_id}}", "host": ["{{base_url}}"], "path": ["product-details", "{{product_id}}"] } }
+        },
+        {
+          "name": "Get Products by Brands",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"brands\": [\"WARRIOR\", \"INDECS\"]\n}" },
+            "url": { "raw": "{{base_url}}/product-details/getAllProductsByBrand", "host": ["{{base_url}}"], "path": ["product-details", "getAllProductsByBrand"] }
+          }
+        },
+        {
+          "name": "Create Product",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"product_name\": \"NEW PRODUCT\",\n  \"product_brand\": \"WARRIOR\",\n  \"product_model\": \"NPM\",\n  \"product_type\": \"12V\",\n  \"product_category\": \"INVERTER\",\n  \"price\": 1000\n}" },
+            "url": { "raw": "{{base_url}}/product-details/create-product", "host": ["{{base_url}}"], "path": ["product-details", "create-product"] }
+          }
+        },
+        {
+          "name": "Update Product",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"price\": 1100,\n  \"change_reason\": \"price revision\"\n}" },
+            "url": { "raw": "{{base_url}}/product-details/{{product_id}}", "host": ["{{base_url}}"], "path": ["product-details", "{{product_id}}"] }
+          }
+        },
+        {
+          "name": "Create/Update Product Stocks",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"product_id\": \"{{product_id}}\",\n  \"packed_stock\": 10,\n  \"unpacked_stock\": 5,\n  \"action\": \"ADD\"\n}" },
+            "url": { "raw": "{{base_url}}/product-details/createOrUpdate/product-stocks", "host": ["{{base_url}}"], "path": ["product-details", "createOrUpdate", "product-stocks"] }
+          }
+        },
+        {
+          "name": "Brands",
+          "item": [
+            {
+              "name": "Create Brands (bulk)",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "[\n  { \"brand_name\": \"NEW BRAND\" }\n]" },
+                "url": { "raw": "{{base_url}}/product-details/create/brands", "host": ["{{base_url}}"], "path": ["product-details", "create", "brands"] }
+              }
+            },
+            {
+              "name": "List Brands",
+              "request": { "method": "GET", "url": { "raw": "{{base_url}}/product-details/getAll/brands", "host": ["{{base_url}}"], "path": ["product-details", "getAll", "brands"] } }
+            },
+            {
+              "name": "Get Brand by ID",
+              "request": { "method": "GET", "url": { "raw": "{{base_url}}/product-details/product-brand/{{brand_id}}", "host": ["{{base_url}}"], "path": ["product-details", "product-brand", "{{brand_id}}"] } }
+            },
+            {
+              "name": "Change Brand Status",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"status\": \"inactive\"\n}" },
+                "url": { "raw": "{{base_url}}/product-details/brand/WARRIOR", "host": ["{{base_url}}"], "path": ["product-details", "brand", "WARRIOR"] }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"dealer_id\": \"{{dealer_id}}\",\n  \"salesman_id\": \"{{employee_id}}\",\n  \"priority\": \"MEDIUM\",\n  \"order_note\": \"Test order from Postman\",\n  \"amount_paid\": 0,\n  \"payment_method\": \"CASH\",\n  \"order_details\": [\n    {\n      \"product_id\": \"{{product_id}}\",\n      \"qty_ordered\": 5,\n      \"delivery_date\": \"2026-06-15T00:00:00.000Z\",\n      \"discount_price\": 0,\n      \"is_product_scheme\": false\n    }\n  ]\n}" },
+            "url": { "raw": "{{base_url}}/order-details/create-order", "host": ["{{base_url}}"], "path": ["order-details", "create-order"] }
+          }
+        },
+        {
+          "name": "List Orders",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/order-details?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["order-details"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" },
+                { "key": "status", "value": "", "disabled": true },
+                { "key": "priority", "value": "", "disabled": true },
+                { "key": "dealer", "value": "", "disabled": true },
+                { "key": "startDate", "value": "", "disabled": true },
+                { "key": "endDate", "value": "", "disabled": true },
+                { "key": "includeRejected", "value": "false", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Filter by Date (year/month)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/order-details/date-filter?year=2026&month=5",
+              "host": ["{{base_url}}"],
+              "path": ["order-details", "date-filter"],
+              "query": [
+                { "key": "year", "value": "2026" },
+                { "key": "month", "value": "5" },
+                { "key": "start_date", "value": "", "disabled": true },
+                { "key": "end_date", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List by Status",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/order-details/status/PRODUCTION", "host": ["{{base_url}}"], "path": ["order-details", "status", "PRODUCTION"] }
+          }
+        },
+        {
+          "name": "Get Order by Number",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/order-details/{{order_number}}", "host": ["{{base_url}}"], "path": ["order-details", "{{order_number}}"] }
+          }
+        },
+        {
+          "name": "Update Order Detail Status",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"DELIVERED\"\n}" },
+            "url": { "raw": "{{base_url}}/order-details/{{order_details_id}}", "host": ["{{base_url}}"], "path": ["order-details", "{{order_details_id}}"] }
+          }
+        },
+        {
+          "name": "Update Multiple Order Details (batch)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"order_number\": \"{{order_number}}\",\n  \"order_details\": [\n    { \"order_details_number\": \"\", \"status\": \"PACKED\" }\n  ]\n}" },
+            "url": { "raw": "{{base_url}}/order-details/order/{{order_number}}", "host": ["{{base_url}}"], "path": ["order-details", "order", "{{order_number}}"] }
+          }
+        },
+        {
+          "name": "Update Order Status (unified)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"order_number\": \"{{order_number}}\",\n  \"status\": \"CONFIRMED\",\n  \"priority\": \"HIGH\",\n  \"order_note\": \"Confirmed via Postman\",\n  \"amount_paid\": 0,\n  \"payment_method\": \"CASH\"\n}" },
+            "url": { "raw": "{{base_url}}/order-details/status/{{order_number}}", "host": ["{{base_url}}"], "path": ["order-details", "status", "{{order_number}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "description": "SUPER_ADMIN / ADMIN / MANAGER only. Other roles get 403.",
+      "item": [
+        {
+          "name": "Summary",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/analytics/summary?from={{from}}&to={{to}}",
+              "host": ["{{base_url}}"], "path": ["analytics", "summary"],
+              "query": [
+                { "key": "from", "value": "{{from}}" },
+                { "key": "to", "value": "{{to}}" },
+                { "key": "dealer_id", "value": "{{dealer_id}}", "disabled": true },
+                { "key": "salesman_id", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sales Trend",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/analytics/sales-trend?from={{from}}&to={{to}}&interval=day",
+              "host": ["{{base_url}}"], "path": ["analytics", "sales-trend"],
+              "query": [
+                { "key": "from", "value": "{{from}}" },
+                { "key": "to", "value": "{{to}}" },
+                { "key": "interval", "value": "day", "description": "day | week | month" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Top Products",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/analytics/top-products?from={{from}}&to={{to}}&limit=10&metric=revenue",
+              "host": ["{{base_url}}"], "path": ["analytics", "top-products"],
+              "query": [
+                { "key": "from", "value": "{{from}}" },
+                { "key": "to", "value": "{{to}}" },
+                { "key": "limit", "value": "10" },
+                { "key": "metric", "value": "revenue", "description": "revenue | qty" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Top Brands",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/analytics/top-brands?from={{from}}&to={{to}}&limit=8&metric=qty",
+              "host": ["{{base_url}}"], "path": ["analytics", "top-brands"],
+              "query": [
+                { "key": "from", "value": "{{from}}" },
+                { "key": "to", "value": "{{to}}" },
+                { "key": "limit", "value": "8" },
+                { "key": "metric", "value": "qty", "description": "revenue | qty" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Top Dealers",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/analytics/top-dealers?from={{from}}&to={{to}}&limit=10",
+              "host": ["{{base_url}}"], "path": ["analytics", "top-dealers"],
+              "query": [
+                { "key": "from", "value": "{{from}}" },
+                { "key": "to", "value": "{{to}}" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Top Salesmen",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/analytics/top-salesmen?from={{from}}&to={{to}}&limit=10",
+              "host": ["{{base_url}}"], "path": ["analytics", "top-salesmen"],
+              "query": [
+                { "key": "from", "value": "{{from}}" },
+                { "key": "to", "value": "{{to}}" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Salesman Achievement (monthly)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/analytics/salesman-achievement?from={{from}}&to={{to}}",
+              "host": ["{{base_url}}"], "path": ["analytics", "salesman-achievement"],
+              "query": [
+                { "key": "from", "value": "{{from}}", "description": "Use month start" },
+                { "key": "to", "value": "{{to}}", "description": "Use month end / today" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invoice",
+      "item": [
+        {
+          "name": "Get Invoice by Order Number",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/invoice-details/{{order_number}}", "host": ["{{base_url}}"], "path": ["invoice-details", "{{order_number}}"] } }
+        }
+      ]
+    },
+    {
+      "name": "Company Address",
+      "item": [
+        {
+          "name": "Get Company Address",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/company-address", "host": ["{{base_url}}"], "path": ["company-address"] } }
+        },
+        {
+          "name": "Upsert Company Address",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"company_name\": \"Smart Enterprises\",\n  \"address\": \"...\",\n  \"phone\": \"\",\n  \"email\": \"\",\n  \"gst\": \"\"\n}" },
+            "url": { "raw": "{{base_url}}/company-address", "host": ["{{base_url}}"], "path": ["company-address"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List My Devices",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/notifications/devices/me", "host": ["{{base_url}}"], "path": ["notifications", "devices", "me"] } }
+        },
+        {
+          "name": "Register Device",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"<FCM-DEVICE-TOKEN>\",\n  \"device_id\": \"web-test-1\",\n  \"platform\": \"web\"\n}" },
+            "url": { "raw": "{{base_url}}/notifications/devices", "host": ["{{base_url}}"], "path": ["notifications", "devices"] }
+          }
+        },
+        {
+          "name": "Refresh Device Token",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"old_token\": \"<old>\",\n  \"new_token\": \"<new>\"\n}" },
+            "url": { "raw": "{{base_url}}/notifications/devices/refresh", "host": ["{{base_url}}"], "path": ["notifications", "devices", "refresh"] }
+          }
+        },
+        {
+          "name": "Remove One Device",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"<FCM-DEVICE-TOKEN>\"\n}" },
+            "url": { "raw": "{{base_url}}/notifications/devices", "host": ["{{base_url}}"], "path": ["notifications", "devices"] }
+          }
+        },
+        {
+          "name": "Remove All My Devices",
+          "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/notifications/devices/me", "host": ["{{base_url}}"], "path": ["notifications", "devices", "me"] } }
+        },
+        {
+          "name": "Send Notification (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Test\",\n  \"body\": \"Hello\",\n  \"target_roles\": [\"ROLE_SALESMAN\"]\n}" },
+            "url": { "raw": "{{base_url}}/notifications/send", "host": ["{{base_url}}"], "path": ["notifications", "send"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Locations",
+      "item": [
+        {
+          "name": "All Locations",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/locations", "host": ["{{base_url}}"], "path": ["locations"] } }
+        },
+        {
+          "name": "List Regions (states + UTs)",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/locations/regions", "host": ["{{base_url}}"], "path": ["locations", "regions"] } }
+        },
+        {
+          "name": "Districts of a State",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/locations/districts?state=Kerala",
+              "host": ["{{base_url}}"], "path": ["locations", "districts"],
+              "query": [{ "key": "state", "value": "Kerala" }]
+            }
+          }
+        },
+        {
+          "name": "Cities of a District",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/locations/cities?state=Kerala&district=Malappuram",
+              "host": ["{{base_url}}"], "path": ["locations", "cities"],
+              "query": [
+                { "key": "state", "value": "Kerala" },
+                { "key": "district", "value": "Malappuram" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bulk Import",
+      "item": [
+        {
+          "name": "Download Template",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/upload-excel/template", "host": ["{{base_url}}"], "path": ["upload-excel", "template"] } }
+        },
+        {
+          "name": "Upload Excel",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "description": "Excel file to import" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}/upload-excel/upload", "host": ["{{base_url}}"], "path": ["upload-excel", "upload"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public",
+      "item": [
+        {
+          "name": "Search",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/search/inverter", "host": ["{{base_url}}"], "path": ["search", "inverter"] } }
+        },
+        {
+          "name": "Upload File",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}/upload-files", "host": ["{{base_url}}"], "path": ["upload-files"] }
+          }
+        }
+      ]
+    }
+  ]
+}

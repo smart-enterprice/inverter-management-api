@@ -23,7 +23,7 @@ import invoiceService from "../invoiceService.js";
 import { allDetailsDelivered, canMoveOrderToTargetStatus, deriveOrderStatusFromDetails, resolveOrderDetailStatus } from "./orderStatus.js";
 import { validateOrderCreator, validateOrderDTO } from "./orderValidation.js";
 import { persistStockReturns, returnStockForDetail } from "./orderStock.js";
-import { buildDateRange, fetchDealerAndOrderDetails } from "./orderHelpers.js";
+import { buildDateRange, cancelRemainingQtyForDetail, fetchDealerAndOrderDetails } from "./orderHelpers.js";
 import { notificationService } from "../notification/notificationService.js";
 
 dayjs.extend(utc);
@@ -221,6 +221,7 @@ const orderService = {
                 status: detailStatus,
 
                 unit_product_price: round(unitPrice),
+                unit_product_cost: round(Number(product.cost) || 0),
                 total_product_price: round(totalProductPrice),
 
                 dealer_discount: round(unitDiscount),
@@ -310,6 +311,7 @@ const orderService = {
         priority,
         search,
         dealer,
+        salesman,
         startDate,
         endDate,
         deliveryStartDate,
@@ -328,6 +330,7 @@ const orderService = {
                 filter.salesman_id = employeeId;
                 break;
             default:
+                if (salesman) filter.salesman_id = salesman;
                 break;
         }
 
@@ -500,6 +503,170 @@ const orderService = {
                 detailsMap[order.order_number] || []
             )
         );
+    }),
+
+    getProductionSummary: asyncHandler(async () => {
+        const TRACKED_STATUSES = [
+            ORDER_STATUSES.PRODUCTION,
+            ORDER_STATUSES.PACKED,
+            ORDER_STATUSES.INVOICE,
+            ORDER_STATUSES.SHIPPED,
+        ];
+
+        const rows = await OrderDetails.aggregate([
+            { $match: { status: { $in: TRACKED_STATUSES } } },
+            {
+                $addFields: {
+                    remaining_qty: {
+                        $max: [
+                            0,
+                            {
+                                $subtract: [
+                                    "$qty_ordered",
+                                    {
+                                        $add: [
+                                            { $ifNull: ["$qty_delivered", 0] },
+                                            { $ifNull: ["$total_cancelled_qty", 0] },
+                                        ],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            },
+            { $match: { remaining_qty: { $gt: 0 } } },
+
+            // Join with orders to get dealer_id for each line item.
+            {
+                $lookup: {
+                    from: "orders",
+                    localField: "order_number",
+                    foreignField: "order_number",
+                    as: "order_doc",
+                },
+            },
+            { $unwind: { path: "$order_doc", preserveNullAndEmptyArrays: true } },
+            {
+                $addFields: { dealer_id: "$order_doc.dealer_id" },
+            },
+
+            // Per product × dealer × status: sum remaining qty.
+            {
+                $group: {
+                    _id: {
+                        product_id: "$product_id",
+                        dealer_id: "$dealer_id",
+                        status: "$status",
+                    },
+                    product_name: { $first: "$product_name" },
+                    product_brand: { $first: "$product_brand" },
+                    product_model: { $first: "$product_model" },
+                    product_type: { $first: "$product_type" },
+                    product_category: { $first: "$product_category" },
+                    qty: { $sum: "$remaining_qty" },
+                },
+            },
+
+            // Pivot statuses per product × dealer.
+            {
+                $group: {
+                    _id: { product_id: "$_id.product_id", dealer_id: "$_id.dealer_id" },
+                    product_name: { $first: "$product_name" },
+                    product_brand: { $first: "$product_brand" },
+                    product_model: { $first: "$product_model" },
+                    product_type: { $first: "$product_type" },
+                    product_category: { $first: "$product_category" },
+                    breakdown: {
+                        $push: { status: "$_id.status", qty: "$qty" },
+                    },
+                    total_qty: { $sum: "$qty" },
+                },
+            },
+
+            // Look up dealer info.
+            {
+                $lookup: {
+                    from: "employees",
+                    localField: "_id.dealer_id",
+                    foreignField: "employee_id",
+                    as: "dealer_doc",
+                },
+            },
+            { $unwind: { path: "$dealer_doc", preserveNullAndEmptyArrays: true } },
+
+            // Group all dealers under their product.
+            {
+                $group: {
+                    _id: "$_id.product_id",
+                    product_name: { $first: "$product_name" },
+                    product_brand: { $first: "$product_brand" },
+                    product_model: { $first: "$product_model" },
+                    product_type: { $first: "$product_type" },
+                    product_category: { $first: "$product_category" },
+                    dealers: {
+                        $push: {
+                            dealer_id: "$_id.dealer_id",
+                            dealer_name: "$dealer_doc.employee_name",
+                            shop_name: "$dealer_doc.shop_name",
+                            town: "$dealer_doc.town",
+                            employee_phone: "$dealer_doc.employee_phone",
+                            breakdown: "$breakdown",
+                            total_qty: "$total_qty",
+                        },
+                    },
+                    total_qty: { $sum: "$total_qty" },
+                },
+            },
+            { $sort: { product_brand: 1, product_model: 1, product_name: 1 } },
+        ]);
+
+        const emptyCounts = () =>
+            TRACKED_STATUSES.reduce((acc, s) => ({ ...acc, [s]: 0 }), {});
+
+        const pivotBreakdown = (breakdown = []) => {
+            const counts = emptyCounts();
+            breakdown.forEach((b) => {
+                if (counts[b.status] !== undefined) counts[b.status] = b.qty;
+            });
+            return counts;
+        };
+
+        return rows.map((row) => {
+            // Build the dealer list with per-dealer counts.
+            const dealers = (row.dealers || [])
+                .map((d) => ({
+                    dealer_id: d.dealer_id,
+                    dealer_name: d.dealer_name || null,
+                    shop_name: d.shop_name || null,
+                    town: d.town || null,
+                    employee_phone: d.employee_phone ? String(d.employee_phone) : null,
+                    counts: pivotBreakdown(d.breakdown),
+                    total_qty: d.total_qty,
+                }))
+                .sort((a, b) => b.total_qty - a.total_qty);
+
+            // Roll up product-level counts from dealer counts.
+            const counts = emptyCounts();
+            dealers.forEach((d) => {
+                TRACKED_STATUSES.forEach((s) => {
+                    counts[s] += d.counts[s] || 0;
+                });
+            });
+
+            return {
+                product_id: row._id,
+                product_name: row.product_name,
+                product_brand: row.product_brand,
+                product_model: row.product_model,
+                product_type: row.product_type,
+                product_category: row.product_category,
+                counts,
+                total_qty: row.total_qty,
+                dealer_count: dealers.length,
+                dealers,
+            };
+        });
     }),
 
     updateOrderDetailStatus: asyncHandler(async (orderDetailsId, updateDto) => {
@@ -1096,12 +1263,22 @@ const orderService = {
         updatedDetails,
         employeeId,
         employeeRole,
-        orderNumber
+        orderNumber,
+        reason,
     }) => {
         for (const detail of updatedDetails) {
-            logger.info(`🔄 Returning stock for order detail ${d._id} → ${normalized} ${JSON.stringify(d, null, 2)}`);
+            logger.info(`🔄 Returning stock for order detail ${detail._id} → CANCELLED ${JSON.stringify(detail, null, 2)}`);
 
             await returnStockForDetail({ d: detail, employeeId, employeeRole, orderNumber });
+
+            // Record the cancelled qty + audit trail + recalc pricing so
+            // analytics (revenue_cancelled, total_cancelled_qty) stays correct.
+            cancelRemainingQtyForDetail(detail, {
+                employeeId,
+                employeeRole,
+                reason: reason || "Order cancelled",
+            });
+
             detail.status = ORDER_STATUSES.CANCELLED;
             await detail.save();
         }
@@ -1164,6 +1341,19 @@ const orderService = {
             for (const d of details) {
                 logger.info(`🔄 Returning stock for order detail ${d._id} → ${normalized} ${JSON.stringify(d, null, 2)}`);
                 await returnStockForDetail({ d, employeeId, employeeRole, orderNumber });
+
+                // Mirror the qty-cancel bookkeeping so analytics + audit trail
+                // see consistent total_cancelled_qty / cancellation_history /
+                // recalculated pricing for whole-order cancellations and
+                // rejections.
+                cancelRemainingQtyForDetail(d, {
+                    employeeId,
+                    employeeRole,
+                    reason: normalized === ORDER_STATUSES.REJECTED
+                        ? "Order rejected"
+                        : "Order cancelled",
+                });
+
                 d.status = normalized;
                 await d.save();
             }

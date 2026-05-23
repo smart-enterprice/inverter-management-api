@@ -16,6 +16,7 @@ router.post('/create-order', orderController.createOrder);
 /* -------------------- Read -------------------- */
 router.get("/", orderController.getAll);
 router.get("/date-filter", orderController.fetchOrdersByDateFilter);
+router.get("/production-summary", orderController.getProductionSummary);
 router.get("/status/:orderStatus", orderController.getByOrderStatus);
 router.get("/:orderId", orderController.getByOrderId);
 

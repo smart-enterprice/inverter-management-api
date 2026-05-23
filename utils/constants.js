@@ -44,6 +44,9 @@ export const PATH_ROUTES = {
     get NOTIFICATION_ROUTE() {
         return `${this.BASIC_ROUTE}/notifications`;
     },
+    get ANALYTICS_ROUTE() {
+        return `${this.BASIC_ROUTE}/analytics`;
+    },
 };
 
 export const {
@@ -69,8 +72,13 @@ export const {
     FIREBASE_CLIENT_EMAIL,
     FIREBASE_PRIVATE_KEY,
     FIREBASE_SERVICE_ACCOUNT_PATH,
-    ENABLE_STOCK_RETURNS = false
+    ENABLE_STOCK_RETURNS = false,
+    SALESMAN_DEFAULT_TARGET_QTY,
 } = process.env;
+
+// Fallback target (total ITEMS sold = sum of order_details.qty_ordered per salesman).
+// Used until per-salesman targets are configured in the DB.
+export const DEFAULT_SALESMAN_TARGET_QTY = Number(SALESMAN_DEFAULT_TARGET_QTY) || 500;
 
 export const ROLES = {
     SUPER_ADMIN: 'ROLE_SUPER_ADMIN',
@@ -164,6 +172,13 @@ export const PAYMENT_STATUSES = {
     REFUNDED: "REFUNDED"
 };
 
+// Forward-only state machine for ORDER-level status.
+//
+// Semantics:
+//   DELIVERED   = order has at least one detail delivered, but at least one
+//                 detail still has outstanding qty. Auto-set by the system.
+//   COMPLETED   = ALL details have qty_delivered >= qty_ordered (i.e. fully
+//                 fulfilled). Auto-set by allDetailsDelivered(). Terminal.
 export const ALLOWED_TRANSITIONS = {
     [ORDER_STATUSES.PENDING]: [ORDER_STATUSES.CONFIRMED, ORDER_STATUSES.REJECTED],
     [ORDER_STATUSES.CONFIRMED]: [ORDER_STATUSES.PRODUCTION, ORDER_STATUSES.PACKED],
@@ -171,7 +186,8 @@ export const ALLOWED_TRANSITIONS = {
     [ORDER_STATUSES.PACKED]: [ORDER_STATUSES.INVOICE],
     [ORDER_STATUSES.INVOICE]: [ORDER_STATUSES.SHIPPED],
     [ORDER_STATUSES.SHIPPED]: [ORDER_STATUSES.DELIVERED],
-    [ORDER_STATUSES.DELIVERED]: [],
+    [ORDER_STATUSES.DELIVERED]: [ORDER_STATUSES.COMPLETED],
+    [ORDER_STATUSES.COMPLETED]: [],
 
     [ORDER_STATUSES.CANCELLED]: [],
     [ORDER_STATUSES.REJECTED]: []
@@ -196,9 +212,13 @@ export const STATUSES_REQUIRING_DETAIL_VALIDATION = [
     ORDER_STATUSES.DELIVERED
 ];
 
+// Statuses where the order is finalized — no further edits, status changes,
+// or detail mutations are allowed.
 export const IMMUTABLE_ORDER_STATUSES = [
     ORDER_STATUSES.DELIVERED,
-    ORDER_STATUSES.CANCELLED
+    ORDER_STATUSES.COMPLETED,
+    ORDER_STATUSES.CANCELLED,
+    ORDER_STATUSES.REJECTED
 ];
 
 export const EMPLOYEE_ACCESS_SCOPE = {
