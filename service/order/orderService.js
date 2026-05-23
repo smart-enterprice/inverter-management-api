@@ -1267,9 +1267,12 @@ const orderService = {
         reason,
     }) => {
         for (const detail of updatedDetails) {
-            logger.info(`🔄 Returning stock for order detail ${detail._id} → CANCELLED ${JSON.stringify(detail, null, 2)}`);
+            logger.info(`🔄 Cancelling order detail ${detail._id} → CANCELLED ${JSON.stringify(detail, null, 2)}`);
 
-            await returnStockForDetail({ d: detail, employeeId, employeeRole, orderNumber });
+            // Stock auto-return is gated by ENABLE_STOCK_RETURNS env flag.
+            if (ENABLE_STOCK_RETURNS === "true") {
+                await returnStockForDetail({ d: detail, employeeId, employeeRole, orderNumber });
+            }
 
             // Record the cancelled qty + audit trail + recalc pricing so
             // analytics (revenue_cancelled, total_cancelled_qty) stays correct.
@@ -1339,8 +1342,12 @@ const orderService = {
 
         if ([ORDER_STATUSES.CANCELLED, ORDER_STATUSES.REJECTED].includes(normalized)) {
             for (const d of details) {
-                logger.info(`🔄 Returning stock for order detail ${d._id} → ${normalized} ${JSON.stringify(d, null, 2)}`);
-                await returnStockForDetail({ d, employeeId, employeeRole, orderNumber });
+                logger.info(`🔄 ${normalized} order detail ${d._id} ${JSON.stringify(d, null, 2)}`);
+
+                // Stock auto-return is gated by ENABLE_STOCK_RETURNS env flag.
+                if (ENABLE_STOCK_RETURNS === "true") {
+                    await returnStockForDetail({ d, employeeId, employeeRole, orderNumber });
+                }
 
                 // Mirror the qty-cancel bookkeeping so analytics + audit trail
                 // see consistent total_cancelled_qty / cancellation_history /
