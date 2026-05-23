@@ -23,7 +23,7 @@ import invoiceService from "../invoiceService.js";
 import { allDetailsDelivered, canMoveOrderToTargetStatus, deriveOrderStatusFromDetails, resolveOrderDetailStatus } from "./orderStatus.js";
 import { validateOrderCreator, validateOrderDTO } from "./orderValidation.js";
 import { persistStockReturns, returnStockForDetail } from "./orderStock.js";
-import { buildDateRange, fetchDealerAndOrderDetails } from "./orderHelpers.js";
+import { buildDateRange, cancelRemainingQtyForDetail, fetchDealerAndOrderDetails } from "./orderHelpers.js";
 import { notificationService } from "../notification/notificationService.js";
 
 dayjs.extend(utc);
@@ -221,6 +221,7 @@ const orderService = {
                 status: detailStatus,
 
                 unit_product_price: round(unitPrice),
+                unit_product_cost: round(Number(product.cost) || 0),
                 total_product_price: round(totalProductPrice),
 
                 dealer_discount: round(unitDiscount),
@@ -310,6 +311,7 @@ const orderService = {
         priority,
         search,
         dealer,
+        salesman,
         startDate,
         endDate,
         deliveryStartDate,
@@ -328,6 +330,7 @@ const orderService = {
                 filter.salesman_id = employeeId;
                 break;
             default:
+                if (salesman) filter.salesman_id = salesman;
                 break;
         }
 
@@ -500,6 +503,92 @@ const orderService = {
                 detailsMap[order.order_number] || []
             )
         );
+    }),
+
+    getProductionSummary: asyncHandler(async () => {
+        const TRACKED_STATUSES = [
+            ORDER_STATUSES.PRODUCTION,
+            ORDER_STATUSES.PACKED,
+            ORDER_STATUSES.INVOICE,
+            ORDER_STATUSES.SHIPPED,
+        ];
+
+        const rows = await OrderDetails.aggregate([
+            { $match: { status: { $in: TRACKED_STATUSES } } },
+            {
+                $addFields: {
+                    remaining_qty: {
+                        $max: [
+                            0,
+                            {
+                                $subtract: [
+                                    "$qty_ordered",
+                                    {
+                                        $add: [
+                                            { $ifNull: ["$qty_delivered", 0] },
+                                            { $ifNull: ["$total_cancelled_qty", 0] },
+                                        ],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            },
+            { $match: { remaining_qty: { $gt: 0 } } },
+            {
+                $group: {
+                    _id: { product_id: "$product_id", status: "$status" },
+                    product_name: { $first: "$product_name" },
+                    product_brand: { $first: "$product_brand" },
+                    product_model: { $first: "$product_model" },
+                    product_type: { $first: "$product_type" },
+                    product_category: { $first: "$product_category" },
+                    qty: { $sum: "$remaining_qty" },
+                    order_count: { $sum: 1 },
+                },
+            },
+            {
+                $group: {
+                    _id: "$_id.product_id",
+                    product_name: { $first: "$product_name" },
+                    product_brand: { $first: "$product_brand" },
+                    product_model: { $first: "$product_model" },
+                    product_type: { $first: "$product_type" },
+                    product_category: { $first: "$product_category" },
+                    breakdown: {
+                        $push: {
+                            status: "$_id.status",
+                            qty: "$qty",
+                            order_count: "$order_count",
+                        },
+                    },
+                    total_qty: { $sum: "$qty" },
+                },
+            },
+            { $sort: { product_brand: 1, product_model: 1, product_name: 1 } },
+        ]);
+
+        return rows.map((row) => {
+            const counts = TRACKED_STATUSES.reduce(
+                (acc, s) => ({ ...acc, [s]: 0 }),
+                {}
+            );
+            (row.breakdown || []).forEach((b) => {
+                if (counts[b.status] !== undefined) counts[b.status] = b.qty;
+            });
+
+            return {
+                product_id: row._id,
+                product_name: row.product_name,
+                product_brand: row.product_brand,
+                product_model: row.product_model,
+                product_type: row.product_type,
+                product_category: row.product_category,
+                counts,
+                total_qty: row.total_qty,
+            };
+        });
     }),
 
     updateOrderDetailStatus: asyncHandler(async (orderDetailsId, updateDto) => {
@@ -1096,12 +1185,22 @@ const orderService = {
         updatedDetails,
         employeeId,
         employeeRole,
-        orderNumber
+        orderNumber,
+        reason,
     }) => {
         for (const detail of updatedDetails) {
-            logger.info(`🔄 Returning stock for order detail ${d._id} → ${normalized} ${JSON.stringify(d, null, 2)}`);
+            logger.info(`🔄 Returning stock for order detail ${detail._id} → CANCELLED ${JSON.stringify(detail, null, 2)}`);
 
             await returnStockForDetail({ d: detail, employeeId, employeeRole, orderNumber });
+
+            // Record the cancelled qty + audit trail + recalc pricing so
+            // analytics (revenue_cancelled, total_cancelled_qty) stays correct.
+            cancelRemainingQtyForDetail(detail, {
+                employeeId,
+                employeeRole,
+                reason: reason || "Order cancelled",
+            });
+
             detail.status = ORDER_STATUSES.CANCELLED;
             await detail.save();
         }
@@ -1164,6 +1263,19 @@ const orderService = {
             for (const d of details) {
                 logger.info(`🔄 Returning stock for order detail ${d._id} → ${normalized} ${JSON.stringify(d, null, 2)}`);
                 await returnStockForDetail({ d, employeeId, employeeRole, orderNumber });
+
+                // Mirror the qty-cancel bookkeeping so analytics + audit trail
+                // see consistent total_cancelled_qty / cancellation_history /
+                // recalculated pricing for whole-order cancellations and
+                // rejections.
+                cancelRemainingQtyForDetail(d, {
+                    employeeId,
+                    employeeRole,
+                    reason: normalized === ORDER_STATUSES.REJECTED
+                        ? "Order rejected"
+                        : "Order cancelled",
+                });
+
                 d.status = normalized;
                 await d.save();
             }

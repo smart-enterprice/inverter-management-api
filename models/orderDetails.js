@@ -68,6 +68,13 @@ const orderDetailsSchema = new mongoose.Schema({
         required: [true, "💰 Product unit price is required."],
         min: [0, "Price must be a positive number."],
     },
+    // Snapshot of product.cost at order-creation time, so profit math stays
+    // historically accurate when the product master's cost is later updated.
+    unit_product_cost: {
+        type: Number,
+        default: 0,
+        min: [0, "Cost cannot be negative."],
+    },
     total_product_price: {
         type: Number,
         required: [true, "💰 Total product price is required."],

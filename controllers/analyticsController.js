@@ -43,6 +43,7 @@ const analyticsController = {
             to: req.query.to,
             limit: req.query.limit,
             metric: req.query.metric,
+            view: req.query.view,
             dealer_id: req.query.dealer_id,
             salesman_id: req.query.salesman_id,
         });
@@ -59,6 +60,7 @@ const analyticsController = {
             from: req.query.from,
             to: req.query.to,
             limit: req.query.limit,
+            view: req.query.view,
             salesman_id: req.query.salesman_id,
         });
 
@@ -75,6 +77,7 @@ const analyticsController = {
             to: req.query.to,
             limit: req.query.limit,
             metric: req.query.metric,
+            view: req.query.view,
             dealer_id: req.query.dealer_id,
             salesman_id: req.query.salesman_id,
         });
@@ -91,6 +94,7 @@ const analyticsController = {
             from: req.query.from,
             to: req.query.to,
             limit: req.query.limit,
+            view: req.query.view,
             dealer_id: req.query.dealer_id,
         });
 

@@ -35,6 +35,7 @@ const orderController = {
         const search = sanitizeInput(req.query.search);
 
         const dealer = sanitizeInput(req.query.dealer);
+        const salesman = sanitizeInput(req.query.salesman);
 
         const startDate = req.query.startDate;
         const endDate = req.query.endDate;
@@ -50,6 +51,7 @@ const orderController = {
             priority,
             search,
             dealer,
+            salesman,
             startDate,
             endDate,
             deliveryStartDate,
@@ -89,6 +91,17 @@ const orderController = {
         buildResponse({
             res,
             message: "Orders fetched successfully",
+            data,
+            extra: { count: data.length }
+        });
+    }),
+
+    getProductionSummary: asyncHandler(async (req, res) => {
+        const data = await orderService.getProductionSummary();
+
+        buildResponse({
+            res,
+            message: "Production summary fetched successfully",
             data,
             extra: { count: data.length }
         });

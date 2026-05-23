@@ -95,25 +95,29 @@ export const allDetailsDelivered = (details = []) => {
     ]);
 };
 
-// Allowed status transitions
-const ORDER_STATUS_TRANSITIONS = {
-    PENDING: ["PENDING", "CONFIRMED"],
-    CONFIRMED: ["PENDING", "CONFIRMED"],
-    PRODUCTION: ["CONFIRMED", "PRODUCTION"],
-    PACKED: ["PRODUCTION", "PACKED"],
-    INVOICE: ["PACKED", "INVOICE"],
-    SHIPPED: ["INVOICE", "SHIPPED"],
-    DELIVERED: ["SHIPPED", "DELIVERED"],
-    COMPLETED: ["DELIVERED"]
+// Per-detail status preconditions for moving the ORDER to a given target.
+//
+// Read as: "for the order to move to status X, every order_detail must be in
+// one of these statuses". This is NOT the order-level state machine — that
+// lives in ALLOWED_TRANSITIONS (utils/constants.js).
+const DETAIL_STATUSES_REQUIRED_FOR_ORDER_TARGET = {
+    [ORDER_STATUSES.PENDING]:    [ORDER_STATUSES.PENDING],
+    [ORDER_STATUSES.CONFIRMED]:  [ORDER_STATUSES.PENDING, ORDER_STATUSES.CONFIRMED],
+    [ORDER_STATUSES.PRODUCTION]: [ORDER_STATUSES.CONFIRMED, ORDER_STATUSES.PRODUCTION],
+    [ORDER_STATUSES.PACKED]:     [ORDER_STATUSES.PRODUCTION, ORDER_STATUSES.PACKED],
+    [ORDER_STATUSES.INVOICE]:    [ORDER_STATUSES.PACKED, ORDER_STATUSES.INVOICE],
+    [ORDER_STATUSES.SHIPPED]:    [ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED],
+    [ORDER_STATUSES.DELIVERED]:  [ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED],
+    [ORDER_STATUSES.COMPLETED]:  [ORDER_STATUSES.DELIVERED, ORDER_STATUSES.COMPLETED]
 };
 
-// Validate if order can move to target status
+// Validate if order can move to target status given the current detail mix.
 export const canMoveOrderToTargetStatus = (
     details = [],
     targetStatus
 ) => {
 
-    const allowedStatuses = ORDER_STATUS_TRANSITIONS[targetStatus];
+    const allowedStatuses = DETAIL_STATUSES_REQUIRED_FOR_ORDER_TARGET[targetStatus];
 
     if (!Array.isArray(details) || !Array.isArray(allowedStatuses)) {
         return false;

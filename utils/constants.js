@@ -172,6 +172,13 @@ export const PAYMENT_STATUSES = {
     REFUNDED: "REFUNDED"
 };
 
+// Forward-only state machine for ORDER-level status.
+//
+// Semantics:
+//   DELIVERED   = order has at least one detail delivered, but at least one
+//                 detail still has outstanding qty. Auto-set by the system.
+//   COMPLETED   = ALL details have qty_delivered >= qty_ordered (i.e. fully
+//                 fulfilled). Auto-set by allDetailsDelivered(). Terminal.
 export const ALLOWED_TRANSITIONS = {
     [ORDER_STATUSES.PENDING]: [ORDER_STATUSES.CONFIRMED, ORDER_STATUSES.REJECTED],
     [ORDER_STATUSES.CONFIRMED]: [ORDER_STATUSES.PRODUCTION, ORDER_STATUSES.PACKED],
@@ -179,7 +186,8 @@ export const ALLOWED_TRANSITIONS = {
     [ORDER_STATUSES.PACKED]: [ORDER_STATUSES.INVOICE],
     [ORDER_STATUSES.INVOICE]: [ORDER_STATUSES.SHIPPED],
     [ORDER_STATUSES.SHIPPED]: [ORDER_STATUSES.DELIVERED],
-    [ORDER_STATUSES.DELIVERED]: [],
+    [ORDER_STATUSES.DELIVERED]: [ORDER_STATUSES.COMPLETED],
+    [ORDER_STATUSES.COMPLETED]: [],
 
     [ORDER_STATUSES.CANCELLED]: [],
     [ORDER_STATUSES.REJECTED]: []
@@ -204,9 +212,13 @@ export const STATUSES_REQUIRING_DETAIL_VALIDATION = [
     ORDER_STATUSES.DELIVERED
 ];
 
+// Statuses where the order is finalized — no further edits, status changes,
+// or detail mutations are allowed.
 export const IMMUTABLE_ORDER_STATUSES = [
     ORDER_STATUSES.DELIVERED,
-    ORDER_STATUSES.CANCELLED
+    ORDER_STATUSES.COMPLETED,
+    ORDER_STATUSES.CANCELLED,
+    ORDER_STATUSES.REJECTED
 ];
 
 export const EMPLOYEE_ACCESS_SCOPE = {

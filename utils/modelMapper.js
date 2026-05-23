@@ -203,12 +203,55 @@ export const mapOrderDetailsListToResponse = (details = []) => {
     return details.map(mapOrderDetailEntityToResponse);
 };
 
+const computeOrderProgress = (details = []) => {
+    const progress = {
+        qty_ordered_total: 0,
+        qty_delivered_total: 0,
+        qty_cancelled_total: 0,
+        qty_in_production_total: 0,
+        qty_packed_total: 0,
+        qty_invoiced_total: 0,
+        qty_shipped_total: 0,
+        qty_remaining_total: 0,
+        items_total: 0,
+        items_delivered: 0,
+    };
+
+    details.forEach((d) => {
+        const ordered = Number(d.qty_ordered) || 0;
+        const delivered = Number(d.qty_delivered) || 0;
+        const cancelled = Number(d.total_cancelled_qty) || 0;
+        const remaining = Math.max(0, ordered - delivered - cancelled);
+        const status = d.status;
+
+        progress.qty_ordered_total   += ordered;
+        progress.qty_delivered_total += delivered;
+        progress.qty_cancelled_total += cancelled;
+        progress.qty_remaining_total += remaining;
+        progress.items_total         += 1;
+        if (delivered >= ordered && ordered > 0) progress.items_delivered += 1;
+
+        if (status === "PRODUCTION") progress.qty_in_production_total += remaining;
+        if (status === "PACKED")     progress.qty_packed_total        += remaining;
+        if (status === "INVOICE")    progress.qty_invoiced_total      += remaining;
+        if (status === "SHIPPED")    progress.qty_shipped_total       += remaining;
+    });
+
+    const pct = progress.qty_ordered_total > 0
+        ? Math.round((progress.qty_delivered_total / progress.qty_ordered_total) * 100)
+        : 0;
+    progress.delivered_percent = pct;
+
+    return progress;
+};
+
 export const transformOrderToResponse = (order, dealer, orderDetailsList = []) => {
     if (!order) return { order: null };
 
     const orderData = mapOrderEntityToResponse(order);
     orderData.dealer = mapDealerEntityToResponse(dealer);
     orderData.order_details = mapOrderDetailsListToResponse(orderDetailsList);
+    orderData.progress = computeOrderProgress(orderDetailsList);
 
     return { order: orderData };
 };
