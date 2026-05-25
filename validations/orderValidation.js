@@ -84,3 +84,38 @@ export const createOrderValidation = [
 
     validateRequest,
 ];
+
+// Validates the payload for POST /order-details/:orderNumber/items.
+// Body must contain `order_details` — same per-item rules as createOrder,
+// but the order-level fields (dealer_id, priority, etc.) aren't accepted
+// here because the parent order already has them.
+export const addItemsToOrderValidation = [
+    body("order_details")
+        .isArray({ min: 1 }).withMessage("order_details must be a non-empty array."),
+
+    body("order_details.*.product_id")
+        .isString().withMessage("order_details[*].product_id must be a string.")
+        .trim()
+        .notEmpty().withMessage("order_details[*].product_id is required."),
+
+    body("order_details.*.qty_ordered")
+        .isInt({ min: 1 }).withMessage("order_details[*].qty_ordered must be a positive integer."),
+
+    body("order_details.*.delivery_date")
+        .isISO8601().withMessage("order_details[*].delivery_date must be a valid ISO 8601 date."),
+
+    body("order_details.*.is_product_scheme")
+        .optional({ nullable: true })
+        .isBoolean().withMessage("order_details[*].is_product_scheme must be a boolean."),
+
+    body("order_details.*.discount_price")
+        .optional({ nullable: true })
+        .isFloat({ min: 0 }).withMessage("order_details[*].discount_price must be a non-negative number."),
+
+    body("order_details.*.dealer_discount_id")
+        .optional({ nullable: true, checkFalsy: true })
+        .isString().withMessage("order_details[*].dealer_discount_id must be a string.")
+        .trim(),
+
+    validateRequest,
+];

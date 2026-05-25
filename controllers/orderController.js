@@ -25,6 +25,20 @@ const orderController = {
         });
     }),
 
+    addItemsToOrder: asyncHandler(async (req, res) => {
+        const data = await orderService.addItemsToOrder(
+            req.params.orderNumber,
+            req.body.order_details
+        );
+
+        buildResponse({
+            res,
+            status: 201,
+            message: `✅ Items added to order ${req.params.orderNumber}.`,
+            data,
+        });
+    }),
+
     getAll: asyncHandler(async (req, res) => {
         const includeRejected = req.query.includeRejected === "true";
         const page = Number(req.query.page) || 1;

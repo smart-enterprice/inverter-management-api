@@ -177,6 +177,13 @@ Previously only one of three call sites honoured `ENABLE_STOCK_RETURNS`. Cancell
 ### Salesman achievement now honours per-salesman targets
 `GET /api/v1/analytics/salesman-achievement` previously used `DEFAULT_SALESMAN_TARGET_QTY` for every salesman, ignoring the `assignedTarget` field that admins set per-user in the employees collection. Now each row uses the salesman's own `assignedTarget` when it's > 0, falling back to the default otherwise. Each row also exposes a `target_source: "assigned" | "default"` so the UI can show which target is in effect.
 
+### Add items to an existing order
+New endpoint: `POST /api/v1/order-details/:orderNumber/items`. Appends new line items to an order without going through the full create flow. Validates the same per-item rules as `create-order`. After insert, recalculates `order_total_price`, `order_total_discount`, `promised_delivery_date`, and re-derives the parent order's status (a new production-needing line on a PACKED order regresses to PRODUCTION).
+
+Access: order's original creator OR `SUPER_ADMIN` / `ADMIN` / `MANAGER`. Blocked when order is in `DELIVERED` / `COMPLETED` / `CANCELLED` / `REJECTED`.
+
+GST note: currently allowed at any non-terminal status, including `INVOICE` and `SHIPPED`, because real GST/billing isn't in this system yet. When invoicing is added, this should be tightened to mirror `assertCancellable` (block once invoiced).
+
 ### Schema-based request validation on critical writes
 Critical write endpoints now run an `express-validator` chain at the route boundary before any business logic. Catches malformed input (wrong types, negative quantities, missing required fields, unknown enum values) and returns a `400 ValidationException` with field-level error messages.
 
