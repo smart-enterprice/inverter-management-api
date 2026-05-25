@@ -12,7 +12,7 @@ import DealerDiscount from "../../models/dealerDiscount.js";
 
 import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../../utils/generatorIds.js";
 import { BadRequestException, ForbiddenException } from "../../middleware/CustomError.js";
-import { getAuthenticatedEmployeeContext, isValidTransition, normalizePrice, round, sanitizeInput } from "../../utils/validationUtils.js";
+import { getAuthenticatedEmployeeContext, normalizePrice, round, sanitizeInput } from "../../utils/validationUtils.js";
 
 import { getISTDate, ROLES, STOCK_TYPES, ORDER_STATUSES, CANCELLABLE_STATUSES, ADMIN_PRIVILEGED_ROLES, STATUSES_REQUIRING_DETAIL_VALIDATION, IMMUTABLE_ORDER_STATUSES, ENABLE_STOCK_RETURNS } from "../../utils/constants.js";
 import { mapOrderDetailEntityToResponse, transformOrderToResponse } from "../../utils/modelMapper.js";
@@ -1291,118 +1291,6 @@ const orderService = {
         order.status = ORDER_STATUSES.CANCELLED;
 
         await order.save();
-    }),
-
-    updateOrderStatus: asyncHandler(async (orderNumber, newStatus) => {
-        const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
-
-        if (!newStatus || typeof newStatus !== "string") throw new BadRequestException("Invalid newStatus provided.");
-
-        const normalized = newStatus.toUpperCase();
-        if (!Object.values(ORDER_STATUSES).includes(normalized)) throw new BadRequestException(`Invalid order status: ${normalized}.`);
-
-        const order = await Order.findByOrderNumber(orderNumber);
-        if (!order) throw new BadRequestException(`No order found for: ${orderNumber}`);
-
-        const prev = order.status;
-
-        if ([ORDER_STATUSES.DELIVERED, ORDER_STATUSES.CANCELLED, ORDER_STATUSES.REJECTED].includes(prev)) {
-            throw new BadRequestException(`Order ${orderNumber} is already '${prev}' and cannot be updated.`);
-        }
-
-        if (prev === normalized) {
-            throw new BadRequestException(`Order already in status '${prev}'.`);
-        }
-
-        if (normalized === ORDER_STATUSES.REJECTED && prev !== ORDER_STATUSES.PENDING) {
-            throw new BadRequestException("REJECTED is allowed only from PENDING.");
-        }
-
-        if (normalized === ORDER_STATUSES.CANCELLED && !CANCELLABLE_STATUSES.has(prev)) {
-            throw new BadRequestException(`Cannot cancel order at '${prev}'. Cancellation allowed only before INVOICE.`);
-        }
-
-        if (!isValidTransition(previous, normalized)) {
-            throw new BadRequestException(`Invalid status transition: ${previous} → ${normalized}`);
-        }
-
-        const details = await OrderDetails.find({ order_number: orderNumber });
-
-        if ([ORDER_STATUSES.INVOICE, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED].includes(normalized)) {
-            if (!canMoveOrderToTargetStatus(updatedOrderDetails, normalized)) {
-                throw new BadRequestException(`Order cannot move to '${normalized}' because one or more details are not ready for that stage.`);
-            }
-        }
-
-        if (normalized === ORDER_STATUSES.CONFIRMED) {
-            if (![ROLES.ADMIN, ROLES.SUPER_ADMIN].includes(employeeRole)) {
-                throw new ForbiddenException(`You are not authorized to set status to '${normalized}'.`);
-            }
-        }
-
-        if ([ORDER_STATUSES.CANCELLED, ORDER_STATUSES.REJECTED].includes(normalized)) {
-            for (const d of details) {
-                logger.info(`🔄 ${normalized} order detail ${d._id} ${JSON.stringify(d, null, 2)}`);
-
-                // Stock auto-return is gated by ENABLE_STOCK_RETURNS env flag.
-                if (ENABLE_STOCK_RETURNS === "true") {
-                    await returnStockForDetail({ d, employeeId, employeeRole, orderNumber });
-                }
-
-                // Mirror the qty-cancel bookkeeping so analytics + audit trail
-                // see consistent total_cancelled_qty / cancellation_history /
-                // recalculated pricing for whole-order cancellations and
-                // rejections.
-                cancelRemainingQtyForDetail(d, {
-                    employeeId,
-                    employeeRole,
-                    reason: normalized === ORDER_STATUSES.REJECTED
-                        ? "Order rejected"
-                        : "Order cancelled",
-                });
-
-                d.status = normalized;
-                await d.save();
-            }
-            order.order_total_price = 0;
-            order.order_total_discount = 0;
-        }
-
-        order.status = allDetailsDelivered(details) ? ORDER_STATUSES.COMPLETED : normalized;
-
-        await order.save();
-
-        logger.info(`🔄 Order Status Updated — order_number: ${orderNumber} | ${prev} → ${order.status}`);
-
-        // // Notifications 
-        // if (prev !== order.status) {
-        //     if (order.status === ORDER_STATUSES.CONFIRMED) {
-        //         fireNotification(
-        //             notifyOrderConfirmed({
-        //                 order,
-        //                 confirmedBy: employeeId,
-        //                 createdBy: order.created_by,
-        //             })
-        //         );
-        //     } else if (
-        //         order.status === ORDER_STATUSES.PRODUCTION ||
-        //         order.status === ORDER_STATUSES.PACKED
-        //     ) {
-        //         fireNotification(
-        //             notifyOrderStatusChanged({
-        //                 order,
-        //                 newStatus: order.status,
-        //                 changedBy: employeeId,
-        //                 createdBy: order.created_by,
-        //             })
-        //         );
-        //     }
-        // }
-
-        const dealer = await Employee.findOne({ employee_id: order.dealer_id, role: ROLES.DEALER });
-        const refreshedDetails = await OrderDetails.find({ order_number: orderNumber });
-
-        return transformOrderToResponse(order, dealer, refreshedDetails);
     }),
 
     updateOrderAndDetails: asyncHandler(async (orderNumber, payload) => {

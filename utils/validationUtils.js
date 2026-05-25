@@ -87,6 +87,21 @@ export const validateMainRoleAccess = () => {
     return { employee_id, role };
 };
 
+// Stricter than validateMainRoleAccess — only SUPER_ADMIN is allowed.
+// Use for endpoints that expose secrets or perform irreversible global actions.
+export const validateSuperAdminAccess = () => {
+    const employee_id = CurrentRequestContext.getEmployeeId();
+    const rawRole = CurrentRequestContext.getRole();
+    const role = (rawRole || "").toUpperCase();
+
+    if (!employee_id || role !== ROLES.SUPER_ADMIN) {
+        throw new ForbiddenException(
+            `Access denied. This action is restricted to ${ROLES.SUPER_ADMIN}.`
+        );
+    }
+    return { employee_id, role };
+};
+
 export const validateStockManagementRoleAccess = () => {
     const employee_id = CurrentRequestContext.getEmployeeId();
     const rawRole = CurrentRequestContext.getRole();

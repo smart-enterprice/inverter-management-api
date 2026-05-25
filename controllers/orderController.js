@@ -138,20 +138,6 @@ const orderController = {
         });
     }),
 
-    updateOrderStatus: asyncHandler(async (req, res) => {
-        const { orderNumber } = req.params;
-        const { status } = req.body;
-
-        const updatedOrder = await orderService.updateOrderStatus(orderNumber, status);
-
-        res.status(200).json({
-            success: true,
-            message: `✅ Order ${orderNumber} status updated successfully.`,
-            data: updatedOrder,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
-        });
-    }),
-
     updateOrderStatusUnified: asyncHandler(async (req, res) => {
         const data =
             await orderService.updateOrderAndDetails(

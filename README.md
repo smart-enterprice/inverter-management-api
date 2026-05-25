@@ -225,13 +225,10 @@ These are gaps identified in the May 2026 audit. **Not blocking everyday use**, 
 - **Recommended fix:** wrap `createOrder` in `mongoose.startSession()` + `withTransaction()`, and inside the transaction replace `checkAndReserveStock`'s read-then-save with `Stock.findOneAndUpdate({ product_id, packed_stock: { $gte: needed }}, { $inc: { packed_stock: -needed }}, { session })`. Single atomic op per stock bucket + multi-doc consistency.
 - **Status: parked.** Per business decision the stock system is paused while the rest of the platform stabilises. Re-open this work around Dec 2026 (≈6–7 months from May 2026) when stock is brought back online.
 
-### Dead/buggy code in `orderService.updateOrderStatus`
-- Lines ~1325 and ~1332 reference undefined variables `previous` and `updatedOrderDetails` (should be `prev` and `details`). Would throw `ReferenceError` if reached — but the route `PUT /status/:orderNumber` maps to `updateOrderStatusUnified` instead, so this method is currently dead.
-- **Recommended fix:** delete the dead method (preferred), or fix the two typos if you want to keep it as an alternative endpoint.
-
-### Role enforcement — partially addressed
-- The frontend `routePermissions.js` map blocks routes per role; the backend has `validateMainRoleAccess()` applied to the main admin-only endpoints (see "Recent changes — Server-side role gates" above for the full list).
-- **Still open:** `GET /employees/get/employees-password` reveals decrypted passwords — should be `SUPER_ADMIN` only (stricter than `validateMainRoleAccess`). Order status updates, invoice mutations, and notification admin endpoints are also not yet gated and should be reviewed.
+### Role enforcement — substantially addressed
+- The frontend `routePermissions.js` map blocks routes per role; the backend has `validateMainRoleAccess()` applied to all the main admin-only endpoints (see "Recent changes — Server-side role gates" above for the full list).
+- `GET /employees/get/employees-password` now requires `SUPER_ADMIN` (via the stricter `validateSuperAdminAccess()` helper).
+- **Still open:** order-status mutations (`PUT /order-details/status/:orderNumber` and per-detail updates), invoice mutations, and notification admin endpoints aren't gated yet — review whether they need role checks.
 
 ### Other notes
 - `console.info(...)` still used in a few places (e.g. `updateOrderAndDetails`) — should standardise on `logger`.

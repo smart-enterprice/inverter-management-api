@@ -9,7 +9,7 @@ import logger from "../utils/logger.js";
 
 import { mapEmployeeEntityToResponse } from "../utils/modelMapper.js";
 import { revealPassword } from "../utils/employeeAuth.js";
-import { buildEmployeeProjectionConfig, buildEmployeeQueryFilter, extractUniqueDealerIds, getAuthenticatedEmployeeContext, normalizeSalesmanIds, parseEmployeeQueryParams, sanitizeInputBody, validateMainRoleAccess } from "../utils/validationUtils.js";
+import { buildEmployeeProjectionConfig, buildEmployeeQueryFilter, extractUniqueDealerIds, getAuthenticatedEmployeeContext, normalizeSalesmanIds, parseEmployeeQueryParams, sanitizeInputBody, validateMainRoleAccess, validateSuperAdminAccess } from "../utils/validationUtils.js";
 import { EMPLOYEE_ACCESS_SCOPE, ROLES } from "../utils/constants.js";
 import { buildEmployeeListResponse } from "../utils/responseUtils.js";
 
@@ -285,6 +285,10 @@ const employeeController = {
 
     getAllEmployeesWithPassword: [
         asyncHandler(async (req, res) => {
+            // Decrypts and reveals every employee password. Restrict to SUPER_ADMIN
+            // only — admin/manager are intentionally excluded.
+            validateSuperAdminAccess();
+
             const { page, limit, skip } = getPaginationParams(req.query);
 
             const [employees, total] = await Promise.all([
