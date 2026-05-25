@@ -889,6 +889,7 @@ const analyticsService = {
                     _id: 0,
                     salesman_id: "$_id",
                     salesman_name: "$salesman.employee_name",
+                    salesman_assigned_target: "$salesman.assignedTarget",
                     achieved_qty: 1,
                     orders_count: { $size: "$orders_set" },
                     revenue: 1,
@@ -896,22 +897,27 @@ const analyticsService = {
             },
         ]);
 
-        const target_qty = DEFAULT_SALESMAN_TARGET_QTY;
+        const items = rows.map((r) => {
+            const assigned = Number(r.salesman_assigned_target) || 0;
+            const usesAssigned = assigned > 0;
+            const target_qty = usesAssigned ? assigned : DEFAULT_SALESMAN_TARGET_QTY;
 
-        const items = rows.map((r) => ({
-            salesman_id: r.salesman_id,
-            salesman_name: r.salesman_name || "—",
-            target_qty,
-            achieved_qty: r.achieved_qty || 0,
-            achievement_pct: target_qty > 0
-                ? Number(((r.achieved_qty / target_qty) * 100).toFixed(1))
-                : 0,
-            orders_count: r.orders_count || 0,
-            revenue: r.revenue || 0,
-        }));
+            return {
+                salesman_id: r.salesman_id,
+                salesman_name: r.salesman_name || "—",
+                target_qty,
+                target_source: usesAssigned ? "assigned" : "default",
+                achieved_qty: r.achieved_qty || 0,
+                achievement_pct: target_qty > 0
+                    ? Number(((r.achieved_qty / target_qty) * 100).toFixed(1))
+                    : 0,
+                orders_count: r.orders_count || 0,
+                revenue: r.revenue || 0,
+            };
+        });
 
         return {
-            default_target_qty: target_qty,
+            default_target_qty: DEFAULT_SALESMAN_TARGET_QTY,
             items,
         };
     }),
