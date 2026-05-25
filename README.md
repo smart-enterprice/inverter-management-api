@@ -177,6 +177,17 @@ Previously only one of three call sites honoured `ENABLE_STOCK_RETURNS`. Cancell
 ### Salesman achievement now honours per-salesman targets
 `GET /api/v1/analytics/salesman-achievement` previously used `DEFAULT_SALESMAN_TARGET_QTY` for every salesman, ignoring the `assignedTarget` field that admins set per-user in the employees collection. Now each row uses the salesman's own `assignedTarget` when it's > 0, falling back to the default otherwise. Each row also exposes a `target_source: "assigned" | "default"` so the UI can show which target is in effect.
 
+### Server-side role gates on admin-only endpoints
+Previously most admin actions trusted only the frontend's `routePermissions.js` — anyone with a valid JWT could curl them directly. `validateMainRoleAccess()` (allows `SUPER_ADMIN`, `ADMIN`, `MANAGER`) is now applied to:
+- `PUT /employees/update/delete-employee` (deleteEmployee)
+- `PUT /employees/update/reset-password/:employeeId` (resetPasswordById — resetting *another* user's password; self-reset endpoint stays open)
+- `POST /employees/dealer/create-discount`, `POST /employees/dealer/create-discounts`, `PUT /employees/dealer/update-discount`
+- `POST /product-details/create-product`, `PUT /product-details/:productId`, `PUT /product-details/createOrUpdate/product-stocks`
+- `POST /product-details/create/brands`, `PUT /product-details/brand/:brandName`
+- `POST /upload-excel` (bulk import)
+
+Non-allowed roles now get `403 ForbiddenException` server-side. Existing read endpoints are unchanged.
+
 ## Scripts
 
 ```bash
@@ -195,17 +206,19 @@ These are gaps identified in the May 2026 audit. **Not blocking everyday use**, 
 - **Recommended fix:** switch to access + refresh token pattern. Access token 15m–1h, refresh token 30d stored in MongoDB with a TTL index. Add `POST /auth/refresh` endpoint. Requires coordinated changes on web + mobile clients.
 - **Interim mitigation if not done:** rotate `JWT_SECRET` periodically (invalidates everything), persist the blacklist in MongoDB, and cut lifetime to ~7d.
 
-### Stock allocation race condition
+### Stock allocation race condition AND createOrder is not transactional
 - `productService.checkAndReserveStock` does read-then-save without a transaction or atomic op. Two concurrent orders for the same product can both see the same starting stock and both subtract — overselling possible under load.
-- **Recommended fix:** replace the read-then-save with `Stock.findOneAndUpdate({ product_id, packed_stock: { $gte: needed }}, { $inc: { packed_stock: -needed }})`. Single atomic op per bucket. No transaction needed.
+- `orderService.createOrder` writes stock → Order → OrderDetails sequentially without a session. Mid-flight failure leaves inconsistent state (stock debited but order not saved, or order saved with no detail lines).
+- **Recommended fix:** wrap `createOrder` in `mongoose.startSession()` + `withTransaction()`, and inside the transaction replace `checkAndReserveStock`'s read-then-save with `Stock.findOneAndUpdate({ product_id, packed_stock: { $gte: needed }}, { $inc: { packed_stock: -needed }}, { session })`. Single atomic op per stock bucket + multi-doc consistency.
+- **Status: parked.** Per business decision the stock system is paused while the rest of the platform stabilises. Re-open this work around Dec 2026 (≈6–7 months from May 2026) when stock is brought back online.
 
 ### Dead/buggy code in `orderService.updateOrderStatus`
 - Lines ~1325 and ~1332 reference undefined variables `previous` and `updatedOrderDetails` (should be `prev` and `details`). Would throw `ReferenceError` if reached — but the route `PUT /status/:orderNumber` maps to `updateOrderStatusUnified` instead, so this method is currently dead.
 - **Recommended fix:** delete the dead method (preferred), or fix the two typos if you want to keep it as an alternative endpoint.
 
-### Role enforcement is mostly client-side
-- The frontend `routePermissions.js` map blocks routes per role, and the backend `verifyToken` middleware checks that the JWT is valid — but **most** admin-only endpoints don't independently verify the user's role. A user with any valid token could theoretically curl admin endpoints directly.
-- `validateMainRoleAccess()` exists and is used on `signup` and `getProductionSummary`. Apply it incrementally to the other should-be-admin-only endpoints (employee delete, dealer-discount mutations, bulk import, etc.).
+### Role enforcement — partially addressed
+- The frontend `routePermissions.js` map blocks routes per role; the backend has `validateMainRoleAccess()` applied to the main admin-only endpoints (see "Recent changes — Server-side role gates" above for the full list).
+- **Still open:** `GET /employees/get/employees-password` reveals decrypted passwords — should be `SUPER_ADMIN` only (stricter than `validateMainRoleAccess`). Order status updates, invoice mutations, and notification admin endpoints are also not yet gated and should be reviewed.
 
 ### Other notes
 - `console.info(...)` still used in a few places (e.g. `updateOrderAndDetails`) — should standardise on `logger`.

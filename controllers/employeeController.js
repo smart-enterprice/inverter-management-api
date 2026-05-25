@@ -410,6 +410,8 @@ const employeeController = {
     resetPasswordById: [
         sanitizeInputBody,
         asyncHandler(async (req, res) => {
+            validateMainRoleAccess();
+
             const { employeeId } = req.params;
 
             if (!employeeId) {
@@ -435,6 +437,8 @@ const employeeController = {
     deleteEmployee: [
         sanitizeInputBody,
         asyncHandler(async (req, res) => {
+            validateMainRoleAccess();
+
             const { employeeId } = req.body;
 
             if (!employeeId) {
@@ -533,6 +537,8 @@ const employeeController = {
     createDealerDiscount: [
         sanitizeInputBody,
         asyncHandler(async (req, res) => {
+            validateMainRoleAccess();
+
             if (!req.body || Object.keys(req.body).length === 0) {
                 throw new BadRequestException("Request body is required");
             }
@@ -552,6 +558,8 @@ const employeeController = {
     createDealerDiscountList: [
         sanitizeInputBody,
         asyncHandler(async (req, res) => {
+            validateMainRoleAccess();
+
             if (!Array.isArray(req.body) || req.body.length === 0) {
                 throw new BadRequestException("Request body must be a non-empty array of dealer discounts.");
             }
@@ -575,6 +583,8 @@ const employeeController = {
     updateDealerDiscount: [
         sanitizeInputBody,
         asyncHandler(async (req, res) => {
+            validateMainRoleAccess();
+
             const discountData = req.body;
 
             if (!discountData || !discountData.dealer_discount_id) {
