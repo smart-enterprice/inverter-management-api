@@ -185,6 +185,32 @@ npm start                 # production
 npm run swagger-autogen   # regenerate swagger-output.json
 ```
 
+## Known limitations / TODO
+
+These are gaps identified in the May 2026 audit. **Not blocking everyday use**, but worth knowing about and fixing when time allows.
+
+### Auth — JWT lifetime + in-memory blacklist
+- `JWT_EXPIRES_IN=364d`. A single long-lived access token. If it leaks, the attacker has up to a year of access.
+- Logout writes the token to an **in-memory** blacklist (`service/tokenBlacklistService.js`). Any server restart (nodemon, deploy, crash) wipes it, so "logged-out" tokens become valid again.
+- **Recommended fix:** switch to access + refresh token pattern. Access token 15m–1h, refresh token 30d stored in MongoDB with a TTL index. Add `POST /auth/refresh` endpoint. Requires coordinated changes on web + mobile clients.
+- **Interim mitigation if not done:** rotate `JWT_SECRET` periodically (invalidates everything), persist the blacklist in MongoDB, and cut lifetime to ~7d.
+
+### Stock allocation race condition
+- `productService.checkAndReserveStock` does read-then-save without a transaction or atomic op. Two concurrent orders for the same product can both see the same starting stock and both subtract — overselling possible under load.
+- **Recommended fix:** replace the read-then-save with `Stock.findOneAndUpdate({ product_id, packed_stock: { $gte: needed }}, { $inc: { packed_stock: -needed }})`. Single atomic op per bucket. No transaction needed.
+
+### Dead/buggy code in `orderService.updateOrderStatus`
+- Lines ~1325 and ~1332 reference undefined variables `previous` and `updatedOrderDetails` (should be `prev` and `details`). Would throw `ReferenceError` if reached — but the route `PUT /status/:orderNumber` maps to `updateOrderStatusUnified` instead, so this method is currently dead.
+- **Recommended fix:** delete the dead method (preferred), or fix the two typos if you want to keep it as an alternative endpoint.
+
+### Role enforcement is mostly client-side
+- The frontend `routePermissions.js` map blocks routes per role, and the backend `verifyToken` middleware checks that the JWT is valid — but **most** admin-only endpoints don't independently verify the user's role. A user with any valid token could theoretically curl admin endpoints directly.
+- `validateMainRoleAccess()` exists and is used on `signup` and `getProductionSummary`. Apply it incrementally to the other should-be-admin-only endpoints (employee delete, dealer-discount mutations, bulk import, etc.).
+
+### Other notes
+- `console.info(...)` still used in a few places (e.g. `updateOrderAndDetails`) — should standardise on `logger`.
+- Global JSON body limit is 100mb. Consider per-route caps for the smaller endpoints.
+
 ## Branching
 
 - `shahul_dev` — Shahul's work-in-progress branch (this README is on it)
