@@ -177,6 +177,16 @@ Previously only one of three call sites honoured `ENABLE_STOCK_RETURNS`. Cancell
 ### Salesman achievement now honours per-salesman targets
 `GET /api/v1/analytics/salesman-achievement` previously used `DEFAULT_SALESMAN_TARGET_QTY` for every salesman, ignoring the `assignedTarget` field that admins set per-user in the employees collection. Now each row uses the salesman's own `assignedTarget` when it's > 0, falling back to the default otherwise. Each row also exposes a `target_source: "assigned" | "default"` so the UI can show which target is in effect.
 
+### Role-based notifications wired into the remaining order flows
+Previously notifications only fired from `createOrder` and `updateOrderAndDetails` — most real-world updates (per-item status changes, batch detail updates, add-items) sent nothing. Now:
+
+- `updateOrderDetailStatus` (single-line route handler) fires `ORDER_STATUS_*` when the parent order's status actually moves. Internal cascade callers (`updateOrderDetailsBatch`, `updateOrderAndDetails`) pass `{ skipParentNotification: true }` so the parent owns the aggregate signal instead of N+1.
+- `updateMultipleOrderDetailsStatus` fires `ORDER_CONFIRMED` or `ORDER_STATUS_*` based on the status delta.
+- `addItemsToOrder` fires the new `ORDER_ITEMS_ADDED` type — targets `SUPER_ADMIN / ADMIN / MANAGER / PRODUCTION / PACKING` so production teams see new work.
+
+### Notification de-duplication on production completion
+When `has_production_completed: true` is set in `updateOrderAndDetails` and the parent order auto-flips to `PACKED`, only the more informative `ORDER_STATUS_PRODUCTION_COMPLETED` push fires. The redundant generic `ORDER_STATUS_PACKED` push that used to also fire for the same event is now suppressed. If the order moves anywhere other than PACKED on the same call (unusual), both still fire.
+
 ### Add items to an existing order
 New endpoint: `POST /api/v1/order-details/:orderNumber/items`. Appends new line items to an order without going through the full create flow. Validates the same per-item rules as `create-order`. After insert, recalculates `order_total_price`, `order_total_discount`, `promised_delivery_date`, and re-derives the parent order's status (a new production-needing line on a PACKED order regresses to PRODUCTION).
 

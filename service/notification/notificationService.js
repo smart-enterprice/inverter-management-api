@@ -185,6 +185,35 @@ export const notificationService = {
         });
     },
 
+    sendOrderItemsAdded: async ({
+        order,
+        dealer,
+        itemsAdded,
+        triggeredBy,
+        triggeredByName,
+    }) => {
+        return notificationService.send({
+            notificationType: NOTIFICATION_TYPES.ORDER_ITEMS_ADDED,
+            context: {
+                order_number: order.order_number,
+                dealer_name: dealer?.shop_name || dealer?.employee_name,
+                priority: order.priority,
+                order_status: order.status,
+                items_added: itemsAdded,
+                triggered_by_name: triggeredByName || triggeredBy,
+            },
+            targetRoles: NOTIFICATION_TARGET_ROLES[NOTIFICATION_TYPES.ORDER_ITEMS_ADDED],
+            targetEmployeeIds: [order.salesman_id, order.created_by].filter(Boolean),
+            excludeEmployeeIds: [triggeredBy],
+            triggeredBy,
+            metadata: {
+                source: "order_items_added",
+                items_added: itemsAdded,
+                order_status: order.status,
+            },
+        });
+    },
+
     sendProductionCompleted: async ({
         order,
         triggeredBy,
@@ -229,5 +258,10 @@ export const notificationService = {
     sendProductionCompletedAsync: (payload) => fireAndForget(
         notificationService.sendProductionCompleted(payload),
         "Production completed notification"
+    ),
+
+    sendOrderItemsAddedAsync: (payload) => fireAndForget(
+        notificationService.sendOrderItemsAdded(payload),
+        "Order items added notification"
     ),
 };

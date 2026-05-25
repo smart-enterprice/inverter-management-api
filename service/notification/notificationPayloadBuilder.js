@@ -184,6 +184,19 @@ export const notificationPayloadBuilder = {
                     triggered_by_name,
                 }
             ),
+
+            [NOTIFICATION_TYPES.ORDER_ITEMS_ADDED]: payload(
+                NOTIFICATION_TYPES.ORDER_ITEMS_ADDED,
+                "Items Added to Order",
+                `${context.items_added || "New"} item(s) added to Order #${order_number} by ${triggered_by_name}.`,
+                {
+                    order_number,
+                    items_added: context.items_added,
+                    status: context.order_status,
+                    priority,
+                    triggered_by_name,
+                }
+            ),
         };
 
         if (!payloads[type]) {

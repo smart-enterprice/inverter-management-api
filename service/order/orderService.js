@@ -523,6 +523,18 @@ const orderService = {
             `➕ Items added to order ${orderNumber} — ${newDetailsPayload.length} new line(s) by ${employeeId} (${employeeRole}).`
         );
 
+        const triggeringEmployee = await Employee.findOne({
+            employee_id: employeeId, status: "active",
+        }).lean();
+
+        notificationService.sendOrderItemsAddedAsync({
+            order,
+            dealer,
+            itemsAdded: newDetailsPayload.length,
+            triggeredBy: employeeId,
+            triggeredByName: triggeringEmployee?.employee_name,
+        });
+
         return transformOrderToResponse(order, dealer, allDetails);
     }),
 
@@ -912,7 +924,10 @@ const orderService = {
         });
     }),
 
-    updateOrderDetailStatus: asyncHandler(async (orderDetailsId, updateDto) => {
+    // 3rd arg `options.skipParentNotification` is set to true by the internal
+    // cascade callers (updateOrderDetailsBatch + updateOrderAndDetails) — they
+    // fire their own aggregate notification, so we don't want N+1 here.
+    updateOrderDetailStatus: asyncHandler(async (orderDetailsId, updateDto, options = {}) => {
         const { employeeId, employeeRole } = getAuthenticatedEmployeeContext();
 
         const nowIST = () => getISTDate();
@@ -948,6 +963,8 @@ const orderService = {
             throw new BadRequestException(
                 `Parent Order ${order.order_number} is CANCELLED`
             );
+
+        const prevOrderStatus = order.status;
 
         let {
             PACKED: packedQty = 0,
@@ -1288,6 +1305,27 @@ const orderService = {
             to: orderDetail.status,
         });
 
+        // Fire status-change notification only when the parent order's status
+        // actually moved (not on every per-line tweak), and never when this
+        // method is invoked as part of an internal cascade — the parent
+        // method will fire its own aggregate notification.
+        if (!options.skipParentNotification && prevOrderStatus !== order.status) {
+            const dealer = await Employee.findOne({
+                employee_id: order.dealer_id, role: ROLES.DEALER,
+            }).lean();
+            const triggeringEmployee = await Employee.findOne({
+                employee_id: employeeId, status: "active",
+            }).lean();
+
+            notificationService.sendOrderStatusChangedAsync({
+                order,
+                previousStatus: prevOrderStatus,
+                triggeredBy: employeeId,
+                triggeredByName: triggeringEmployee?.employee_name,
+                dealer,
+            });
+        }
+
         return mapOrderDetailEntityToResponse(orderDetail);
     }),
 
@@ -1342,7 +1380,8 @@ const orderService = {
                 for (const detail of updatedDetails) {
                     await orderService.updateOrderDetailStatus(
                         detail.order_details_number,
-                        { status: next }
+                        { status: next },
+                        { skipParentNotification: true }
                     );
                 }
 
@@ -1370,49 +1409,39 @@ const orderService = {
 
         await order.save();
 
-        // Handle order status notifications
-        const newOrderStatus = order.status;
+        // Notifications — fire only if the parent order's status actually moved.
+        // Internal cascades (updateOrderDetailStatus calls above) were called
+        // with skipParentNotification=true, so we own the aggregate signal here.
+        if (prevOrderStatus !== order.status) {
+            const dealer = await Employee.findOne({
+                employee_id: order.dealer_id, role: ROLES.DEALER,
+            }).lean();
+            const triggeringEmployee = await Employee.findOne({
+                employee_id: employeeId, status: "active",
+            }).lean();
 
-        // // Trigger notification when explicitly setting status
-        // if (status === ORDER_STATUSES.CONFIRMED) {
-        //     fireNotification(
-        //         notifyOrderConfirmed({
-        //             order,
-        //             confirmedBy: employeeId,
-        //             createdBy: order.created_by,
-        //         })
-        //     );
-        // }
+            const isOrderConfirmed =
+                prevOrderStatus !== ORDER_STATUSES.CONFIRMED &&
+                order.status === ORDER_STATUSES.CONFIRMED;
 
-        // // Trigger notification only if status actually changed
-        // if (prevOrderStatus !== newOrderStatus) {
-        //     switch (newOrderStatus) {
-        //         case ORDER_STATUSES.CONFIRMED:
-        //             fireNotification(
-        //                 notifyOrderConfirmed({
-        //                     order,
-        //                     confirmedBy: employeeId,
-        //                     createdBy: order.created_by,
-        //                 })
-        //             );
-        //             break;
-
-        //         case ORDER_STATUSES.PRODUCTION:
-        //         case ORDER_STATUSES.PACKED:
-        //             fireNotification(
-        //                 notifyOrderStatusChanged({
-        //                     order,
-        //                     newStatus: newOrderStatus,
-        //                     changedBy: employeeId,
-        //                     createdBy: order.created_by,
-        //                 })
-        //             );
-        //             break;
-
-        //         default:
-        //             break;
-        //     }
-        // }
+            if (isOrderConfirmed) {
+                notificationService.sendOrderConfirmedAsync({
+                    order,
+                    previousStatus: prevOrderStatus,
+                    triggeredBy: employeeId,
+                    triggeredByName: triggeringEmployee?.employee_name,
+                    dealer,
+                });
+            } else {
+                notificationService.sendOrderStatusChangedAsync({
+                    order,
+                    previousStatus: prevOrderStatus,
+                    triggeredBy: employeeId,
+                    triggeredByName: triggeringEmployee?.employee_name,
+                    dealer,
+                });
+            }
+        }
 
         return transformOrderToResponse(order, null, updatedDetails);
     }),
@@ -1435,7 +1464,8 @@ const orderService = {
 
             await orderService.updateOrderDetailStatus(
                 dto.order_details_number,
-                dto
+                dto,
+                { skipParentNotification: true }
             );
         }
     },
@@ -1618,7 +1648,9 @@ const orderService = {
             // Cascade status to all order details (sequential to avoid races on parent Order.save())
             for (const detail of updatedDetails) {
                 await orderService.updateOrderDetailStatus(
-                    detail.order_details_number, { status: normalizedStatus }
+                    detail.order_details_number,
+                    { status: normalizedStatus },
+                    { skipParentNotification: true }
                 );
             }
 
@@ -1723,7 +1755,14 @@ const orderService = {
                 });
             }
 
-            if (prevOrderStatus !== order.status) {
+            // Production completion → PACKED is one logical event. When the
+            // production-completion flag is set AND the order auto-flips to
+            // PACKED, suppress the generic status-change ping so the user
+            // only gets the more informative "Production Completed" push.
+            const productionCompleteToPacked =
+                hasProductionCompleted && order.status === ORDER_STATUSES.PACKED;
+
+            if (prevOrderStatus !== order.status && !productionCompleteToPacked && !isOrderConfirmed) {
                 notificationService.sendOrderStatusChangedAsync({
                     order,
                     previousStatus: prevOrderStatus,

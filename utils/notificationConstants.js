@@ -14,6 +14,7 @@ export const NOTIFICATION_TYPES = Object.freeze({
     ORDER_STATUS_COMPLETED: "ORDER_STATUS_COMPLETED",
     ORDER_STATUS_CANCELLED: "ORDER_STATUS_CANCELLED",
     ORDER_STATUS_REJECTED: "ORDER_STATUS_REJECTED",
+    ORDER_ITEMS_ADDED: "ORDER_ITEMS_ADDED",
 });
 
 export const NOTIFICATION_ROLES = Object.freeze({
@@ -105,6 +106,15 @@ export const NOTIFICATION_TARGET_ROLES = Object.freeze({
         NOTIFICATION_ROLES.SUPER_ADMIN,
         NOTIFICATION_ROLES.ADMIN,
         NOTIFICATION_ROLES.MANAGER,
+    ],
+    // New items added to an existing order — same set as a fresh production
+    // order: admins, production, packing need to know there's more work to do.
+    [NOTIFICATION_TYPES.ORDER_ITEMS_ADDED]: [
+        NOTIFICATION_ROLES.SUPER_ADMIN,
+        NOTIFICATION_ROLES.ADMIN,
+        NOTIFICATION_ROLES.MANAGER,
+        NOTIFICATION_ROLES.PRODUCTION,
+        NOTIFICATION_ROLES.PACKING,
     ],
 });
 
