@@ -177,6 +177,19 @@ Previously only one of three call sites honoured `ENABLE_STOCK_RETURNS`. Cancell
 ### Salesman achievement now honours per-salesman targets
 `GET /api/v1/analytics/salesman-achievement` previously used `DEFAULT_SALESMAN_TARGET_QTY` for every salesman, ignoring the `assignedTarget` field that admins set per-user in the employees collection. Now each row uses the salesman's own `assignedTarget` when it's > 0, falling back to the default otherwise. Each row also exposes a `target_source: "assigned" | "default"` so the UI can show which target is in effect.
 
+### Schema-based request validation on critical writes
+Critical write endpoints now run an `express-validator` chain at the route boundary before any business logic. Catches malformed input (wrong types, negative quantities, missing required fields, unknown enum values) and returns a `400 ValidationException` with field-level error messages.
+
+Endpoints with new validation:
+- `POST /order-details/create-order` — dealer_id, priority enum, order_details array with per-item qty/product_id/delivery_date checks
+- `POST /product-details/create-product` — brand/model/name/type required, price/cost non-negative, status & product_category enums
+- `PUT /product-details/:productId` — same rules, all optional (partial update)
+- `POST /employees/dealer/create-discount` — required fields + discount_value non-negative + is_percentage boolean
+- `POST /employees/dealer/create-discounts` — array variant of the above
+- `PUT /employees/dealer/update-discount` — dealer_discount_id required, rest optional
+
+Shared rejection middleware in `validations/orderValidation.js → validateRequest` throws `ValidationException` so the response shape matches the rest of the API.
+
 ### Server-side role gates on admin-only endpoints
 Previously most admin actions trusted only the frontend's `routePermissions.js` — anyone with a valid JWT could curl them directly. `validateMainRoleAccess()` (allows `SUPER_ADMIN`, `ADMIN`, `MANAGER`) is now applied to:
 - `PUT /employees/update/delete-employee` (deleteEmployee)

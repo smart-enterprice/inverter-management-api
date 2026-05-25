@@ -3,6 +3,11 @@
 import express from "express";
 import employeeController from "../controllers/employeeController.js";
 import { verifyToken } from "../middleware/verifyToken.js";
+import {
+    createDealerDiscountValidation,
+    createDealerDiscountListValidation,
+    updateDealerDiscountValidation,
+} from "../validations/dealerDiscountValidation.js";
 
 const router = express.Router();
 
@@ -26,11 +31,11 @@ router.get("/:employeeId", employeeController.getProfileByEmployeeId);
 router.get("/", employeeController.getAllEmployees);
 
 // ========================== DEALER ROUTES ==========================
-router.post("/dealer/create-discount", employeeController.createDealerDiscount);
-router.post("/dealer/create-discounts", employeeController.createDealerDiscountList);
+router.post("/dealer/create-discount", createDealerDiscountValidation, employeeController.createDealerDiscount);
+router.post("/dealer/create-discounts", createDealerDiscountListValidation, employeeController.createDealerDiscountList);
 
 router.post("/dealer/get-discounts", employeeController.getDealerDiscounts);
-router.put("/dealer/update-discount", employeeController.updateDealerDiscount);
+router.put("/dealer/update-discount", updateDealerDiscountValidation, employeeController.updateDealerDiscount);
 
 router.get("/dealers/get", employeeController.getAllDealerEmployees);
 router.get("/dealers/deleted", employeeController.getAllDeletedDealerEmployees);
