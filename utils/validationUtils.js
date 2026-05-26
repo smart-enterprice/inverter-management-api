@@ -127,6 +127,14 @@ export const getAuthenticatedEmployeeContext = () => {
     return { employeeId, employeeRole };
 };
 
+// Escape regex metacharacters so user-supplied search terms are matched
+// literally. Without this, '(', '*', '.', etc. are interpreted as regex
+// syntax — '?search=(' previously crashed with HTTP 500 ("Unterminated
+// group"), and '?search=.*' matched every record. Use this anywhere a
+// search term is plugged into `new RegExp(...)` or `{ $regex: ... }`.
+export const escapeRegex = (value) =>
+    String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export const validateStockActionType = (action) => {
     const type = typeof action === "string" ? action.toUpperCase() : null;
     if (!Object.values(STOCK_ACTIONS).includes(type)) {
@@ -283,7 +291,7 @@ export const buildEmployeeQueryFilter = (query, employeeRole, page, limit) => {
 
     if (search) {
         const trimmedSearch = String(search).trim();
-        const regex = new RegExp(trimmedSearch, "i");
+        const regex = new RegExp(escapeRegex(trimmedSearch), "i");
         const isNumeric = !Number.isNaN(Number(trimmedSearch));
 
         const searchConditions = [

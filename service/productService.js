@@ -13,7 +13,7 @@ import Brand from "../models/brand.js";
 import logger from "../utils/logger.js";
 import { generateUniqueBrandId, generateUniqueProductId, generateUniqueStockId, generateUniqueStockHistoryId } from "../utils/generatorIds.js";
 import { BadRequestException } from "../middleware/CustomError.js";
-import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext, normalizePrice, validateStockManagementRoleAccess, normalizeLower, normalizeUpper, normalizeProductType } from "../utils/validationUtils.js";
+import { sanitizeInput, validateMainRoleAccess, validateProductRequiredFields, validateStockType, validateStockActionType, getAuthenticatedEmployeeContext, normalizePrice, validateStockManagementRoleAccess, normalizeLower, normalizeUpper, normalizeProductType, escapeRegex } from "../utils/validationUtils.js";
 import { mapPriceHistoryEntityToResponse, mapProductBrandEntityToResponse, mapProductEntityToResponse, mapStockEntityToResponse, mapStockHistoryEntityToResponse } from "../utils/modelMapper.js";
 import { PRODUCT_UPDATABLE_FIELDS, STOCK_TYPES, STOCK_ACTIONS, STATUS, ROLES, PRODUCT_CATEGORIES } from "../utils/constants.js";
 import { createPriceHistory } from "./priceHistoryService.js";
@@ -613,14 +613,15 @@ const productService = {
         if (brand && brand !== "all" && brand !== "All" && brand !== "ALL") filter.brand = brand;
         if (model && model !== "all" && model !== "All" && model !== "ALL") filter.model = model;
 
-        if (search) {
+        if (search && String(search).trim() !== "") {
+            const safe = escapeRegex(String(search).trim());
             filter.$or = [
-                { product_name: { $regex: search, $options: "i" } },
-                { product_id: { $regex: search, $options: "i" } },
-                { brand: { $regex: search, $options: "i" } },
-                { model: { $regex: search, $options: "i" } },
-                { product_type: { $regex: search, $options: "i" } },
-                { product_category: { $regex: search, $options: "i" } },
+                { product_name: { $regex: safe, $options: "i" } },
+                { product_id: { $regex: safe, $options: "i" } },
+                { brand: { $regex: safe, $options: "i" } },
+                { model: { $regex: safe, $options: "i" } },
+                { product_type: { $regex: safe, $options: "i" } },
+                { product_category: { $regex: safe, $options: "i" } },
             ];
         }
 

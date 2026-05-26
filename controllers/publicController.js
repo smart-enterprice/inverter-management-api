@@ -2,7 +2,7 @@
 import asyncHandler from "express-async-handler";
 
 import { BadRequestException } from "../middleware/CustomError.js";
-import { sanitizeInputBody } from "../utils/validationUtils.js";
+import { escapeRegex, sanitizeInputBody } from "../utils/validationUtils.js";
 
 import employeeSchema from "../models/employees.js";
 import Product from "../models/product.js";
@@ -33,7 +33,7 @@ const publicController = {
             }
 
             const keyword = searchContent.trim();
-            const regex = new RegExp(keyword, 'i');
+            const regex = new RegExp(escapeRegex(keyword), 'i');
 
             const phoneSearch = Number(keyword);
             const phoneCondition = isNaN(phoneSearch) ? {} : { employee_phone: phoneSearch };

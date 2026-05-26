@@ -12,7 +12,7 @@ import DealerDiscount from "../../models/dealerDiscount.js";
 
 import { generateUniqueOrderDetailsId, generateUniqueOrderId } from "../../utils/generatorIds.js";
 import { BadRequestException, ForbiddenException } from "../../middleware/CustomError.js";
-import { getAuthenticatedEmployeeContext, normalizePrice, round, sanitizeInput } from "../../utils/validationUtils.js";
+import { escapeRegex, getAuthenticatedEmployeeContext, normalizePrice, round, sanitizeInput } from "../../utils/validationUtils.js";
 
 import { getISTDate, ROLES, STOCK_TYPES, ORDER_STATUSES, CANCELLABLE_STATUSES, ADMIN_PRIVILEGED_ROLES, STATUSES_REQUIRING_DETAIL_VALIDATION, IMMUTABLE_ORDER_STATUSES, ENABLE_STOCK_RETURNS } from "../../utils/constants.js";
 import { mapOrderDetailEntityToResponse, transformOrderToResponse } from "../../utils/modelMapper.js";
@@ -596,7 +596,7 @@ const orderService = {
         if (dealer) filter.dealer_id = dealer;
 
         if (search && search.trim() !== "") {
-            const searchRegex = new RegExp(search.trim(), "i");
+            const searchRegex = new RegExp(escapeRegex(search.trim()), "i");
 
             const matchedDealers = await Employee.find({
                 $or: [

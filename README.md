@@ -177,6 +177,21 @@ Previously only one of three call sites honoured `ENABLE_STOCK_RETURNS`. Cancell
 ### Salesman achievement now honours per-salesman targets
 `GET /api/v1/analytics/salesman-achievement` previously used `DEFAULT_SALESMAN_TARGET_QTY` for every salesman, ignoring the `assignedTarget` field that admins set per-user in the employees collection. Now each row uses the salesman's own `assignedTarget` when it's > 0, falling back to the default otherwise. Each row also exposes a `target_source: "assigned" | "default"` so the UI can show which target is in effect.
 
+### Search regex hardening
+Every search endpoint built a `RegExp` directly from user input. Two problems:
+- A search term containing `(`, `)`, or other unclosed regex metacharacters crashed the endpoint with `HTTP 500: Invalid regular expression`.
+- A search term like `.*` was interpreted as regex syntax and matched every record — instead of being treated as a literal `.*` string.
+
+New `escapeRegex(value)` helper in `utils/validationUtils.js` escapes the metacharacters `.*+?^${}()|[]\` before building the pattern. Applied at every site that turns user input into a regex:
+- `orderService.getAllOrders` (order list search)
+- `validationUtils.buildEmployeeQueryFilter` (employee/dealer search)
+- `productService.getProducts` (product search)
+- `publicController.search` (global search)
+
+Now `(` returns 0 results (literal lookup), `.*` returns 0 (no record contains the literal characters), and normal alphanumeric search behaves exactly the same as before.
+
+Verified end-to-end against the live DB.
+
 ### Role-based notifications wired into the remaining order flows
 Previously notifications only fired from `createOrder` and `updateOrderAndDetails` — most real-world updates (per-item status changes, batch detail updates, add-items) sent nothing. Now:
 
