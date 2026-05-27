@@ -3,6 +3,7 @@ import express from 'express';
 import { verifyToken } from '../middleware/verifyToken.js';
 import orderController from '../controllers/orderController.js';
 import { sanitizeInputBody } from '../utils/validationUtils.js';
+import { createOrderValidation, addItemsToOrderValidation } from '../validations/orderValidation.js';
 
 const router = express.Router();
 
@@ -11,7 +12,8 @@ router.use(verifyToken);
 router.use(sanitizeInputBody);
 
 /* -------------------- Create -------------------- */
-router.post('/create-order', orderController.createOrder);
+router.post('/create-order', createOrderValidation, orderController.createOrder);
+router.post('/:orderNumber/items', addItemsToOrderValidation, orderController.addItemsToOrder);
 
 /* -------------------- Read -------------------- */
 router.get("/", orderController.getAll);

@@ -137,9 +137,10 @@ orderDetailsSchema.index({ status: 1 });
 orderDetailsSchema.index({ order_number: 1, status: 1 });
 
 orderDetailsSchema.pre("save", function (next) {
-    const istNow = getISTDate();
-    if (this.isNew) this.created_at = istNow;
-    this.updated_at = istNow;
+    // created_at is left to Mongoose timestamps (real UTC) so it matches
+    // Order.created_at. Only updated_at gets the IST shift, matching the
+    // Order model's pre-save behaviour.
+    this.updated_at = getISTDate();
     next();
 });
 

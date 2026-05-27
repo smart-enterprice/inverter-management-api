@@ -3,6 +3,7 @@ import express from 'express';
 import { verifyToken } from '../middleware/verifyToken.js';
 import productController from '../controllers/productController.js';
 import { sanitizeInputBody } from '../utils/validationUtils.js';
+import { createProductValidation, updateProductValidation } from '../validations/productValidation.js';
 
 const router = express.Router();
 
@@ -15,7 +16,7 @@ router.get("/types", productController.getProductTypes);
 router.get("/categories", productController.getProductCategories);
 
 // CREATE
-router.post("/create-product", productController.createProduct);
+router.post("/create-product", createProductValidation, productController.createProduct);
 router.post("/getAllProductsByBrand", productController.getAllProductsByBrands);
 
 // READ
@@ -25,7 +26,7 @@ router.get("/low-stock", productController.getLowStockProducts); // ✅ Low Stoc
 router.get("/:productId", productController.getByProductId);
 
 // UPDATE
-router.put("/:productId", productController.updateProduct);
+router.put("/:productId", updateProductValidation, productController.updateProduct);
 router.put("/createOrUpdate/product-stocks", productController.createOrUpdateProductStocks);
 
 // BRAND ROUTES

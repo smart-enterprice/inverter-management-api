@@ -25,6 +25,20 @@ const orderController = {
         });
     }),
 
+    addItemsToOrder: asyncHandler(async (req, res) => {
+        const data = await orderService.addItemsToOrder(
+            req.params.orderNumber,
+            req.body.order_details
+        );
+
+        buildResponse({
+            res,
+            status: 201,
+            message: `✅ Items added to order ${req.params.orderNumber}.`,
+            data,
+        });
+    }),
+
     getAll: asyncHandler(async (req, res) => {
         const includeRejected = req.query.includeRejected === "true";
         const page = Number(req.query.page) || 1;
@@ -135,20 +149,6 @@ const orderController = {
             res,
             message: `✅ Order ${req.params.orderNumber} details updated successfully.`,
             data
-        });
-    }),
-
-    updateOrderStatus: asyncHandler(async (req, res) => {
-        const { orderNumber } = req.params;
-        const { status } = req.body;
-
-        const updatedOrder = await orderService.updateOrderStatus(orderNumber, status);
-
-        res.status(200).json({
-            success: true,
-            message: `✅ Order ${orderNumber} status updated successfully.`,
-            data: updatedOrder,
-            timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
         });
     }),
 

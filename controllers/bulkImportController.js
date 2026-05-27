@@ -3,10 +3,13 @@ import asyncHandler from "express-async-handler";
 import ExcelJS from "exceljs";
 import { BadRequestException } from "../middleware/CustomError.js";
 import { bulkImportService } from "../service/bulkImportService.js";
+import { validateMainRoleAccess } from "../utils/validationUtils.js";
 
 const bulkImportController = {
 
     uploadAndImport: asyncHandler(async (req, res) => {
+        validateMainRoleAccess();
+
         if (!req.file) {
             throw new BadRequestException(
                 "No file uploaded. Please attach an .xlsx file with field name 'file'."

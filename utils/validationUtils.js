@@ -87,6 +87,21 @@ export const validateMainRoleAccess = () => {
     return { employee_id, role };
 };
 
+// Stricter than validateMainRoleAccess — only SUPER_ADMIN is allowed.
+// Use for endpoints that expose secrets or perform irreversible global actions.
+export const validateSuperAdminAccess = () => {
+    const employee_id = CurrentRequestContext.getEmployeeId();
+    const rawRole = CurrentRequestContext.getRole();
+    const role = (rawRole || "").toUpperCase();
+
+    if (!employee_id || role !== ROLES.SUPER_ADMIN) {
+        throw new ForbiddenException(
+            `Access denied. This action is restricted to ${ROLES.SUPER_ADMIN}.`
+        );
+    }
+    return { employee_id, role };
+};
+
 export const validateStockManagementRoleAccess = () => {
     const employee_id = CurrentRequestContext.getEmployeeId();
     const rawRole = CurrentRequestContext.getRole();
@@ -111,6 +126,14 @@ export const getAuthenticatedEmployeeContext = () => {
 
     return { employeeId, employeeRole };
 };
+
+// Escape regex metacharacters so user-supplied search terms are matched
+// literally. Without this, '(', '*', '.', etc. are interpreted as regex
+// syntax — '?search=(' previously crashed with HTTP 500 ("Unterminated
+// group"), and '?search=.*' matched every record. Use this anywhere a
+// search term is plugged into `new RegExp(...)` or `{ $regex: ... }`.
+export const escapeRegex = (value) =>
+    String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const validateStockActionType = (action) => {
     const type = typeof action === "string" ? action.toUpperCase() : null;
@@ -268,7 +291,7 @@ export const buildEmployeeQueryFilter = (query, employeeRole, page, limit) => {
 
     if (search) {
         const trimmedSearch = String(search).trim();
-        const regex = new RegExp(trimmedSearch, "i");
+        const regex = new RegExp(escapeRegex(trimmedSearch), "i");
         const isNumeric = !Number.isNaN(Number(trimmedSearch));
 
         const searchConditions = [

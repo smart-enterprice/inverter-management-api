@@ -1,7 +1,7 @@
 // controller/productController.js
 import asyncHandler from "express-async-handler";
 import { productService } from "../service/productService.js";
-import { sanitizeInput, sanitizeInputBody } from "../utils/validationUtils.js";
+import { sanitizeInput, sanitizeInputBody, validateMainRoleAccess } from "../utils/validationUtils.js";
 import { BadRequestException } from "../middleware/CustomError.js";
 import { buildResponse } from "../utils/responseUtils.js";
 
@@ -9,6 +9,8 @@ const productController = {
     sanitizeInputBody,
 
     createProduct: asyncHandler(async (req, res) => {
+        validateMainRoleAccess();
+
         const productData = await productService.createProduct(req.body);
 
         res.status(201).json({
@@ -21,6 +23,8 @@ const productController = {
     }),
 
     updateProduct: asyncHandler(async (req, res) => {
+        validateMainRoleAccess();
+
         const { productId } = req.params;
         const productData = await productService.updateProduct(productId, req.body);
         res.status(200).json({
@@ -33,6 +37,8 @@ const productController = {
     }),
 
     createOrUpdateProductStocks: asyncHandler(async (req, res) => {
+        validateMainRoleAccess();
+
         const { stock_map } = req.body;
         const productStockData = await productService.createOrUpdateProductStock(stock_map);
         res.status(200).json({
@@ -173,6 +179,8 @@ const productController = {
     }),
 
     createProductBrands: asyncHandler(async (req, res) => {
+        validateMainRoleAccess();
+
         if (!Array.isArray(req.body) || req.body.length === 0) {
             throw new BadRequestException("Invalid brand list.Provide a non - empty array ");
         }
@@ -189,6 +197,8 @@ const productController = {
     }),
 
     statusChangeByBrandName: asyncHandler(async (req, res) => {
+        validateMainRoleAccess();
+
         const { brandName } = req.params;
 
         const updatedBrand = await productService.statusChangeByBrandName(brandName.trim(), req.body);
