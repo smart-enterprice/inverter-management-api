@@ -5,6 +5,9 @@
 // salesman_id, status) so they stay fast as the collection grows.
 
 import asyncHandler from "express-async-handler";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc.js";
+import timezone from "dayjs/plugin/timezone.js";
 
 import Order from "../models/order.js";
 import OrderDetails from "../models/orderDetails.js";
@@ -12,6 +15,11 @@ import OrderDetails from "../models/orderDetails.js";
 import { BadRequestException, ForbiddenException } from "../middleware/CustomError.js";
 import { getAuthenticatedEmployeeContext } from "../utils/validationUtils.js";
 import { DEFAULT_SALESMAN_TARGET_QTY, ORDER_STATUSES, ROLES } from "../utils/constants.js";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+const IST_TZ = "Asia/Kolkata";
 
 const MAX_LIMIT = 100;
 const DEFAULT_TOP_N = 10;
@@ -191,13 +199,18 @@ const callerCanSeeProfit = () => {
     return PROFIT_VISIBLE_ROLES.has(employeeRole);
 };
 
-const parseDate = (value, label) => {
+// Interpret incoming YYYY-MM-DD as an IST calendar day, not UTC midnight.
+// `from` snaps to 00:00:00 IST; `to` snaps to 23:59:59.999 IST. Without the
+// endOfDay flag, `to=2026-05-26` was being read as 2026-05-26T00:00:00Z
+// (= 05:30 IST), silently dropping every order created after early morning
+// today.
+const parseDate = (value, label, { endOfDay = false } = {}) => {
     if (!value) throw new BadRequestException(`${label} is required (ISO date).`);
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) {
+    const d = dayjs.tz(value, IST_TZ);
+    if (!d.isValid()) {
         throw new BadRequestException(`${label} is not a valid date.`);
     }
-    return d;
+    return (endOfDay ? d.endOf("day") : d.startOf("day")).toDate();
 };
 
 const parseLimit = (value, fallback = DEFAULT_TOP_N) => {
@@ -252,7 +265,7 @@ const analyticsService = {
     // Computing max(0,...) per order then summing keeps the two sides separate.
     getSummary: asyncHandler(async ({ from, to, dealer_id, salesman_id }) => {
         const fromDate = parseDate(from, "from");
-        const toDate = parseDate(to, "to");
+        const toDate = parseDate(to, "to", { endOfDay: true });
 
         if (fromDate > toDate) {
             throw new BadRequestException("'from' must be earlier than 'to'.");
@@ -432,7 +445,7 @@ const analyticsService = {
     // Time-series for the main line chart.
     getSalesTrend: asyncHandler(async ({ from, to, interval = "day", dealer_id, salesman_id }) => {
         const fromDate = parseDate(from, "from");
-        const toDate = parseDate(to, "to");
+        const toDate = parseDate(to, "to", { endOfDay: true });
 
         if (fromDate > toDate) {
             throw new BadRequestException("'from' must be earlier than 'to'.");
@@ -514,7 +527,7 @@ const analyticsService = {
     // Profit is hidden (and metric=profit rejected) for non-admin callers.
     getTopProducts: asyncHandler(async ({ from, to, limit, metric = "revenue", view = "delivered", dealer_id, salesman_id }) => {
         const fromDate = parseDate(from, "from");
-        const toDate = parseDate(to, "to");
+        const toDate = parseDate(to, "to", { endOfDay: true });
 
         if (fromDate > toDate) {
             throw new BadRequestException("'from' must be earlier than 'to'.");
@@ -589,7 +602,7 @@ const analyticsService = {
     // It does not depend on the view toggle.
     getTopDealers: asyncHandler(async ({ from, to, limit, view = "delivered", salesman_id }) => {
         const fromDate = parseDate(from, "from");
-        const toDate = parseDate(to, "to");
+        const toDate = parseDate(to, "to", { endOfDay: true });
 
         if (fromDate > toDate) {
             throw new BadRequestException("'from' must be earlier than 'to'.");
@@ -676,7 +689,7 @@ const analyticsService = {
     // Top-N brands. Same `view` semantics as getTopProducts.
     getTopBrands: asyncHandler(async ({ from, to, limit, metric = "qty", view = "delivered", dealer_id, salesman_id }) => {
         const fromDate = parseDate(from, "from");
-        const toDate = parseDate(to, "to");
+        const toDate = parseDate(to, "to", { endOfDay: true });
 
         if (fromDate > toDate) {
             throw new BadRequestException("'from' must be earlier than 'to'.");
@@ -743,7 +756,7 @@ const analyticsService = {
     // Top-N salesmen. Same `view` semantics as getTopDealers.
     getTopSalesmen: asyncHandler(async ({ from, to, limit, view = "delivered", dealer_id }) => {
         const fromDate = parseDate(from, "from");
-        const toDate = parseDate(to, "to");
+        const toDate = parseDate(to, "to", { endOfDay: true });
 
         if (fromDate > toDate) {
             throw new BadRequestException("'from' must be earlier than 'to'.");
@@ -833,7 +846,7 @@ const analyticsService = {
     // Revenue  = SUM(qty_delivered × net_unit_price) — NET delivered revenue.
     getSalesmanAchievement: asyncHandler(async ({ from, to, dealer_id }) => {
         const fromDate = parseDate(from, "from");
-        const toDate = parseDate(to, "to");
+        const toDate = parseDate(to, "to", { endOfDay: true });
 
         if (fromDate > toDate) {
             throw new BadRequestException("'from' must be earlier than 'to'.");

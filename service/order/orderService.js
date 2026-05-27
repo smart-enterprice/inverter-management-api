@@ -768,7 +768,7 @@ const orderService = {
             ORDER_STATUSES.SHIPPED,
         ];
 
-        const rows = await OrderDetails.aggregate([
+        const remainingQtyStages = [
             { $match: { status: { $in: TRACKED_STATUSES } } },
             {
                 $addFields: {
@@ -791,8 +791,6 @@ const orderService = {
                 },
             },
             { $match: { remaining_qty: { $gt: 0 } } },
-
-            // Join with orders to get dealer_id for each line item.
             {
                 $lookup: {
                     from: "orders",
@@ -802,79 +800,109 @@ const orderService = {
                 },
             },
             { $unwind: { path: "$order_doc", preserveNullAndEmptyArrays: true } },
-            {
-                $addFields: { dealer_id: "$order_doc.dealer_id" },
-            },
+            { $addFields: { dealer_id: "$order_doc.dealer_id" } },
+        ];
 
-            // Per product × dealer × status: sum remaining qty.
-            {
-                $group: {
-                    _id: {
-                        product_id: "$product_id",
-                        dealer_id: "$dealer_id",
-                        status: "$status",
-                    },
-                    product_name: { $first: "$product_name" },
-                    product_brand: { $first: "$product_brand" },
-                    product_model: { $first: "$product_model" },
-                    product_type: { $first: "$product_type" },
-                    product_category: { $first: "$product_category" },
-                    qty: { $sum: "$remaining_qty" },
-                },
-            },
+        const [rows, orderRows] = await Promise.all([
+            OrderDetails.aggregate([
+                ...remainingQtyStages,
 
-            // Pivot statuses per product × dealer.
-            {
-                $group: {
-                    _id: { product_id: "$_id.product_id", dealer_id: "$_id.dealer_id" },
-                    product_name: { $first: "$product_name" },
-                    product_brand: { $first: "$product_brand" },
-                    product_model: { $first: "$product_model" },
-                    product_type: { $first: "$product_type" },
-                    product_category: { $first: "$product_category" },
-                    breakdown: {
-                        $push: { status: "$_id.status", qty: "$qty" },
-                    },
-                    total_qty: { $sum: "$qty" },
-                },
-            },
-
-            // Look up dealer info.
-            {
-                $lookup: {
-                    from: "employees",
-                    localField: "_id.dealer_id",
-                    foreignField: "employee_id",
-                    as: "dealer_doc",
-                },
-            },
-            { $unwind: { path: "$dealer_doc", preserveNullAndEmptyArrays: true } },
-
-            // Group all dealers under their product.
-            {
-                $group: {
-                    _id: "$_id.product_id",
-                    product_name: { $first: "$product_name" },
-                    product_brand: { $first: "$product_brand" },
-                    product_model: { $first: "$product_model" },
-                    product_type: { $first: "$product_type" },
-                    product_category: { $first: "$product_category" },
-                    dealers: {
-                        $push: {
-                            dealer_id: "$_id.dealer_id",
-                            dealer_name: "$dealer_doc.employee_name",
-                            shop_name: "$dealer_doc.shop_name",
-                            town: "$dealer_doc.town",
-                            employee_phone: "$dealer_doc.employee_phone",
-                            breakdown: "$breakdown",
-                            total_qty: "$total_qty",
+                // Per product × dealer × status: sum remaining qty.
+                {
+                    $group: {
+                        _id: {
+                            product_id: "$product_id",
+                            dealer_id: "$dealer_id",
+                            status: "$status",
                         },
+                        product_name: { $first: "$product_name" },
+                        product_brand: { $first: "$product_brand" },
+                        product_model: { $first: "$product_model" },
+                        product_type: { $first: "$product_type" },
+                        product_category: { $first: "$product_category" },
+                        qty: { $sum: "$remaining_qty" },
                     },
-                    total_qty: { $sum: "$total_qty" },
                 },
-            },
-            { $sort: { product_brand: 1, product_model: 1, product_name: 1 } },
+
+                // Pivot statuses per product × dealer.
+                {
+                    $group: {
+                        _id: { product_id: "$_id.product_id", dealer_id: "$_id.dealer_id" },
+                        product_name: { $first: "$product_name" },
+                        product_brand: { $first: "$product_brand" },
+                        product_model: { $first: "$product_model" },
+                        product_type: { $first: "$product_type" },
+                        product_category: { $first: "$product_category" },
+                        breakdown: {
+                            $push: { status: "$_id.status", qty: "$qty" },
+                        },
+                        total_qty: { $sum: "$qty" },
+                    },
+                },
+
+                // Look up dealer info.
+                {
+                    $lookup: {
+                        from: "employees",
+                        localField: "_id.dealer_id",
+                        foreignField: "employee_id",
+                        as: "dealer_doc",
+                    },
+                },
+                { $unwind: { path: "$dealer_doc", preserveNullAndEmptyArrays: true } },
+
+                // Group all dealers under their product.
+                {
+                    $group: {
+                        _id: "$_id.product_id",
+                        product_name: { $first: "$product_name" },
+                        product_brand: { $first: "$product_brand" },
+                        product_model: { $first: "$product_model" },
+                        product_type: { $first: "$product_type" },
+                        product_category: { $first: "$product_category" },
+                        dealers: {
+                            $push: {
+                                dealer_id: "$_id.dealer_id",
+                                dealer_name: "$dealer_doc.employee_name",
+                                shop_name: "$dealer_doc.shop_name",
+                                town: "$dealer_doc.town",
+                                employee_phone: "$dealer_doc.employee_phone",
+                                breakdown: "$breakdown",
+                                total_qty: "$total_qty",
+                            },
+                        },
+                        total_qty: { $sum: "$total_qty" },
+                    },
+                },
+                { $sort: { product_brand: 1, product_model: 1, product_name: 1 } },
+            ]),
+
+            // Parallel aggregation: per product × dealer × order_number remaining qty.
+            OrderDetails.aggregate([
+                ...remainingQtyStages,
+                {
+                    $group: {
+                        _id: {
+                            product_id: "$product_id",
+                            dealer_id: "$dealer_id",
+                            order_number: "$order_number",
+                        },
+                        qty: { $sum: "$remaining_qty" },
+                    },
+                },
+            ]),
         ]);
+
+        // Index orders by (product_id, dealer_id) for O(1) lookup during merge.
+        const ordersByKey = new Map();
+        const dealerKey = (productId, dealerId) =>
+            `${productId || ""}::${dealerId || ""}`;
+        orderRows.forEach((o) => {
+            const key = dealerKey(o._id.product_id, o._id.dealer_id);
+            const list = ordersByKey.get(key) || [];
+            list.push({ order_number: o._id.order_number, qty: o.qty });
+            ordersByKey.set(key, list);
+        });
 
         const emptyCounts = () =>
             TRACKED_STATUSES.reduce((acc, s) => ({ ...acc, [s]: 0 }), {});
@@ -890,15 +918,21 @@ const orderService = {
         return rows.map((row) => {
             // Build the dealer list with per-dealer counts.
             const dealers = (row.dealers || [])
-                .map((d) => ({
-                    dealer_id: d.dealer_id,
-                    dealer_name: d.dealer_name || null,
-                    shop_name: d.shop_name || null,
-                    town: d.town || null,
-                    employee_phone: d.employee_phone ? String(d.employee_phone) : null,
-                    counts: pivotBreakdown(d.breakdown),
-                    total_qty: d.total_qty,
-                }))
+                .map((d) => {
+                    const orders = (ordersByKey.get(dealerKey(row._id, d.dealer_id)) || [])
+                        .slice()
+                        .sort((a, b) => b.qty - a.qty);
+                    return {
+                        dealer_id: d.dealer_id,
+                        dealer_name: d.dealer_name || null,
+                        shop_name: d.shop_name || null,
+                        town: d.town || null,
+                        employee_phone: d.employee_phone ? String(d.employee_phone) : null,
+                        counts: pivotBreakdown(d.breakdown),
+                        total_qty: d.total_qty,
+                        orders,
+                    };
+                })
                 .sort((a, b) => b.total_qty - a.total_qty);
 
             // Roll up product-level counts from dealer counts.
