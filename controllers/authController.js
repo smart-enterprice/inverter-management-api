@@ -3,7 +3,7 @@ import asyncHandler from "express-async-handler";
 import helmet from "helmet";
 
 import { employeeService } from "../service/employeeService.js";
-import { BadRequestException } from "../middleware/CustomError.js";
+import { BadRequestException, UnauthorizedException } from "../middleware/CustomError.js";
 import { sanitizeInputBody } from "../utils/validationUtils.js";
 import Employee from "../models/employees.js";
 import jwt from "jsonwebtoken";

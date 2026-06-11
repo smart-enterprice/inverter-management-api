@@ -83,7 +83,7 @@ export const mapEmployeeRequestToEntity = (data, employeeId = null, isUpdate = f
     return entity;
 };
 
-export const mapEmployeeEntityToResponse = (entity, password = null) => {
+export const mapEmployeeEntityToResponse = (entity) => {
     const response = {};
 
     EMPLOYEE_RESPONSE_FIELDS.forEach(field => {
@@ -91,10 +91,6 @@ export const mapEmployeeEntityToResponse = (entity, password = null) => {
             response[field] = entity[field];
         }
     });
-
-    if (password !== null) {
-        response.password = password;
-    }
 
     return response;
 };

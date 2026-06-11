@@ -1,9 +1,12 @@
 // employeeAuth.js
 
 import jwt from 'jsonwebtoken';
-import { encryptText, decryptText } from '../utils/encryption.js';
+import bcrypt from 'bcryptjs';
+import { decryptText } from '../utils/encryption.js';
 import { JWT_SECRET, JWT_EXPIRES_IN } from './constants.js';
 import { BadRequestException } from '../middleware/CustomError.js';
+
+const BCRYPT_SALT_ROUNDS = 10;
 
 export const validatePassword = (password) => {
     if (!password) throw new BadRequestException('Password is required');
@@ -17,8 +20,26 @@ export const validatePassword = (password) => {
     }
 };
 
-export const hashPassword = async(password) => encryptText(password);
-export const revealPassword = async(encryptedPassword) => decryptText(encryptedPassword);
+export const hashPassword = async (password) => bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+
+// Legacy passwords were stored as reversible AES ("iv:ciphertext" hex). Detect
+// them so login can verify via decryption once, then upgrade to bcrypt.
+export const isLegacyEncryptedPassword = (stored) =>
+    typeof stored === 'string' && /^[0-9a-f]{32}:[0-9a-f]+$/i.test(stored);
+
+export const comparePassword = async (plainPassword, storedPassword) => {
+    if (!plainPassword || !storedPassword) return false;
+
+    if (isLegacyEncryptedPassword(storedPassword)) {
+        try {
+            return plainPassword === decryptText(storedPassword);
+        } catch {
+            return false;
+        }
+    }
+
+    return bcrypt.compare(plainPassword, storedPassword);
+};
 
 export const generateToken = (employeeId, role, status) => {
     return jwt.sign({ employee_id: employeeId, role, status },

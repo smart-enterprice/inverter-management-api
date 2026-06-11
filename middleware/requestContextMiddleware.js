@@ -2,7 +2,7 @@
 
 import jwt from 'jsonwebtoken';
 import Employee from '../models/employees.js';
-import { UnauthorizedException, BadRequestException } from './CustomError.js';
+import { UnauthorizedException, BadRequestException, ForbiddenException } from './CustomError.js';
 import { tokenBlacklistService } from '../service/tokenBlacklistService.js';
 import { employeeService } from '../service/employeeService.js';
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
@@ -14,16 +14,23 @@ import {
     APPROVAL_GRANTED_ROLES,
 } from '../utils/constants.js';
 
-const PUBLIC_ROUTES = [
+// Exact-match routes (no prefix matching — '/' would otherwise match everything)
+const PUBLIC_EXACT_ROUTES = [
     '/',
     '/health',
     '/favicon.ico',
     `${PATH_ROUTES.AUTH_ROUTE}/signin`,
-    PATH_ROUTES.LOCATION_ROUTE
+    `${PATH_ROUTES.AUTH_ROUTE}/logout`,
+    `${PATH_ROUTES.AUTH_ROUTE}/token/active`,
+];
+
+// Prefix-match routes
+const PUBLIC_PREFIX_ROUTES = [
+    '/api-docs',
+    PATH_ROUTES.LOCATION_ROUTE,
 ];
 
 const SUPER_ADMIN_ONLY_ROUTES = [
-    `${PATH_ROUTES.EMPLOYEE_ROUTE}/get/employees-password`,
     `${PATH_ROUTES.EMPLOYEE_ROUTE}/get/deleted-employees`
 ];
 
@@ -33,12 +40,20 @@ const ADMIN_AND_SUPER_ADMIN_ONLY_ROUTES = [
 
 const isRouteMatch = (url, routes) => routes.some(route => url.startsWith(route));
 
+const isPublicRoute = (url) => {
+    const pathOnly = url.split('?')[0];
+    return (
+        PUBLIC_EXACT_ROUTES.includes(pathOnly) ||
+        isRouteMatch(pathOnly, PUBLIC_PREFIX_ROUTES)
+    );
+};
+
 export const requestContextMiddleware = async(req, res, next) => {
     try {
         const { originalUrl, headers } = req;
 
         // Allow public routes without authentication
-        if (isRouteMatch(originalUrl, PUBLIC_ROUTES)) return next();
+        if (isPublicRoute(originalUrl)) return next();
 
         const authHeader = headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {

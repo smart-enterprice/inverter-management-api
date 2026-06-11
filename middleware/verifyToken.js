@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { UnauthorizedException } from './CustomError.js';
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
+import { tokenBlacklistService } from '../service/tokenBlacklistService.js';
 import { JWT_SECRET } from '../utils/constants.js';
 
 const jwt_secret = JWT_SECRET;
@@ -20,11 +21,6 @@ const extractToken = (req) => {
         );
     }
 
-    // ✅ Fallback for SSE (query param)
-    if (req.query?.token) {
-        return req.query.token;
-    }
-
     // ⚠️ No token found
     return null;
 };
@@ -36,22 +32,28 @@ export const verifyToken = async (req, res, next) => {
         throw new UnauthorizedException('Authorization token missing or malformed');
     }
 
+    let decoded;
     try {
-        const decoded = jwt.verify(token, jwt_secret);
-
-        const { employee_id, role, status } = decoded;
-        if (!employee_id || !role) {
-            throw new UnauthorizedException('Invalid token payload.');
-        }
-
-        CurrentRequestContext.run({}, () => {
-            CurrentRequestContext.setEmployeeId(employee_id);
-            CurrentRequestContext.setRole(role);
-            CurrentRequestContext.setCurrentToken(token);
-
-            next();
-        });
+        decoded = jwt.verify(token, jwt_secret);
     } catch (err) {
         throw new UnauthorizedException('Invalid or expired token');
     }
+
+    // Reject tokens invalidated by logout
+    if (tokenBlacklistService.isBlacklisted(token)) {
+        throw new UnauthorizedException('Token has been invalidated or session expired');
+    }
+
+    const { employee_id, role } = decoded;
+    if (!employee_id || !role) {
+        throw new UnauthorizedException('Invalid token payload.');
+    }
+
+    CurrentRequestContext.run({}, () => {
+        CurrentRequestContext.setEmployeeId(employee_id);
+        CurrentRequestContext.setRole(role);
+        CurrentRequestContext.setCurrentToken(token);
+
+        next();
+    });
 };
