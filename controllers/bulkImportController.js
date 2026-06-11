@@ -18,12 +18,16 @@ const bulkImportController = {
 
         const allowedMimeTypes = [
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.ms-excel",
+            // Some clients send a generic type for .xlsx — extension is checked below
+            "application/octet-stream",
         ];
 
-        if (!allowedMimeTypes.includes(req.file.mimetype)) {
+        if (
+            !allowedMimeTypes.includes(req.file.mimetype) ||
+            !/\.xlsx$/i.test(req.file.originalname || "")
+        ) {
             throw new BadRequestException(
-                "Invalid file type. Only .xlsx / .xls files are accepted."
+                "Invalid file type. Only .xlsx files are accepted."
             );
         }
 
