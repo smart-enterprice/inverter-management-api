@@ -1,12 +1,12 @@
 {
   "info": {
     "name": "Smart Enterprises API — Full Backend",
-    "description": "Complete Postman collection covering every route in the inverter-management-api.\n\nQuick start:\n1. Import this file into Postman.\n2. Run **Auth → Sign In** first. The token is auto-saved to the collection variable `{{token}}` and used by every other request.\n3. Switch environments by editing the `base_url` collection variable: local (`http://localhost:1280/api/v1`) or prod (`https://api.smartenterprises.online/api/v1`).\n\nNotes:\n• Every protected route uses Bearer auth via `{{token}}` — set once, used everywhere.\n• Create / Update bodies show example payloads. Edit them to your data before sending.\n• Path params (`:employeeId`, `:orderNumber`, etc.) are filled with the placeholders that match the saved collection variables (`{{employee_id}}`, `{{order_number}}`, `{{product_id}}`). The Sign In script also saves the logged-in user's `employee_id`.\n• Disabled (greyed-out) query params show options that exist but you may not need by default.",
+    "description": "Complete Postman collection covering every route in the inverter-management-api.\n\nQuick start:\n1. Import this file into Postman.\n2. Run **Auth → Sign In** first. The token is auto-saved to the collection variable `{{token}}` and used by every other request.\n3. Switch environments by editing the `base_url` collection variable: local (`http://localhost:1280/api/v1`) or prod (`https://api.warriorpower.in/api/v1`).\n\nNotes:\n• Every protected route uses Bearer auth via `{{token}}` — set once, used everywhere.\n• Create / Update bodies show example payloads. Edit them to your data before sending.\n• Path params (`:employeeId`, `:orderNumber`, etc.) are filled with the placeholders that match the saved collection variables (`{{employee_id}}`, `{{order_number}}`, `{{product_id}}`). The Sign In script also saves the logged-in user's `employee_id`.\n• Disabled (greyed-out) query params show options that exist but you may not need by default.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_postman_id": "smart-enterprises-full"
   },
   "variable": [
-    { "key": "base_url", "value": "http://localhost:1280/api/v1", "description": "Local: http://localhost:1280/api/v1 · Prod: https://api.smartenterprises.online/api/v1" },
+    { "key": "base_url", "value": "http://localhost:1280/api/v1", "description": "Local: http://localhost:1280/api/v1 · Prod: https://api.warriorpower.in/api/v1" },
     { "key": "token", "value": "", "description": "Auto-set by Sign In" },
     { "key": "employee_id", "value": "", "description": "Auto-set by Sign In to the logged-in user's id" },
     { "key": "order_number", "value": "", "description": "Fill in to use across the Orders folder" },

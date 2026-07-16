@@ -1,14 +1,26 @@
 // validationUtils.js
 
 import validator from 'validator';
+import { FilterXSS } from 'xss';
 
 import { BadRequestException, ValidationException, ForbiddenException } from '../middleware/CustomError.js';
 import { ADMIN_PRIVILEGED_ROLES, STOCK_ACTIONS, STOCK_TYPES, ROLES, PRODUCT_REQUIRED_FIELDS, DEALER_DISCOUNT_REQUIRED_FIELDS, ALLOWED_TRANSITIONS, STOCK_MANAGEMENT_ROLES, EMPLOYEE_ACCESS_SCOPE, } from './constants.js';
 import { validatePassword } from './employeeAuth.js';
 import { CurrentRequestContext } from '../utils/CurrentRequestContext.js';
 
+// Strips HTML tags (e.g. <script>) but does NOT entity-encode plain text.
+// Encoding belongs at render time (React/Flutter escape automatically);
+// validator.escape() here used to corrupt stored data: "&" became "&amp;"
+// and re-escaped to "&amp;amp;" on every subsequent edit.
+const htmlTagStripper = new FilterXSS({
+    whiteList: {},                              // no HTML tags allowed at all
+    stripIgnoreTag: true,                       // drop tags, keep their inner text
+    stripIgnoreTagBody: ['script', 'style'],    // drop script/style content entirely
+    escapeHtml: (text) => text,                 // leave plain text untouched
+});
+
 export const sanitizeInput = (input) =>
-    typeof input === 'string' ? validator.escape(input.trim()) : input;
+    typeof input === 'string' ? htmlTagStripper.process(input.trim()) : input;
 
 export const sanitizeInputBody = (req, res, next) => {
     if (req.body && typeof req.body === 'object') {
@@ -243,7 +255,6 @@ export const parseEmployeeQueryParams = (query) => {
         search: query.search?.trim(),
 
         includeDealers: toBoolean(query.includeDealers),
-        includePassword: toBoolean(query.includePassword),
 
         accessScope:
             query.scope?.toUpperCase() === EMPLOYEE_ACCESS_SCOPE.ALL
@@ -338,19 +349,3 @@ export function extractUniqueDealerIds(salesmanRecords) {
     return [...seen];
 }
 
-export const buildEmployeeProjectionConfig = (includePassword, employeeRole) => {
-    const allowedRoles = [
-        ROLES.SUPER_ADMIN,
-        ROLES.ADMIN,
-        ROLES.MANAGER
-    ];
-
-    const canViewPassword = allowedRoles.includes(employeeRole);
-
-    const shouldIncludePassword = canViewPassword && includePassword;
-
-    return {
-        select: shouldIncludePassword ? "" : "-password",
-        includePassword: shouldIncludePassword
-    };
-};

@@ -19,7 +19,7 @@ import {
 
 import { getAuthenticatedEmployeeContext, validateDealerDiscountRequiredFields, validateEmployeeData } from '../utils/validationUtils.js';
 import { mapEmployeeRequestToEntity, mapEmployeeEntityToResponse, mapDealerDiscountEntityToResponse } from '../utils/modelMapper.js';
-import { hashPassword, generateToken, revealPassword, validatePassword } from '../utils/employeeAuth.js';
+import { hashPassword, generateToken, comparePassword, isLegacyEncryptedPassword, validatePassword } from '../utils/employeeAuth.js';
 import {
     APPROVAL_GRANTED_ROLES,
     JWT_EXPIRES_IN,
@@ -67,15 +67,10 @@ const findActiveEmployee = async (employeeId, includePassword = false) => {
 };
 
 async function verifyCurrentPassword(employee, currentPassword) {
-    try {
-        const decryptedPassword = await revealPassword(employee.password);
-        if (currentPassword !== decryptedPassword) {
-            logger.warn(`Invalid current password for: ${employee.employee_email}`);
-            throw new UnauthorizedException('Invalid credentials');
-        }
-    } catch (error) {
-        logger.error(`Password decryption failed for ID: ${employee.employee_email}`, error);
-        throw new BadRequestException('Password decryption error');
+    const passwordMatches = await comparePassword(currentPassword, employee.password);
+    if (!passwordMatches) {
+        logger.warn(`Invalid current password for: ${employee.employee_email}`);
+        throw new UnauthorizedException('Invalid credentials');
     }
 }
 
@@ -129,23 +124,8 @@ async function checkIfDiscountExists(
     }
 };
 
-export const transformEmployeeRecords = async (employees, includePassword) => {
-    if (!includePassword) {
-        return employees.map(mapEmployeeEntityToResponse);
-    }
-
-    return Promise.all(
-        employees.map(async (emp) => {
-            if (!emp.password) {
-                return mapEmployeeEntityToResponse(emp, null);
-            }
-
-            const decrypted = await revealPassword(emp.password);
-
-            return mapEmployeeEntityToResponse(emp, decrypted);
-        })
-    );
-};
+export const transformEmployeeRecords = async (employees) =>
+    employees.map(mapEmployeeEntityToResponse);
 
 const employeeService = {
     defaultSuperAdminSetup: asyncHandler(async () => {
@@ -259,17 +239,18 @@ const employeeService = {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        let decryptedPassword;
-        try {
-            decryptedPassword = await revealPassword(employee.password);
-        } catch (error) {
-            logger.error(`Password decryption failed for ID: ${employee.employee_email}`, error);
-            throw new BadRequestException("Password decryption error");
-        }
-
-        if (password !== decryptedPassword) {
+        const passwordMatches = await comparePassword(password, employee.password);
+        if (!passwordMatches) {
             logger.warn(`Invalid password attempt for: ${employee.employee_email}`);
             throw new UnauthorizedException("Invalid credentials");
+        }
+
+        // Lazy migration: upgrade legacy AES-encrypted passwords to bcrypt on
+        // successful login.
+        if (isLegacyEncryptedPassword(employee.password)) {
+            employee.password = await hashPassword(password);
+            await employee.save();
+            logger.info(`Password upgraded to bcrypt for: ${employee.employee_id}`);
         }
 
         const token = generateToken(employee.employee_id, employee.role, employee.status);

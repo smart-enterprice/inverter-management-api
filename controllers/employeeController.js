@@ -8,8 +8,7 @@ import { BadRequestException } from "../middleware/CustomError.js";
 import logger from "../utils/logger.js";
 
 import { mapEmployeeEntityToResponse } from "../utils/modelMapper.js";
-import { revealPassword } from "../utils/employeeAuth.js";
-import { buildEmployeeProjectionConfig, buildEmployeeQueryFilter, extractUniqueDealerIds, getAuthenticatedEmployeeContext, normalizeSalesmanIds, parseEmployeeQueryParams, sanitizeInputBody, validateMainRoleAccess, validateSuperAdminAccess } from "../utils/validationUtils.js";
+import { buildEmployeeQueryFilter, extractUniqueDealerIds, getAuthenticatedEmployeeContext, normalizeSalesmanIds, parseEmployeeQueryParams, sanitizeInputBody, validateMainRoleAccess } from "../utils/validationUtils.js";
 import { EMPLOYEE_ACCESS_SCOPE, ROLES } from "../utils/constants.js";
 import { buildEmployeeListResponse } from "../utils/responseUtils.js";
 
@@ -215,15 +214,10 @@ const employeeController = {
 
             }
 
-            const projectionConfig = buildEmployeeProjectionConfig(
-                normalizedQuery.includePassword,
-                employeeRole
-            );
-
             const [employeeRecords, totalCount] = await Promise.all([
                 employeeSchema
                     .find(queryFilter)
-                    .select(projectionConfig.select)
+                    .select("-password")
                     .skip(skip)
                     .limit(limit)
                     .sort({ created_at: -1 })
@@ -232,10 +226,7 @@ const employeeController = {
                 employeeSchema.countDocuments(queryFilter),
             ]);
 
-            const transformedEmployees = await transformEmployeeRecords(
-                employeeRecords,
-                projectionConfig.includePassword
-            );
+            const transformedEmployees = await transformEmployeeRecords(employeeRecords);
 
             return res.status(200).json(
                 buildEmployeeListResponse({
@@ -273,47 +264,6 @@ const employeeController = {
                 message: "Dealer employees retrieved successfully",
                 data: {
                     employees: employees.map(mapEmployeeEntityToResponse),
-                    pagination: page,
-                    limit,
-                    total,
-                    pages: Math.ceil(total / limit)
-                },
-                timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
-            });
-        })
-    ],
-
-    getAllEmployeesWithPassword: [
-        asyncHandler(async (req, res) => {
-            // Decrypts and reveals every employee password. Restrict to SUPER_ADMIN
-            // only — admin/manager are intentionally excluded.
-            validateSuperAdminAccess();
-
-            const { page, limit, skip } = getPaginationParams(req.query);
-
-            const [employees, total] = await Promise.all([
-                employeeSchema.find({ status: "active" })
-                    .skip(skip)
-                    .limit(limit)
-                    .sort({ created_at: -1 }),
-
-                employeeSchema.countDocuments({ status: "active" })
-            ]);
-
-            const mappedEmployees = await Promise.all(employees.map(async (emp) => {
-                if (!emp.password) {
-                    throw new BadRequestException(`Missing password for employee ID: ${emp._id}`);
-                }
-                const decryptedPassword = await revealPassword(emp.password);
-                return mapEmployeeEntityToResponse(emp, decryptedPassword);
-            }));
-
-            res.status(200).json({
-                success: true,
-                status: 200,
-                message: "Employees with passwords retrieved successfully",
-                data: {
-                    employees: mappedEmployees,
                     pagination: page,
                     limit,
                     total,

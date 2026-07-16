@@ -1,5 +1,5 @@
 // service/bulkImportService.js
-import xlsx from "xlsx";
+import ExcelJS from "exceljs";
 import validator from "validator";
 
 import employeeSchema from "../models/employees.js";
@@ -27,19 +27,35 @@ const toUpperArray = (val) =>
             .filter(Boolean)
     )];
 
+// Converts a worksheet into an array of objects keyed by the header row
+// (row 1), mirroring xlsx's sheet_to_json({ defval: "", raw: false }).
 const parseSheet = (workbook, sheetName) => {
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) return [];
+    const worksheet = workbook.getWorksheet(sheetName);
+    if (!worksheet) return [];
 
-    const rows = xlsx.utils.sheet_to_json(sheet, {
-        defval: "",
-        raw: false,
-        blankrows: false,
+    const headers = [];
+    worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        headers[colNumber] = toStr(cell.text);
     });
 
-    return rows.filter((row) =>
-        Object.values(row).some((v) => toStr(v).length > 0)
-    );
+    const rows = [];
+    worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+
+        const rowData = {};
+        let hasValue = false;
+
+        headers.forEach((header, colNumber) => {
+            if (!header) return;
+            const value = toStr(row.getCell(colNumber).text);
+            rowData[header] = value;
+            if (value) hasValue = true;
+        });
+
+        if (hasValue) rows.push(rowData);
+    });
+
+    return rows;
 };
 
 //  Validation helpers
@@ -261,7 +277,8 @@ const processUserSheet = async (rows, createdBy) => {
             continue;
         }
 
-        const role = toStr(row["Role"]).toUpperCase();
+        // Template names this column "Role (e.g. ROLE_SALESMAN)" — accept both
+        const role = (toStr(row["Role"]) || toStr(row["Role (e.g. ROLE_SALESMAN)"])).toUpperCase();
         if (!ALLOWED_ROLES.has(role)) {
             failed.push({
                 row: rowNum,
@@ -353,7 +370,15 @@ export const bulkImportService = {
     processExcelFile: async (buffer, filename = "upload.xlsx") => {
         logger.info(`[BulkImport] Processing file: ${filename}`);
 
-        const workbook = xlsx.read(buffer, { type: "buffer", cellDates: false });
+        const workbook = new ExcelJS.Workbook();
+        try {
+            await workbook.xlsx.load(buffer);
+        } catch (err) {
+            logger.warn(`[BulkImport] Failed to parse workbook: ${err.message}`);
+            throw new BadRequestException(
+                "Could not read the Excel file. Please upload a valid .xlsx file."
+            );
+        }
 
         const createdBy = CurrentRequestContext.getEmployeeId() || "SYSTEM";
 
@@ -362,8 +387,9 @@ export const bulkImportService = {
         const USER_SHEET = "User Data";
         const BRAND_SHEET = "Brand Data";
 
+        const sheetNames = workbook.worksheets.map((ws) => ws.name);
         const missingSheets = [DEALER_SHEET, USER_SHEET, BRAND_SHEET].filter(
-            (s) => !workbook.SheetNames.includes(s)
+            (s) => !sheetNames.includes(s)
         );
 
         if (missingSheets.length === 3) {

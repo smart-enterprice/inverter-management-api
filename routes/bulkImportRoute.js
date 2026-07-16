@@ -14,17 +14,17 @@ const upload = multer({
     fileFilter: (_req, file, cb) => {
         const allowed = [
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.ms-excel",
-            // Some browsers/OS send a generic type for .xlsx   
+            // Some browsers/OS send a generic type for .xlsx
             "application/octet-stream",
         ];
+        // Legacy .xls is no longer supported (exceljs reads .xlsx only)
         if (
             allowed.includes(file.mimetype) ||
-            file.originalname.match(/\.(xlsx|xls)$/i)
+            file.originalname.match(/\.xlsx$/i)
         ) {
             cb(null, true);
         } else {
-            cb(new BadRequestException("Only .xlsx / .xls files are accepted."), false);
+            cb(new BadRequestException("Only .xlsx files are accepted."), false);
         }
     },
 });

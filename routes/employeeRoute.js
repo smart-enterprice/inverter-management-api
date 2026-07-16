@@ -24,7 +24,6 @@ router.put("/update/delete-employee", employeeController.deleteEmployee);
 
 router.get("/get/profile", employeeController.getProfile);
 router.get("/count", employeeController.getEmployeeCounts);
-router.get("/get/employees-password", employeeController.getAllEmployeesWithPassword);
 router.get("/get/deleted-employees", employeeController.getAllDeletedEmployees);
 router.get("/getByRole/:employeeRole", employeeController.getAllProfileByEmployeeRole);
 router.get("/:employeeId", employeeController.getProfileByEmployeeId);

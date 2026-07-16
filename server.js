@@ -46,6 +46,9 @@ const port = PORT || 3000;
 
 app.set("trust proxy", 1);
 
+// NOTE: keyGenerator intentionally uses req.ip only. With `trust proxy` set,
+// Express resolves the real client IP; reading x-forwarded-for directly lets
+// clients spoof arbitrary keys and bypass the limiter.
 const globalLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,    // 1 minute
     max: 500,                   // 500 requests per minute
@@ -53,17 +56,13 @@ const globalLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
 
-    keyGenerator: (req) =>
-        req.user?.id || req.headers["x-forwarded-for"] || req.ip,
-
     skip: (req) => {
         const p = req.path;
         return (
             p === "/health" ||
             p === "/metrics" ||
             p === "/favicon.ico" ||
-            p.startsWith(PATH_ROUTES.NOTIFICATION_ROUTE) ||
-            p === `${PATH_ROUTES.AUTH_ROUTE}/token/active`
+            p.startsWith(PATH_ROUTES.NOTIFICATION_ROUTE)    // has its own route-level limiter
         );
     },
 
@@ -72,41 +71,17 @@ const globalLimiter = rateLimit({
         message: "Too many requests, please try again after 10 minutes."
     },
 
-    requestWasSuccessful: (req, res) => res.statusCode < 400,
-
     handler: handleRateLimitError,
 });
 
-const notificationLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,    // 1 minute window
-    max: 120,                   // 120 req/min per IP (2/sec sustained)
-
-    standardHeaders: true,
-    legacyHeaders: false,
-
-    keyGenerator: (req) =>
-        req.user?.id || req.headers["x-forwarded-for"] || req.ip,
-
-    skip: (req) => req.path.startsWith(PATH_ROUTES.NOTIFICATION_ROUTE),
-
-    message: {
-        success: false,
-        message: "Too many notification requests. Slow down.",
-    },
-
-    requestWasSuccessful: (req, res) => res.statusCode < 400,
-    handler: handleRateLimitError,
-});
-
+// Auth endpoints (signin/logout/token-active) do JWT + DB work per call —
+// keep them on a tighter per-IP budget. Signin additionally has loginLimiter.
 const authLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,    // 1 minute window
-    max: 5,                     // 5 requests per minute (login + refresh + verify, safely above peaks)
+    max: 30,
 
     standardHeaders: true,
     legacyHeaders: false,
-
-    keyGenerator: (req) =>
-        req.user?.id || req.headers["x-forwarded-for"] || req.ip,
 
     message: {
         success: false,
@@ -115,16 +90,20 @@ const authLimiter = rateLimit({
     handler: handleRateLimitError,
 });
 
+// Matches genuine local dev origins only (e.g. http://localhost:5173).
+// Substring checks like origin.includes('localhost') are bypassable via
+// domains such as https://localhost.attacker.com.
+const LOCAL_DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
 const corsOptions = {
     origin(origin, callback) {
         const allowedOrigins = ALLOWED_ORIGINS ?
             ALLOWED_ORIGINS.split(',').map(o => o.trim()) : ['http://localhost:5173'];
 
-        allowedOrigins.push('http://localhost:3000');
         allowedOrigins.push('https://editor.swagger.io');
-        allowedOrigins.push('http://localhost:1280');
 
-        if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        // No Origin header: non-browser clients (mobile app, curl, server-to-server)
+        if (!origin || LOCAL_DEV_ORIGIN.test(origin)) {
             return callback(null, true);
         }
         if (allowedOrigins.includes(origin)) {
@@ -143,8 +122,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 app.use(helmet());
-app.use(express.json({ limit: "100mb" }));
-app.use(express.urlencoded({ extended: true, limit: "100mb" }));
+// File uploads go through multer (multipart), so JSON bodies stay small.
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 app.use(cookieParser());
 app.use(compression());
 app.use(hpp());
@@ -210,7 +190,7 @@ app.get("/health", async (req, res) => {
     });
 });
 
-app.use(PATH_ROUTES.AUTH_ROUTE, authRoute);
+app.use(PATH_ROUTES.AUTH_ROUTE, authLimiter, authRoute);
 app.use(PATH_ROUTES.LOCATION_ROUTE, locationRoute);
 app.use(PATH_ROUTES.BASIC_ROUTE, publicRoute);
 
