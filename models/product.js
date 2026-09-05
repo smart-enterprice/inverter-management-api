@@ -29,8 +29,12 @@ const productSchema = new mongoose.Schema({
         required: [true, "📱 Product Type is required."]
     },
     product_category: {
+        // Free text, same as product_type — users can create new categories
+        // from the Products UI instead of being limited to a fixed list.
+        // "BATTERY" still gets special stock-tracking behavior (see
+        // isBatteryCategory on the frontend); any other value is just a
+        // normal category.
         type: String,
-        enum: ["INVERTER", "BATTERY", "OTHER"],
         default: "INVERTER",
         required: [true, "📦 Product Category is required."]
     },

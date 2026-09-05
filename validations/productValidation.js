@@ -1,7 +1,6 @@
 // validations/productValidation.js
 
 import { body } from "express-validator";
-import { PRODUCT_CATEGORIES } from "../utils/constants.js";
 import { validateRequest } from "./orderValidation.js";
 
 const PRODUCT_STATUS_VALUES = ["active", "inactive", "discontinued"];
@@ -28,10 +27,13 @@ export const createProductValidation = [
         .trim()
         .notEmpty().withMessage("product_type is required."),
 
+    // Free text, same as product_type — users can create new categories
+    // from the UI instead of being limited to a fixed list.
     body("product_category")
         .optional({ nullable: true, checkFalsy: true })
-        .isIn(Object.values(PRODUCT_CATEGORIES))
-        .withMessage(`product_category must be one of: ${Object.values(PRODUCT_CATEGORIES).join(", ")}`),
+        .isString().withMessage("product_category must be a string.")
+        .trim()
+        .isLength({ max: 60 }).withMessage("product_category exceeds 60 characters."),
 
     body("price")
         .optional({ nullable: true })
@@ -57,10 +59,13 @@ export const updateProductValidation = [
     body("product_name").optional({ nullable: true, checkFalsy: true }).isString().trim().notEmpty().isLength({ max: 200 }).withMessage("product_name invalid."),
     body("product_type").optional({ nullable: true, checkFalsy: true }).isString().trim().notEmpty().withMessage("product_type cannot be empty."),
 
+    // Free text, same as product_type — users can create new categories
+    // from the UI instead of being limited to a fixed list.
     body("product_category")
         .optional({ nullable: true, checkFalsy: true })
-        .isIn(Object.values(PRODUCT_CATEGORIES))
-        .withMessage(`product_category must be one of: ${Object.values(PRODUCT_CATEGORIES).join(", ")}`),
+        .isString().withMessage("product_category must be a string.")
+        .trim()
+        .isLength({ max: 60 }).withMessage("product_category exceeds 60 characters."),
 
     body("price").optional({ nullable: true }).isFloat({ min: 0 }).withMessage("price must be non-negative."),
     body("cost").optional({ nullable: true }).isFloat({ min: 0 }).withMessage("cost must be non-negative."),

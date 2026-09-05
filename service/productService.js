@@ -205,11 +205,12 @@ const productService = {
         const modelInput = sanitizeInput(dto.model).toUpperCase();
         const productName = sanitizeInput(dto.product_name);
         const productType = sanitizeInput(dto.product_type);
+        // Free text, same as product_type — any non-empty category is
+        // accepted, so users can create new ones from the Products UI
+        // instead of being limited to a fixed list. "BATTERY" still gets
+        // special stock-tracking behavior on the frontend; anything else
+        // just behaves as a normal category.
         const productCategory = sanitizeInput(dto.product_category || 'INVERTER').toUpperCase();
-
-        if (!productCategory || !PRODUCT_CATEGORIES[productCategory]) {
-            throw new BadRequestException(`Invalid product category: ${productCategory}. Allowed categories: ${Object.keys(PRODUCT_CATEGORIES).join(", ")}`);
-        }
 
         const brandRecord = await Brand
             .findOne({ brand_name: brandInput })
@@ -327,12 +328,9 @@ const productService = {
 
         // Detect Category Change
         if (dto.product_category !== undefined) {
+            // Free text, same as product_type — see the note in
+            // createProduct above.
             const normalizedCategory = sanitizeInput(dto.product_category || 'INVERTER').toUpperCase();
-
-            if (!normalizedCategory || !PRODUCT_CATEGORIES[normalizedCategory]) {
-                throw new BadRequestException(`Invalid product category: ${normalizedCategory}. Allowed categories: ${Object.keys(PRODUCT_CATEGORIES).join(", ")}`);
-            }
-
             updates.product_category = normalizedCategory;
         }
 
@@ -1170,10 +1168,18 @@ const productService = {
         return normalised;
     }),
 
-    // get product categories
+    // get product categories — dynamic, same as getProductTypes: every
+    // category actually in use, plus the known defaults so they always
+    // show up as suggestions even before any product uses them.
     getProductCategories: asyncHandler(async () => {
-        const categories = Object.keys(PRODUCT_CATEGORIES).sort();
-        return categories;
+        const used = await Product.distinct("product_category");
+
+        const normalised = new Set(
+            used.filter(Boolean).map(c => c.trim().toUpperCase())
+        );
+        Object.keys(PRODUCT_CATEGORIES).forEach(c => normalised.add(c));
+
+        return [...normalised].sort();
     }),
 
 }
